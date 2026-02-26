@@ -19,12 +19,15 @@ export default function Heatmap({ onSelectRoom }) {
         </div>
         {/* Legend */}
         <div className="flex gap-2 flex-wrap">
-          {STATUS_LABELS.map((l, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[i] }} />
-              <span className="text-[8px] text-gray-400 font-semibold">{l}</span>
-            </div>
-          ))}
+          {STATUS_LABELS.map((l, i) => {
+            if (l === 'CLN' || l === 'MKP') return null;
+            return (
+              <div key={i} className="flex items-center gap-1">
+                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[i] }} />
+                <span className="text-[8px] text-gray-400 font-semibold">{l}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
