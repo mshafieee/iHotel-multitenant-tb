@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build output
+client/dist/
+
+# Environment — keep .env.example, ignore actual secrets
+server/.env
+.env
+
+# SQLite database files
+server/hilton.db
+server/hilton.db-shm
+server/hilton.db-wal
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/

@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply text-gray-800 font-sans antialiased; }
+}
+
+@layer components {
+  .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden; }
+  .btn { @apply px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-150 cursor-pointer disabled:opacity-50; }
+  .btn-primary { @apply bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700; }
+  .btn-danger { @apply bg-red-50 text-red-600 hover:bg-red-100 border border-red-200; }
+  .btn-success { @apply bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200; }
+  .btn-ghost { @apply bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200; }
+  .input { @apply w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition; }
+  .badge { @apply inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider; }
+  .toggle { @apply relative w-10 h-5 rounded-full cursor-pointer transition-colors duration-200; }
+  .toggle-knob { @apply absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+
+/* Pulse animation for SOS */
+@keyframes pulse-sos { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.animate-sos { animation: pulse-sos 1s ease-in-out infinite; }
