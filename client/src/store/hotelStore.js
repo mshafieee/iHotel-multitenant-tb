@@ -8,6 +8,7 @@ const useHotelStore = create((set, get) => ({
   reservations: [],
   logs: [],
   alerts: [],
+  todayCheckouts: [],
   sse: null,
   pollTimer: null,
 
@@ -39,14 +40,16 @@ const useHotelStore = create((set, get) => ({
 
   // Start polling + SSE
   startPolling: () => {
-    const { fetchOverview, fetchReservations, fetchLogs } = get();
+    const { fetchOverview, fetchReservations, fetchLogs, fetchTodayCheckouts } = get();
     fetchOverview();
     fetchReservations();
     fetchLogs();
+    fetchTodayCheckouts();
     const timer = setInterval(fetchOverview, 15000);
     set({ pollTimer: timer });
     setInterval(fetchReservations, 30000);
     setInterval(fetchLogs, 15000);
+    setInterval(fetchTodayCheckouts, 5 * 60 * 1000); // refresh every 5 min
   },
 
   stopPolling: () => {
@@ -99,6 +102,13 @@ const useHotelStore = create((set, get) => ({
       } catch {}
     });
 
+    es2.addEventListener('checkout_alert', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.rooms) set({ todayCheckouts: d.rooms });
+      } catch {}
+    });
+
     es2.onerror = () => {
       setTimeout(() => get().connectSSE(), 5000);
     };
@@ -123,16 +133,34 @@ const useHotelStore = create((set, get) => ({
     } catch (e) { console.error('RPC error:', e.message); }
   },
 
-  // Check out a room: cancel reservation, set status to MUR, notify guest
+  // Check out a room: cancel reservation, set status to SERVICE, notify guest
   checkout: async (room) => {
     await api(`/api/rooms/${room}/checkout`, { method: 'POST' });
-    // Optimistic: update room status to MUR (2) in local store
+    // Optimistic: update room status to SERVICE (2) in local store
     const rooms = { ...get().rooms };
     if (rooms[room]) {
       rooms[room] = { ...rooms[room], roomStatus: 2, reservation: null };
       set({ rooms });
     }
     get().fetchReservations();
+  },
+
+  // Reset room to default state
+  resetRoom: async (room) => {
+    await api(`/api/rooms/${room}/reset`, { method: 'POST' });
+    const rooms = { ...get().rooms };
+    if (rooms[room]) {
+      rooms[room] = { ...rooms[room], roomStatus: 0, line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0, acMode: 0, fanSpeed: 0, curtainsPosition: 0, blindsPosition: 0, dndService: false, murService: false, sosService: false, pdMode: false };
+      set({ rooms });
+    }
+  },
+
+  // Fetch today's checkouts for the alert banner
+  fetchTodayCheckouts: async () => {
+    try {
+      const data = await api('/api/pms/today-checkouts');
+      set({ todayCheckouts: data });
+    } catch {}
   },
 
   // Clear logs from local store (called after server DELETE /api/logs)

@@ -5,9 +5,9 @@ import { api } from '../utils/api';
 
 const AC_MODES = ['OFF', 'COOL', 'HEAT', 'FAN', 'AUTO'];
 const FAN_SPEEDS = ['LOW', 'MED', 'HIGH', 'AUTO'];
-// 0=VACANT 1=OCCUPIED 2=MUR 3=MAINTENANCE
-const STATUSES = ['VACANT', 'OCCUPIED', 'MUR', 'MAINTENANCE'];
-const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626'];
+// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
+const STATUSES = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
+const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const MODE_COLORS = ['#6B7280', '#2563EB', '#DC2626', '#06B6D4', '#16A34A'];
 
 export default function RoomModal({ roomId, onClose, role, onLockout }) {
@@ -21,11 +21,11 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
   if (!r) return null;
 
   const can = role === 'owner' || role === 'admin';
-  const isStaff = can || role === 'user';
+  const isStaff = can || role === 'frontdesk';
   const isGuest = role === 'guest';
   const id = r.deviceId;
   const statusIdx = Math.min(r.roomStatus ?? 0, STATUSES.length - 1);
-  const sc = SCOL[statusIdx];
+  const sc = SCOL[statusIdx] ?? SCOL[0];
 
   const send = useCallback((method, params) => {
     if (role === 'guest') {
@@ -68,8 +68,15 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
     }, 1000);
   };
 
+  const handleReset = async () => {
+    if (!confirm(`Reset Room ${r.room} to default? All lights off, AC off, curtains closed, status → VACANT.`)) return;
+    try {
+      await api(`/api/rooms/${r.room}/reset`, { method: 'POST' });
+    } catch (e) { console.error('Reset failed:', e.message); }
+  };
+
   const handleCheckout = async () => {
-    if (!confirm(`Check out Room ${r.room}? This will cancel the reservation and set status to MUR.`)) return;
+    if (!confirm(`Check out Room ${r.room}? This will cancel the reservation and set status to SERVICE.`)) return;
     setCheckingOut(true);
     try {
       await checkout(r.room);
@@ -114,6 +121,14 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
 
         <div className="p-4 space-y-4">
 
+          {/* NOT_OCCUPIED banner */}
+          {r.roomStatus === 4 && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
+              <div className="text-purple-700 font-bold text-sm mb-1">🟣 Room Unoccupied</div>
+              <div className="text-xs text-purple-500">Room is reserved but no guest detected for 5+ min. Energy-save mode active (AC 26°C, lights off).</div>
+            </div>
+          )}
+
           {/* PD banner for guests when power is restricted */}
           {isGuest && r.pdMode && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
@@ -122,22 +137,30 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
             </div>
           )}
 
-          {/* Power Down toggle — staff only */}
+          {/* Power Down toggle + Reset — staff only */}
           {isStaff && (
-            <button onClick={togglePD}
-              className={`w-full py-2.5 rounded-xl font-bold text-sm transition border ${r.pdMode
-                ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
-                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}>
-              <Zap size={14} className="inline mr-1" />
-              {r.pdMode ? '⚡ Power Down ACTIVE — Tap to Restore' : '⚡ Power Down Room'}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={togglePD}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition border ${r.pdMode
+                  ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                  : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}>
+                <Zap size={14} className="inline mr-1" />
+                {r.pdMode ? '⚡ PD ACTIVE — Restore' : '⚡ Power Down'}
+              </button>
+              {can && (
+                <button onClick={handleReset}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 transition">
+                  🔄 Reset to Default
+                </button>
+              )}
+            </div>
           )}
 
-          {/* Checkout button — staff only, shown when room is occupied with a reservation */}
-          {isStaff && r.reservation && r.roomStatus === 1 && (
+          {/* Checkout button — staff only, shown when room is occupied/not-occupied with a reservation */}
+          {isStaff && r.reservation && (r.roomStatus === 1 || r.roomStatus === 4) && (
             <button onClick={handleCheckout} disabled={checkingOut}
               className="w-full py-2.5 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition disabled:opacity-50">
-              {checkingOut ? '⏳ Checking out...' : '🚪 Check Out Guest → MUR'}
+              {checkingOut ? '⏳ Checking out...' : '🚪 Check Out Guest → SERVICE'}
             </button>
           )}
 
@@ -147,7 +170,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
               <Stat label="TEMP" value={r.temperature != null ? `${r.temperature}°` : '—'} color={(r.temperature || 22) > 28 ? 'text-red-500' : 'text-emerald-500'} />
               <Stat label="HUMID" value={r.humidity != null ? `${r.humidity}%` : '—'} color="text-blue-500" />
               <Stat label="CO₂" value={r.co2 ?? '—'} color={(r.co2 || 400) > 1000 ? 'text-red-500' : 'text-emerald-500'} />
-              {!isGuest && <Stat label="PIR" value={r.pirMotionStatus ? 'MOTION' : 'IDLE'} color={r.pirMotionStatus ? 'text-blue-500' : 'text-gray-300'} />}
+              {!isGuest && <Stat label="PIR" value={r.pirMotionStatus ? 'DETECTED' : 'CLEAR'} color={r.pirMotionStatus ? 'text-blue-500' : 'text-gray-300'} />}
             </div>
           </Section>
 

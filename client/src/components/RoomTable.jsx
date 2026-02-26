@@ -2,15 +2,17 @@ import React, { useState, useMemo } from 'react';
 import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
 
-// 0=VACANT 1=OCCUPIED 2=MUR 3=MAINTENANCE
-const STATUSES = ['VACANT', 'OCCUPIED', 'MUR', 'MAINTENANCE'];
-const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626'];
+// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
+const STATUSES = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
+const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const FILTERS = [
   ['all', 'All'],
   ['vacant', '🟢 Vacant'],
   ['occupied', '🔵 Occ'],
-  ['mur', '🧹 MUR'],
+  ['service', '🧹 Service'],
+  ['not_occupied', '🟣 N/Occ'],
   ['maintenance', '🔧 Maint'],
+  ['mur', '🧹 MUR'],
   ['dnd', '🔕 DND'],
   ['sos', '🚨 SOS'],
   ['pd', '⚡ PD'],
@@ -29,8 +31,10 @@ export default function RoomTable({ onSelectRoom, role }) {
     const fmap = {
       occupied: r => r.roomStatus === 1,
       vacant: r => r.roomStatus === 0,
-      mur: r => r.roomStatus === 2,
+      service: r => r.roomStatus === 2,
       maintenance: r => r.roomStatus === 3,
+      not_occupied: r => r.roomStatus === 4,
+      mur: r => r.murService,
       dnd: r => r.dndService,
       sos: r => r.sosService,
       pd: r => r.pdMode,
@@ -41,11 +45,11 @@ export default function RoomTable({ onSelectRoom, role }) {
 
   const handleCheckout = async (e, room) => {
     e.stopPropagation();
-    if (!confirm(`Check out Room ${room}? This will set status to MUR.`)) return;
+    if (!confirm(`Check out Room ${room}? This will set status to SERVICE.`)) return;
     try { await checkout(room); } catch {}
   };
 
-  const canManage = role === 'owner' || role === 'admin' || role === 'user';
+  const canManage = role === 'owner' || role === 'admin' || role === 'frontdesk';
 
   return (
     <div className="card p-4">

@@ -66,8 +66,11 @@ class RoomState:
 
         occupied = random.random() < 0.55
 
-        # ── Room state ──
-        self.roomStatus        = 1 if occupied else random.choice([0, 2])
+        # ── Room state ── 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
+        if occupied:
+            self.roomStatus = 1
+        else:
+            self.roomStatus = random.choices([0, 2, 3], weights=[70, 25, 5])[0]
         self.pirMotionStatus   = occupied and random.random() < 0.4
         self.doorStatus        = False
         self.doorLockBattery   = random.randint(55, 100)
@@ -122,8 +125,9 @@ class RoomState:
         self.doorUnlock = False
 
         # ── Internal counters ──
-        self._tick          = 0
-        self._door_open_for = 0   # ticks door has been open
+        self._tick              = 0
+        self._door_open_for     = 0   # ticks door has been open
+        self._no_motion_ticks   = 0   # ticks without motion after door open
 
     # ── Per-tick update ──────────────────────────────────────────────────────
 
@@ -148,21 +152,38 @@ class RoomState:
         co2_delta = random.randint(-15, 40) if occupied else random.randint(-8, 5)
         self.co2  = max(400, min(2000, self.co2 + co2_delta))
 
-        # PIR — motion pulses when occupied
-        if occupied:
+        # PIR — motion pulses when occupied; clears for NOT_OCCUPIED
+        if self.roomStatus == 1:  # OCCUPIED
             self.pirMotionStatus = random.random() < 0.30
+        elif self.roomStatus == 4:  # NOT_OCCUPIED — no motion
+            self.pirMotionStatus = False
         else:
             self.pirMotionStatus = False
 
-        # Door — occasional open/close when occupied
-        if occupied:
+        # Door — occasional open/close when occupied; simulate NOT_OCCUPIED transition
+        if self.roomStatus == 1:  # OCCUPIED
             if not self.doorStatus and random.random() < 0.025:
                 self.doorStatus       = True
                 self._door_open_for   = 0
+                self._no_motion_ticks = 0
             elif self.doorStatus:
                 self._door_open_for += 1
                 if self._door_open_for >= random.randint(1, 4):
                     self.doorStatus = False
+                    # After door closes: small chance guest left → NOT_OCCUPIED (server decides, simulate 5% chance)
+                    if random.random() < 0.05:
+                        self._no_motion_ticks = 20  # trigger transition next tick
+            # Simulate NOT_OCCUPIED after prolonged no-motion
+            if self._no_motion_ticks > 0:
+                self._no_motion_ticks -= 1
+                if self._no_motion_ticks == 0:
+                    self.roomStatus = 4  # NOT_OCCUPIED
+        elif self.roomStatus == 4:  # NOT_OCCUPIED
+            self.doorStatus = False
+            # Small chance guest comes back → OCCUPIED
+            if random.random() < 0.02:
+                self.roomStatus = 1
+                self._no_motion_ticks = 0
         else:
             self.doorStatus = False
 
@@ -260,7 +281,7 @@ class RoomState:
         }
 
     def status_line(self):
-        STATUS_ICONS = ['🟢', '🔵', '🩵', '🔴', '🩷', '🟠', '🚨']
+        STATUS_ICONS = ['🟢', '🔵', '🧹', '🔴', '🟣']
         AC_ICONS     = ['—', '❄', '🔥', '💨', '🔄']
         icon  = STATUS_ICONS[self.roomStatus] if self.roomStatus < 7 else '?'
         ac    = AC_ICONS[self.acMode] if self.acMode < 5 else '?'

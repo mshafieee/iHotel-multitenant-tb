@@ -85,10 +85,15 @@ constexpr unsigned long DEFAULT_UNLOCK_DURATION_MS = 3000UL;
 constexpr unsigned long MQTT_RECONNECT_INTERVAL_MS = 5000UL;
 
 // ── MOCK SENSOR VALUES ────────────────────────────────────────────────────────
-// Replace these constants with real sensor reads when you add hardware.
-constexpr float MOCK_TEMPERATURE = 22.5f;   // °C
-constexpr float MOCK_HUMIDITY    = 45.0f;   // %RH
-constexpr int   MOCK_CO2         = 600;     // ppm
+// Runtime variables — can be updated via Serial JSON injection for testing.
+// Replace with real sensor reads when you add hardware.
+float mockTemperature     = 22.5f;   // °C
+float mockHumidity        = 45.0f;   // %RH
+int   mockCo2             = 600;     // ppm
+bool  mockPirStatus       = false;   // PIR motion detected
+bool  mockDoorStatus      = false;   // door contact: false=CLOSED, true=OPEN
+float mockElecConsumption = 0.0f;    // kWh cumulative
+float mockWaterConsumption = 0.0f;   // m³ cumulative
 
 // ── END USER CONFIGURATION ──
 // ─────────────────────────────────────────────────────────────────────────────
@@ -473,7 +478,22 @@ void handleAttributeUpdate(const char* json, unsigned int len) {
   if (doc.containsKey("sosService")) room.sosService = doc["sosService"].as<bool>();
 
   // ── Room status ───────────────────────────────────────────────────────
-  if (doc.containsKey("roomStatus")) room.roomStatus = (uint8_t)(int)doc["roomStatus"];
+  if (doc.containsKey("roomStatus")) {
+    uint8_t newStatus = (uint8_t)(int)doc["roomStatus"];
+    room.roomStatus = newStatus;
+    // NOT_OCCUPIED (4): energy-save mode — lights off, AC setpoint raised to 26°C
+    if (newStatus == 4) {
+      Serial.println(F("[Status] NOT_OCCUPIED → lights off, AC setpoint 26°C"));
+      if (!room.pdMode) {
+        room.line1 = false; applyLine(0, false);
+        room.line2 = false; applyLine(1, false);
+        room.line3 = false; applyLine(2, false);
+        room.dimmer1 = 0; room.dimmer2 = 0;
+      }
+      room.acTemperatureSet = 26.0f;
+      publishMini("{\"line1\":false,\"line2\":false,\"line3\":false,\"dimmer1\":0,\"dimmer2\":0,\"acTemperatureSet\":26}");
+    }
+  }
 
   // ── PD Mode — always processed last ──────────────────────────────────
   if (doc.containsKey("pdMode")) {
@@ -515,18 +535,18 @@ void handleRpcRequest(const char* topic, const char* json, unsigned int len) {
 void publishTelemetry() {
   StaticJsonDocument<1024> doc;
 
-  // ── Mock sensor values ─────────────────────────────────────────────────
-  doc["temperature"]         = MOCK_TEMPERATURE;
-  doc["humidity"]            = MOCK_HUMIDITY;
-  doc["co2"]                 = MOCK_CO2;
-  doc["pirMotionStatus"]     = false;
-  doc["doorStatus"]          = false;
+  // ── Mock sensor values (updated via serial JSON injection) ─────────────
+  doc["temperature"]         = mockTemperature;
+  doc["humidity"]            = mockHumidity;
+  doc["co2"]                 = mockCo2;
+  doc["pirMotionStatus"]     = mockPirStatus;
+  doc["doorStatus"]          = mockDoorStatus;
   doc["doorLockBattery"]     = 100;
   doc["doorContactsBattery"] = 100;
   doc["airQualityBattery"]   = 100;
   doc["waterMeterBattery"]   = 100;
-  doc["elecConsumption"]     = 0.0f;
-  doc["waterConsumption"]    = 0.0f;
+  doc["elecConsumption"]     = mockElecConsumption;
+  doc["waterConsumption"]    = mockWaterConsumption;
 
   // ── Actual relay / actuator state ─────────────────────────────────────
   doc["line1"]            = room.line1;
@@ -667,14 +687,24 @@ void applyPDMode(bool enable) {
 // Serial debug interface
 //
 // Send a JSON command over Serial Monitor (115200 baud) to test without a
-// dashboard.  Examples:
-//   {"line1":true}
-//   {"line1":false,"line2":true}
-//   {"acMode":1,"fanSpeed":2}
-//   {"curtainsPosition":75}
-//   {"pdMode":true}
-//   {"pdMode":false}
-//   {"doorUnlock":true}
+// dashboard. Handles both actuator keys AND sensor injection keys.
+//
+// Actuator commands:
+//   {"line1":true}                        — lighting
+//   {"acMode":1,"fanSpeed":2}             — HVAC
+//   {"curtainsPosition":75}               — window coverings
+//   {"pdMode":true}                       — power down
+//   {"doorUnlock":true}                   — unlock door pulse
+//   {"roomStatus":4}                      — force NOT_OCCUPIED for testing
+//
+// Sensor injection (mock values published on next telemetry tick):
+//   {"temperature":28.5}
+//   {"humidity":65.0}
+//   {"co2":1400}
+//   {"pirMotionStatus":true}              — motion DETECTED
+//   {"doorStatus":true}                   — door OPEN
+//   {"elecConsumption":125.5}
+//   {"waterConsumption":3.2}
 // ─────────────────────────────────────────────────────────────────────────────
 
 void processSerial() {
@@ -685,6 +715,51 @@ void processSerial() {
       inputLine.trim();
       if (inputLine.length() > 0) {
         Serial.printf("[Serial] → %s\n", inputLine.c_str());
+
+        // Try to parse sensor injection keys first
+        StaticJsonDocument<256> sensorDoc;
+        if (!deserializeJson(sensorDoc, inputLine)) {
+          bool sensorChanged = false;
+          if (sensorDoc.containsKey("temperature")) {
+            mockTemperature = sensorDoc["temperature"].as<float>();
+            Serial.printf("[Sensor] temperature = %.1f°C\n", mockTemperature);
+            sensorChanged = true;
+          }
+          if (sensorDoc.containsKey("humidity")) {
+            mockHumidity = sensorDoc["humidity"].as<float>();
+            Serial.printf("[Sensor] humidity = %.1f%%\n", mockHumidity);
+            sensorChanged = true;
+          }
+          if (sensorDoc.containsKey("co2")) {
+            mockCo2 = sensorDoc["co2"].as<int>();
+            Serial.printf("[Sensor] co2 = %d ppm\n", mockCo2);
+            sensorChanged = true;
+          }
+          if (sensorDoc.containsKey("pirMotionStatus")) {
+            mockPirStatus = sensorDoc["pirMotionStatus"].as<bool>();
+            Serial.printf("[Sensor] PIR = %s\n", mockPirStatus ? "DETECTED" : "CLEAR");
+            sensorChanged = true;
+          }
+          if (sensorDoc.containsKey("doorStatus")) {
+            mockDoorStatus = sensorDoc["doorStatus"].as<bool>();
+            Serial.printf("[Sensor] door = %s\n", mockDoorStatus ? "OPEN" : "CLOSED");
+            sensorChanged = true;
+          }
+          if (sensorDoc.containsKey("elecConsumption")) {
+            mockElecConsumption = sensorDoc["elecConsumption"].as<float>();
+            Serial.printf("[Sensor] elec = %.2f kWh\n", mockElecConsumption);
+            sensorChanged = true;
+          }
+          if (sensorDoc.containsKey("waterConsumption")) {
+            mockWaterConsumption = sensorDoc["waterConsumption"].as<float>();
+            Serial.printf("[Sensor] water = %.3f m³\n", mockWaterConsumption);
+            sensorChanged = true;
+          }
+          // If only sensor keys were present, publish immediately and skip actuator handler
+          if (sensorChanged) publishTelemetry();
+        }
+
+        // Always run actuator handler — it safely ignores unknown keys
         handleAttributeUpdate(inputLine.c_str(), inputLine.length());
       }
       inputLine = "";

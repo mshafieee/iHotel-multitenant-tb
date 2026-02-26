@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import useHotelStore from '../store/hotelStore';
 
-const STATUS_COLORS = ['#16A34A', '#2563EB', '#06B6D4', '#D97706', '#EC4899', '#F97316', '#DC2626'];
-const STATUS_LABELS = ['VAC', 'OCC', 'CLN', 'MNT', 'MKP', 'DND', 'SOS'];
-const STATUS_ICONS  = ['🟢', '🔵', '🧹', '🔧', '💄', '🔕', '🚨'];
+// Index → roomStatus: 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
+const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
+const STATUS_LABELS = ['VAC', 'OCC', 'SVC', 'MNT', 'N/OCC'];
+const STATUS_ICONS  = ['🟢', '🔵', '🧹', '🔧', '🟣'];
 const ROOM_TYPES_SHORT = { 0: 'STD', 1: 'DLX', 2: 'STE', 3: 'VIP' };
 const FLOOR_TYPE = { 1:1, 2:0, 3:0, 4:1, 5:2, 6:0, 7:1, 8:0, 9:2, 10:0, 11:1, 12:0, 13:2, 14:3, 15:3 };
 
@@ -19,15 +20,12 @@ export default function Heatmap({ onSelectRoom }) {
         </div>
         {/* Legend */}
         <div className="flex gap-2 flex-wrap">
-          {STATUS_LABELS.map((l, i) => {
-            if (l === 'CLN' || l === 'MKP') return null;
-            return (
-              <div key={i} className="flex items-center gap-1">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[i] }} />
-                <span className="text-[8px] text-gray-400 font-semibold">{l}</span>
-              </div>
-            );
-          })}
+          {STATUS_LABELS.map((l, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <div className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[i] }} />
+              <span className="text-[8px] text-gray-400 font-semibold">{l}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -48,7 +46,7 @@ export default function Heatmap({ onSelectRoom }) {
                   const rn = String(f * 100 + i);
                   const r = rooms[rn];
                   const status = r?.roomStatus ?? 0;
-                  const color = r ? (r.sosService ? STATUS_COLORS[6] : STATUS_COLORS[status]) : '#E5E7EB';
+                  const color = r ? (r.sosService ? '#DC2626' : (STATUS_COLORS[status] ?? STATUS_COLORS[0])) : '#E5E7EB';
                   const isOnline = r?.online;
                   const isHovered = hoveredRoom === rn;
                   const hasFlag = r?.dndService || r?.murService || r?.sosService;
