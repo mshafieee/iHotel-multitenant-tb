@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh auth status)"
+      "Bash(gh auth status)",
+      "Bash(npm test)"
     ]
   }
 }
