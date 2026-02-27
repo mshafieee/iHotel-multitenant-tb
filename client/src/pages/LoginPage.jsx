@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Building2, Shield, Eye, EyeOff } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import { setTokens } from '../utils/api';
-import { useSearchParams } from 'react-router-dom';
 
 export default function LoginPage() {
+  const [hotelSlug, setHotelSlug] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, error, setError } = useAuthStore();
+  const { login, error } = useAuthStore();
   const [searchParams] = useSearchParams();
 
-  // Detect guest mode from URL: /guest?token=xxx or /guest?room=1501
+  // Detect guest mode from URL: /guest?room=101&hotel=jory1  or /guest?token=xxx
   const guestToken = searchParams.get('token');
-  const guestRoom = searchParams.get('room');
+  const guestRoom  = searchParams.get('room');
+  const guestHotel = searchParams.get('hotel');
   const isGuestMode = !!guestToken || !!guestRoom;
 
   // Guest login fields
@@ -26,7 +28,7 @@ export default function LoginPage() {
   const handleStaffSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await login(username, password);
+    await login(hotelSlug.trim(), username, password);
     setLoading(false);
   };
 
@@ -35,10 +37,11 @@ export default function LoginPage() {
     setGuestLoading(true);
     setGuestError('');
     try {
-      const body = guestToken ? { token: guestToken, lastName: guestName.trim(), password: guestPassword }
-        : { room: guestRoom, lastName: guestName.trim(), password: guestPassword };
+      const body = guestToken
+        ? { token: guestToken, lastName: guestName.trim(), password: guestPassword }
+        : { room: guestRoom, hotelSlug: guestHotel, lastName: guestName.trim(), password: guestPassword };
 
-      const res = await fetch('/api/guest/login', {
+      const res  = await fetch('/api/guest/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -48,25 +51,18 @@ export default function LoginPage() {
         setGuestError(data.error || 'Login failed');
         return;
       }
-      // Store guest token and redirect (update API module token state)
       setTokens(data.accessToken, null);
       localStorage.setItem('guestRoom', data.room);
       localStorage.setItem('guestName', data.guestName);
       window.location.href = '/guest-portal';
-    } catch (e) {
+    } catch {
       setGuestError('Connection failed. Please try again.');
     } finally {
       setGuestLoading(false);
     }
   };
 
-  const quickLogin = async (user) => {
-    setLoading(true);
-    await login(user, 'hilton2026');
-    setLoading(false);
-  };
-
-  // ═══ GUEST LOGIN PAGE — no staff access buttons ═══
+  // ═══ GUEST LOGIN PAGE ═══
   if (isGuestMode) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-blue-700 to-cyan-500 p-4">
@@ -76,7 +72,7 @@ export default function LoginPage() {
               <Building2 className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Welcome, Guest</h1>
-            <p className="text-white/50 text-sm mt-1">Hilton Grand Hotel · Room Control</p>
+            <p className="text-white/50 text-sm mt-1">iHotel · Smart Room Control</p>
           </div>
 
           <div className="card p-8">
@@ -90,7 +86,7 @@ export default function LoginPage() {
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Your Name</label>
                 <input className="input" value={guestName} onChange={e => setGuestName(e.target.value)}
                   placeholder="Enter your name" autoFocus required />
-                <div className="text-[9px] text-gray-400 mt-1">As provided during check-in (first name, last name, or full name)</div>
+                <div className="text-[9px] text-gray-400 mt-1">As provided during check-in</div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
@@ -110,7 +106,7 @@ export default function LoginPage() {
 
               <button type="submit" disabled={guestLoading}
                 className="btn btn-primary w-full py-3 flex items-center justify-center gap-2 text-sm">
-                {guestLoading ? '⏳ Signing in...' : '🚪 Enter Room'}
+                {guestLoading ? 'Signing in...' : 'Enter Room'}
               </button>
             </form>
 
@@ -120,14 +116,14 @@ export default function LoginPage() {
           </div>
 
           <p className="text-center text-white/30 text-[10px] mt-6">
-            Hilton Grand Hotel · IoT Smart Room
+            iHotel · Smart Room Platform
           </p>
         </div>
       </div>
     );
   }
 
-  // ═══ STAFF LOGIN PAGE — with quick access (no guest can reach here via QR) ═══
+  // ═══ STAFF LOGIN PAGE ═══
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 p-4">
       <div className="w-full max-w-md">
@@ -135,16 +131,22 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 backdrop-blur mb-4">
             <Building2 className="w-8 h-8 text-gold-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Hilton Grand Hotel</h1>
-          <p className="text-white/50 text-sm mt-1">IoT Management Platform v2.0</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">iHotel Platform</h1>
+          <p className="text-white/50 text-sm mt-1">Hotel Staff Portal</p>
         </div>
 
         <div className="card p-8">
           <form onSubmit={handleStaffSubmit} className="space-y-4">
             <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Hotel Code</label>
+              <input className="input" value={hotelSlug} onChange={e => setHotelSlug(e.target.value)}
+                placeholder="e.g. hilton-grand" autoFocus required />
+              <p className="text-[10px] text-gray-400 mt-1">Provided by your hotel administrator</p>
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Username</label>
               <input className="input" value={username} onChange={e => setUsername(e.target.value)}
-                placeholder="Enter username" autoFocus required />
+                placeholder="Enter username" required />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
@@ -166,12 +168,17 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          {/* Quick access demo removed to prevent guest QR misuse */}
         </div>
 
-        <p className="text-center text-white/30 text-[10px] mt-6">
-          Secured with JWT · Encrypted · Rate-Limited
+        <div className="mt-4 text-center text-[11px] text-white/40">
+          Platform administrator?{' '}
+          <Link to="/platform/login" className="text-white/70 hover:text-white underline underline-offset-2">
+            Sign in here
+          </Link>
+        </div>
+
+        <p className="text-center text-white/30 text-[10px] mt-4">
+          iHotel SaaS · Secured with JWT · Rate-Limited
         </p>
       </div>
     </div>

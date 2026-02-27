@@ -21,7 +21,6 @@ const useAuthStore = create((set, get) => {
         // If /api/auth/me fails, attempt guest validation (tokens issued to guests)
         try {
           const g = await api('/api/guest/room');
-          // g: { room, telemetry }
           const guestUser = { id: 0, username: `guest:${g.room}`, role: 'guest', fullName: null };
           set({ user: guestUser, isAuthenticated: true, loading: false });
         } catch {
@@ -31,12 +30,13 @@ const useAuthStore = create((set, get) => {
       }
     },
 
-    login: async (username, password) => {
+    // Multi-tenant login: hotelSlug identifies which hotel to authenticate against
+    login: async (hotelSlug, username, password) => {
       set({ error: null });
       try {
         const data = await api('/api/auth/login', {
           method: 'POST',
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ hotelSlug, username, password })
         });
         setTokens(data.accessToken, data.refreshToken);
         set({ user: data.user, isAuthenticated: true, error: null });

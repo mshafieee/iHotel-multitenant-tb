@@ -23,7 +23,6 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
   const can = role === 'owner' || role === 'admin';
   const isStaff = can || role === 'frontdesk';
   const isGuest = role === 'guest';
-  const id = r.deviceId;
   const statusIdx = Math.min(r.roomStatus ?? 0, STATUSES.length - 1);
   const sc = SCOL[statusIdx] ?? SCOL[0];
 
@@ -44,8 +43,8 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
           throw e;
         });
     }
-    return rpc(id, method, params);
-  }, [id, rpc, role, onLockout, roomId]);
+    return rpc(roomId, method, params);
+  }, [roomId, rpc, role, onLockout]);
 
   const adjTemp = (delta) => {
     const t = Math.round(Math.max(16, Math.min(30, (r.acTemperatureSet || 22) + delta)) * 10) / 10;
@@ -91,7 +90,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
   const togglePD = () => {
     const newPD = !r.pdMode;
     if (newPD && !confirm(`Activate Power Down for Room ${r.room}? All power will be cut.`)) return;
-    rpc(id, 'setPDMode', { pdMode: newPD });
+    rpc(roomId, 'setPDMode', { pdMode: newPD });
   };
 
   return (
@@ -124,8 +123,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
           {/* NOT_OCCUPIED banner */}
           {r.roomStatus === 4 && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
-              <div className="text-purple-700 font-bold text-sm mb-1">🟣 Room Unoccupied</div>
-              <div className="text-xs text-purple-500">Room is reserved but no guest detected for 5+ min. Energy-save mode active (AC 26°C, lights off).</div>
+              <div className="text-purple-700 font-bold text-sm">🟣 Room Unoccupied</div>
             </div>
           )}
 
@@ -335,7 +333,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
             <Section title="🏷 Set Status">
               <div className="flex gap-1.5 flex-wrap">
                 {STATUSES.map((st, i) => (
-                  <button key={i} onClick={() => rpc(id, 'setRoomStatus', { roomStatus: i })}
+                  <button key={i} onClick={() => rpc(roomId, 'setRoomStatus', { roomStatus: i })}
                     className="px-3 py-1.5 rounded-lg text-[10px] font-bold border transition"
                     style={{
                       background: statusIdx === i ? SCOL[i] + '14' : '#F9FAFB',

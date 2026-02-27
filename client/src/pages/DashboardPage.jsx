@@ -102,8 +102,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <Building2 className="w-6 h-6 text-gold-400" />
             <div>
-              <h1 className="font-bold text-sm tracking-tight">Hilton Grand Hotel</h1>
-              <p className="text-[10px] text-white/50">IoT Platform v2.0</p>
+              <h1 className="font-bold text-sm tracking-tight">{user?.hotelName || 'iHotel'}</h1>
+              <p className="text-[10px] text-white/50">iHotel Platform</p>
             </div>
           </div>
           <div className="flex items-center gap-4">

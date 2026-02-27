@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import useHotelStore from '../store/hotelStore';
+import useAuthStore from '../store/authStore';
 import { api, getAccessToken } from '../utils/api';
 
-// ═══ CONFIGURATION — change this to your server IP ═══
-const GUEST_HOST = 'http://192.168.43.170:5173';
+// Derive guest portal base URL from current browser location (works on any host/port)
+const { protocol, hostname, port } = window.location;
+const GUEST_HOST = `${protocol}//${hostname}${port ? ':' + port : ''}`;
 
 function QRCode({ data, size = 200 }) {
   const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&margin=8&format=svg`;
@@ -17,8 +19,23 @@ function QRCode({ data, size = 200 }) {
 
 const PM_LABELS = { cash: '💵 Cash', visa: '💳 Visa', pending: '⏳ Later' };
 
+function CopyBtn({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button onClick={copy} className="ml-2 text-[9px] font-semibold text-brand-500 hover:text-brand-700 transition">
+      {copied ? '✓ Copied' : '📋 Copy'}
+    </button>
+  );
+}
+
 export default function PMSPanel() {
   const { reservations, fetchReservations } = useHotelStore();
+  const hotelSlug = useAuthStore(s => s.user?.hotelSlug || s.user?.hotelId || '');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ room: '', guestName: '', checkIn: '', checkOut: '', paymentMethod: 'pending', ratePerNight: '' });
   const [result, setResult] = useState(null);
@@ -34,8 +51,8 @@ export default function PMSPanel() {
   const today = new Date().toISOString().split('T')[0];
   const defaultCo = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
 
-  // Use room-based stable guest URL so printed QR stays the same per room
-  const getGuestUrl = (room) => `${GUEST_HOST}/guest?room=${encodeURIComponent(room)}`;
+  // Room-based stable guest URL — includes hotel slug for multi-tenant routing
+  const getGuestUrl = (room) => `${GUEST_HOST}/guest?room=${encodeURIComponent(room)}&hotel=${encodeURIComponent(hotelSlug)}`;
 
   const create = async () => {
     setError('');
@@ -140,11 +157,15 @@ export default function PMSPanel() {
                 </div>
               )}
               <div className="bg-white rounded-lg p-3 border border-emerald-100">
-                <div className="text-[9px] text-gray-400 uppercase mb-1">Guest Password</div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1 flex items-center">
+                  Guest Password <CopyBtn text={result.password} />
+                </div>
                 <div className="text-2xl font-bold font-mono text-brand-500 tracking-widest">{result.password}</div>
               </div>
               <div className="bg-white rounded-lg p-3 border border-emerald-100">
-                <div className="text-[9px] text-gray-400 uppercase mb-1">Guest Name (for login)</div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1 flex items-center">
+                  Guest Name (for login) <CopyBtn text={result.reservation.guestName} />
+                </div>
                 <div className="text-sm font-bold text-gray-700">{result.reservation.guestName}</div>
                 <div className="text-[9px] text-gray-400 mt-1">Guest enters this name + password above</div>
               </div>

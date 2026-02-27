@@ -1,15 +1,16 @@
 /**
- * Hilton Grand Hotel — ThingsBoard Client
+ * iHotel SaaS Platform — ThingsBoard Client
  * REST API wrapper for device management, telemetry, and attributes
+ * Includes per-hotel client pool for multi-tenant deployments
  */
 const axios = require('axios');
 
 class ThingsBoardClient {
   constructor(host, username, password) {
-    this.host = host;
+    this.host     = host;
     this.username = username;
     this.password = password;
-    this.token = null;
+    this.token    = null;
     this.tokenExp = 0;
   }
 
@@ -17,9 +18,9 @@ class ThingsBoardClient {
     if (this.token && Date.now() < this.tokenExp) return;
     const r = await axios.post(`${this.host}/api/auth/login`,
       { username: this.username, password: this.password }, { timeout: 10000 });
-    this.token = r.data.token;
+    this.token    = r.data.token;
     this.tokenExp = Date.now() + 3500000; // ~58 min
-    console.log('✓ ThingsBoard authenticated');
+    console.log(`✓ ThingsBoard authenticated (${this.host})`);
   }
 
   headers() {
@@ -88,4 +89,36 @@ class ThingsBoardClient {
   getWsToken() { return this.token; }
 }
 
-module.exports = { ThingsBoardClient };
+// ── Per-hotel client pool ─────────────────────────────────────────────────────
+// Stores one authenticated TB client per hotel (keyed by hotelId).
+// Clients are created on first use and cached until credentials change.
+class ThingsBoardClientPool {
+  constructor() {
+    this._pool = new Map(); // Map<hotelId, ThingsBoardClient>
+  }
+
+  // Get (or create) TB client for a hotel. Reads credentials from DB.
+  getClient(hotelId, db) {
+    if (this._pool.has(hotelId)) return this._pool.get(hotelId);
+
+    const hotel = db.prepare('SELECT tb_host, tb_user, tb_pass FROM hotels WHERE id = ? AND active = 1').get(hotelId);
+    if (!hotel || !hotel.tb_host || !hotel.tb_user || !hotel.tb_pass) return null;
+
+    const client = new ThingsBoardClient(hotel.tb_host, hotel.tb_user, hotel.tb_pass);
+    this._pool.set(hotelId, client);
+    return client;
+  }
+
+  // Invalidate a hotel's cached client (call after credentials update)
+  invalidate(hotelId) {
+    this._pool.delete(hotelId);
+  }
+
+  // Check whether a hotel has TB credentials configured
+  hasCredentials(hotelId, db) {
+    const hotel = db.prepare('SELECT tb_host, tb_user, tb_pass FROM hotels WHERE id = ? AND active = 1').get(hotelId);
+    return !!(hotel && hotel.tb_host && hotel.tb_user && hotel.tb_pass);
+  }
+}
+
+module.exports = { ThingsBoardClient, ThingsBoardClientPool };

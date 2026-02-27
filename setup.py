@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """
-Hilton Grand Hotel — ThingsBoard Setup Script v2
-==================================================
-Provisions 300 ESP32 room gateway devices (15 floors × 20 rooms)
-on ThingsBoard with device profiles, shared attributes, and
-initial telemetry. Outputs gateway_tokens.json for the simulator
-and Node.js server.
+iHotel Platform — ThingsBoard Setup Script v3
+==============================================
+Provisions ESP32 room gateway devices on a ThingsBoard tenant.
+Room type is determined by position within each floor:
+  Rooms 1–4  → STANDARD
+  Rooms 5–6  → SUITE
+  Rooms 7–8  → VIP
 
-Prerequisites:
-  - ThingsBoard running at localhost:8080
-  - Tenant admin account created (default: admin@hiltongrand.com / hilton)
+Default target: Azhar tenant (admin@azhar.com / azhar123)
+10 floors × 8 rooms = 80 devices
 
 Usage:
   python3 setup.py
   python3 setup.py --host http://192.168.1.100:8080
-  python3 setup.py --user tenant@hotel.com --password secret
+  python3 setup.py --user azhar --password azhar123
   python3 setup.py --cleanup          # Remove all gateway-room-* devices
   python3 setup.py --seed-telemetry   # Push initial telemetry after creation
   python3 setup.py --dry-run          # Preview what would be created
+  python3 setup.py --status           # Show current state
 """
 
 import requests
@@ -28,54 +29,94 @@ import argparse
 import random
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 
-# ═══ HOTEL CONFIGURATION ═══
-FLOORS = 15
-ROOMS_PER_FLOOR = 20
-TOTAL_ROOMS = FLOORS * ROOMS_PER_FLOOR
+# ══════════════════════════════════════════════════════════════════════════════
+# DEVELOPER CONFIGURATION — Edit these values before running
+# ══════════════════════════════════════════════════════════════════════════════
 
-ROOM_TYPES = ['STANDARD', 'DELUXE', 'SUITE', 'VIP']
-RACK_RATES = {'STANDARD': 600, 'DELUXE': 950, 'SUITE': 1500, 'VIP': 2500}
+# ThingsBoard connection
+TB_HOST = 'http://localhost:8080'
+TB_USER = 'admin@azhar.com'
+TB_PASS = 'azhar123'
 
-# Floor → room type index mapping
-FLOOR_TYPE = {
-    1: 1,   # DELUXE
-    2: 0,   # STANDARD
-    3: 0,   # STANDARD
-    4: 1,   # DELUXE
-    5: 2,   # SUITE
-    6: 0,   # STANDARD
-    7: 1,   # DELUXE
-    8: 0,   # STANDARD
-    9: 2,   # SUITE
-    10: 0,  # STANDARD
-    11: 1,  # DELUXE
-    12: 0,  # STANDARD
-    13: 2,  # SUITE
-    14: 3,  # VIP
-    15: 3,  # VIP
+# Hotel layout
+FLOORS          = 10   # number of floors
+ROOMS_PER_FLOOR = 8    # rooms per floor
+
+# Room type ranges — list of (first_idx, last_idx, type_name)
+# room index runs 1..ROOMS_PER_FLOOR; inclusive on both ends
+ROOM_TYPE_RANGES = [
+    (1, 4, 'STANDARD'),
+    (5, 6, 'SUITE'),
+    (7, 8, 'VIP'),
+]
+
+# Rack rates per night (SAR) — must include every type in ROOM_TYPE_RANGES
+RACK_RATES = {
+    'STANDARD': 600,
+    'SUITE':    1500,
+    'VIP':      2500,
 }
 
-# ═══ INITIAL SHARED ATTRIBUTES (pushed to ESP32 via MQTT) ═══
+# AC defaults pushed as shared attributes on device creation
+AC_MIN_TEMP               = 16.0
+AC_MAX_TEMP               = 30.0
+AC_DEFAULT_MODE           = 0    # 0=OFF
+AC_DEFAULT_FAN_SPEED      = 3    # 3=AUTO
+DOOR_DEFAULT_UNLOCK_DURATION = 5  # seconds
+
+# ThingsBoard device profile name
+DEVICE_PROFILE_NAME = 'room_gateway'
+
+# Output files (written next to this script)
+TOKEN_FILE = 'gateway_tokens.json'
+CSV_FILE   = 'gateway_tokens.csv'
+
+# Provisioning tuning
+BATCH_SIZE  = 10
+BATCH_PAUSE = 0.3   # seconds between batches
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0   # seconds (multiplied by attempt number)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# END OF CONFIGURATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+TOTAL_ROOMS = FLOORS * ROOMS_PER_FLOOR
+ROOM_TYPES  = [t for _, _, t in ROOM_TYPE_RANGES]
+
+
+def _validate_config():
+    covered = set()
+    for start, end, _ in ROOM_TYPE_RANGES:
+        covered.update(range(start, end + 1))
+    expected = set(range(1, ROOMS_PER_FLOOR + 1))
+    missing = expected - covered
+    if missing:
+        raise ValueError(f"ROOM_TYPE_RANGES does not cover room indices: {sorted(missing)}")
+
+_validate_config()
+
+
+def room_type_for_index(room_idx):
+    for start, end, rtype in ROOM_TYPE_RANGES:
+        if start <= room_idx <= end:
+            return rtype
+    return ROOM_TYPES[0]
+
+
 DEFAULT_SHARED_ATTRS = {
-    "defaultUnlockDuration": 5,
-    "acDefaultMode": 0,       # OFF
-    "acDefaultFanSpeed": 3,   # AUTO
-    "acMaxTemp": 30.0,
-    "acMinTemp": 16.0,
+    "defaultUnlockDuration": DOOR_DEFAULT_UNLOCK_DURATION,
+    "acDefaultMode":         AC_DEFAULT_MODE,
+    "acDefaultFanSpeed":     AC_DEFAULT_FAN_SPEED,
+    "acMaxTemp":             AC_MAX_TEMP,
+    "acMinTemp":             AC_MIN_TEMP,
     # Relay states (all OFF on provision)
     "relay1": False, "relay2": False, "relay3": False,
     "relay4": False, "relay5": False, "relay6": False,
     "relay7": False, "relay8": False,
     "doorUnlock": False,
 }
-
-# Retry config
-MAX_RETRIES = 3
-RETRY_DELAY = 1.0
-BATCH_SIZE = 10        # concurrent device creations per batch
-BATCH_PAUSE = 0.3      # pause between batches (seconds)
 
 
 class ThingsBoardClient:
@@ -106,9 +147,8 @@ class ThingsBoardClient:
                 print("  ✓ Authenticated\n")
                 return True
             else:
-                body = r.text[:200]
                 print(f"  ✗ Login failed: HTTP {r.status_code}")
-                print(f"    Response: {body}")
+                print(f"    Response: {r.text[:200]}")
                 return False
         except requests.ConnectionError:
             print(f"  ✗ Cannot connect to {self.host}")
@@ -123,19 +163,17 @@ class ThingsBoardClient:
             self.login()
 
     def _retry_request(self, method, url, **kwargs):
-        """Execute request with retry logic."""
         kwargs.setdefault("timeout", 15)
         for attempt in range(MAX_RETRIES):
             try:
                 self._ensure_auth()
                 r = self.session.request(method, url, **kwargs)
                 if r.status_code == 401:
-                    # Token expired mid-run
                     self.token_exp = 0
                     self._ensure_auth()
                     r = self.session.request(method, url, **kwargs)
                 return r
-            except (requests.ConnectionError, requests.Timeout) as e:
+            except (requests.ConnectionError, requests.Timeout):
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY * (attempt + 1))
                 else:
@@ -144,7 +182,6 @@ class ThingsBoardClient:
     # ─── Device Profile ───
     def get_or_create_device_profile(self, name="room_gateway"):
         print(f"Setting up device profile '{name}'...")
-
         r = self._retry_request("GET", f"{self.host}/api/deviceProfiles",
                                 params={"pageSize": 100, "page": 0})
         if r.status_code == 200:
@@ -158,7 +195,7 @@ class ThingsBoardClient:
             "name": name,
             "type": "DEFAULT",
             "transportType": "MQTT",
-            "description": "Hilton Grand Hotel ESP32 Room Gateway",
+            "description": "iHotel ESP32 Room Gateway",
             "profileData": {
                 "configuration": {"type": "DEFAULT"},
                 "transportConfiguration": {
@@ -186,7 +223,6 @@ class ThingsBoardClient:
         return None
 
     def find_device_by_name(self, name):
-        """Search for existing device by exact name."""
         r = self._retry_request("GET", f"{self.host}/api/tenant/devices",
                                 params={"pageSize": 1, "page": 0, "textSearch": name})
         if r.status_code == 200:
@@ -197,7 +233,6 @@ class ThingsBoardClient:
 
     def create_device(self, name, profile_id, label=""):
         """Create device or return existing. Returns (device_id, token, is_new)."""
-        # Check existing first
         existing_id = self.find_device_by_name(name)
         if existing_id:
             token = self.get_device_token(existing_id)
@@ -237,9 +272,8 @@ class ThingsBoardClient:
         )
         return r.status_code == 200
 
-    # ─── Bulk Operations ───
+    # ─── Bulk fetch ───
     def get_all_gateway_devices(self):
-        """Fetch all gateway-room-* devices with pagination."""
         devices = []
         page = 0
         while True:
@@ -266,9 +300,9 @@ def progress_bar(current, total, prefix="", width=40):
         print()
 
 
-def generate_initial_telemetry(room_num, floor, room_type_id):
+def generate_initial_telemetry(room_num, floor, room_type):
     """Generate realistic initial telemetry for a room."""
-    occupied = random.random() < 0.35  # 35% occupancy on setup
+    occupied = random.random() < 0.35
     temp = round(random.uniform(22, 26) if occupied else random.uniform(24, 28), 1)
     return {
         "roomStatus": 1 if occupied else 0,
@@ -296,6 +330,7 @@ def generate_initial_telemetry(room_num, floor, room_type_id):
         "dndService": occupied and random.random() < 0.08,
         "murService": False,
         "sosService": False,
+        "pdMode": False,
         "lastCleanedTime": str(int(time.time() * 1000) - random.randint(3600000, 86400000)),
         "lastTelemetryTime": str(int(time.time() * 1000)),
         "firmwareVersion": "2.1.5",
@@ -304,13 +339,26 @@ def generate_initial_telemetry(room_num, floor, room_type_id):
     }
 
 
-def run_setup(args):
-    """Main setup: create profile + 300 devices + shared attributes."""
-    tb = ThingsBoardClient(args.host, args.user, args.password)
-    if not tb.login():
-        sys.exit(1)
+def build_room_list():
+    """Build full room list: 10 floors × 8 rooms, type by position."""
+    rooms = []
+    for floor in range(1, FLOORS + 1):
+        for room_idx in range(1, ROOMS_PER_FLOOR + 1):
+            room_num = floor * 100 + room_idx
+            rtype = room_type_for_index(room_idx)
+            rooms.append({
+                "room_num": room_num,
+                "floor": floor,
+                "room_idx": room_idx,
+                "type": rtype,
+                "name": f"gateway-room-{room_num}",
+                "label": f"Floor {floor} — Room {room_num} ({rtype})",
+            })
+    return rooms
 
-    profile_id = tb.get_or_create_device_profile()
+
+def run_setup(args, tb, all_rooms):
+    profile_id = tb.get_or_create_device_profile(DEVICE_PROFILE_NAME)
     if not profile_id:
         print("\n✗ Cannot proceed without device profile")
         sys.exit(1)
@@ -323,54 +371,33 @@ def run_setup(args):
     print(f"\nProvisioning {TOTAL_ROOMS} devices ({FLOORS} floors × {ROOMS_PER_FLOOR} rooms)...")
     if args.dry_run:
         print("  ⚠ DRY RUN — no devices will be created\n")
-
-    all_rooms = []
-    for floor in range(1, FLOORS + 1):
-        room_type_id = FLOOR_TYPE[floor]
-        type_name = ROOM_TYPES[room_type_id]
-        for room_idx in range(1, ROOMS_PER_FLOOR + 1):
-            room_num = floor * 100 + room_idx
-            all_rooms.append({
-                "room_num": room_num,
-                "floor": floor,
-                "type_id": room_type_id,
-                "type_name": type_name,
-                "name": f"gateway-room-{room_num}",
-                "label": f"Floor {floor} — Room {room_num} ({type_name})",
-            })
-
-    if args.dry_run:
-        for room in all_rooms[:5]:
-            print(f"  Would create: {room['name']}  [{room['label']}]")
-        print(f"  ... and {len(all_rooms) - 5} more")
-        print(f"\n  Floor distribution:")
-        for t in range(4):
-            count = sum(1 for v in FLOOR_TYPE.values() if v == t)
-            print(f"    {ROOM_TYPES[t]:10s}: {count} floors = {count * ROOMS_PER_FLOOR} rooms")
+        for room in all_rooms[:8]:
+            print(f"  Would create: {room['name']:25s}  {room['label']}")
+        print(f"  ... ({len(all_rooms)} total)")
+        print(f"\n  Room type breakdown per floor:")
+        for start, end, rtype in ROOM_TYPE_RANGES:
+            count = sum(1 for r in all_rooms if r['type'] == rtype)
+            rate = RACK_RATES.get(rtype, 0)
+            print(f"    {rtype:10s}: {count:3d} rooms  (SAR {rate}/night)")
         return
 
     def provision_room(room):
-        """Provision a single room device (thread-safe)."""
         device_id, token, is_new = tb.create_device(room["name"], profile_id, room["label"])
         if not device_id or not token:
             return room["name"], None, None, False, False
 
-        # Always push shared attributes (idempotent — safe for existing devices too)
         attrs = {
             **DEFAULT_SHARED_ATTRS,
             "roomNumber": str(room["room_num"]),
             "floor": str(room["floor"]),
-            "roomType": room["type_id"],
+            "roomType": room["type"],
         }
         tb.set_shared_attributes(device_id, attrs)
-
         return room["name"], device_id, token, is_new, True
 
-    # Process in batches with concurrent execution
     done = 0
     for batch_start in range(0, len(all_rooms), BATCH_SIZE):
         batch = all_rooms[batch_start:batch_start + BATCH_SIZE]
-
         with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
             futures = {executor.submit(provision_room, room): room for room in batch}
             for future in as_completed(futures):
@@ -383,8 +410,7 @@ def run_setup(args):
                             "token": token,
                             "room": str(room["room_num"]),
                             "floor": room["floor"],
-                            "type": room["type_name"],
-                            "type_id": room["type_id"],
+                            "type": room["type"],
                         }
                         if is_new:
                             created_count += 1
@@ -392,7 +418,7 @@ def run_setup(args):
                             existing_count += 1
                     else:
                         failed.append(name)
-                except Exception as e:
+                except Exception:
                     failed.append(room["name"])
 
                 done += 1
@@ -400,13 +426,14 @@ def run_setup(args):
 
         time.sleep(BATCH_PAUSE)
 
-    # ─── Save tokens ───
-    token_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway_tokens.json")
-    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway_tokens.csv")
+    # ─── Save token files ───
+    base = os.path.dirname(os.path.abspath(__file__))
+    token_path = os.path.join(base, TOKEN_FILE)
+    csv_path   = os.path.join(base, CSV_FILE)
 
     with open(token_path, "w") as f:
         json.dump(tokens, f, indent=2)
-    print(f"\n  ✓ Saved {token_path} ({len(tokens)} devices)")
+    print(f"\n  ✓ Saved {token_path}  ({len(tokens)} devices)")
 
     with open(csv_path, "w") as f:
         f.write("name,device_id,token,room,floor,type\n")
@@ -415,70 +442,64 @@ def run_setup(args):
             f.write(f"{name},{d['device_id']},{d['token']},{d['room']},{d['floor']},{d['type']}\n")
     print(f"  ✓ Saved {csv_path}")
 
-    # ─── Seed telemetry if requested ───
+    # ─── Seed telemetry ───
     if args.seed_telemetry:
         print(f"\nSeeding initial telemetry for {len(tokens)} devices...")
         done = 0
         for name in sorted(tokens.keys()):
             d = tokens[name]
-            telemetry = generate_initial_telemetry(
-                int(d["room"]), d["floor"], d["type_id"]
-            )
+            telemetry = generate_initial_telemetry(int(d["room"]), d["floor"], d["type"])
             tb.push_telemetry(d["device_id"], telemetry)
             done += 1
-            if done % 20 == 0 or done == len(tokens):
+            if done % 10 == 0 or done == len(tokens):
                 progress_bar(done, len(tokens), "Seeding    ")
         print(f"  ✓ Telemetry seeded for {done} devices")
 
     # ─── Summary ───
-    print(f"\n{'═' * 55}")
-    print(f"  HILTON GRAND HOTEL — Setup Complete")
-    print(f"{'═' * 55}")
-    print(f"  New devices created:  {created_count}")
-    print(f"  Existing (re-used):   {existing_count}")
+    print(f"\n{'═' * 60}")
+    print(f"  iHotel — Setup Complete")
+    print(f"{'═' * 60}")
+    print(f"  New devices created : {created_count}")
+    print(f"  Existing (re-used)  : {existing_count}")
     if failed:
-        print(f"  Failed:               {len(failed)}")
+        print(f"  Failed              : {len(failed)}")
         for name in failed[:10]:
             print(f"    ✗ {name}")
         if len(failed) > 10:
             print(f"    ... and {len(failed) - 10} more")
-    print(f"  Total provisioned:    {len(tokens)}")
+    print(f"  Total provisioned   : {len(tokens)}")
     print()
-    for t in range(4):
-        count = sum(1 for v in FLOOR_TYPE.values() if v == t)
-        rate = RACK_RATES[ROOM_TYPES[t]]
-        print(f"    {ROOM_TYPES[t]:10s}: {count:2d} floors × {ROOMS_PER_FLOOR} rooms = {count * ROOMS_PER_FLOOR:3d} rooms  (SAR {rate}/night)")
-    print(f"{'═' * 55}")
+    print(f"  Floor layout (each floor identical):")
+    for start, end, rtype in ROOM_TYPE_RANGES:
+        count_per_floor = end - start + 1
+        rate = RACK_RATES.get(rtype, 0)
+        print(f"    Rooms {start}–{end}   {rtype:<10s}× {FLOORS} floors = {count_per_floor * FLOORS:3d} rooms  (SAR {rate}/night)")
+    print(f"{'═' * 60}")
 
     # ─── Verify sample ───
     print("\nVerifying random sample...")
-    sample_names = random.sample(sorted(tokens.keys()), min(5, len(tokens)))
+    sample = random.sample(sorted(tokens.keys()), min(5, len(tokens)))
     ok = 0
-    for name in sample_names:
+    for name in sample:
         d = tokens[name]
-        actual_token = tb.get_device_token(d["device_id"])
-        if actual_token == d["token"]:
+        actual = tb.get_device_token(d["device_id"])
+        if actual == d["token"]:
             print(f"  ✓ {name}: token OK")
             ok += 1
         else:
-            print(f"  ✗ {name}: token MISMATCH (expected {d['token'][:8]}..., got {(actual_token or '???')[:8]}...)")
-    print(f"\n  Verification: {ok}/{len(sample_names)} passed")
+            print(f"  ✗ {name}: token MISMATCH")
+    print(f"\n  Verification: {ok}/{len(sample)} passed")
 
-    if ok == len(sample_names):
-        print("\n  🏨 Hotel is ready! Next steps:")
-        print(f"     1. Start simulator:  python3 gateway_simulator_rest.py")
-        print(f"     2. Start server:     npm start")
+    if ok == len(sample):
+        print("\n  Hotel is ready! Next steps:")
+        print(f"     1. Start server:     cd server && npm start")
+        print(f"     2. Log in as platform admin and create hotel → discover rooms")
         print(f"     3. Open dashboard:   http://localhost:3000")
     else:
         print("\n  ⚠ Some verifications failed — check ThingsBoard logs")
 
 
-def run_cleanup(args):
-    """Remove all gateway-room-* devices from ThingsBoard."""
-    tb = ThingsBoardClient(args.host, args.user, args.password)
-    if not tb.login():
-        sys.exit(1)
-
+def run_cleanup(args, tb):
     print("Fetching all gateway-room-* devices...")
     devices = tb.get_all_gateway_devices()
     print(f"  Found {len(devices)} devices")
@@ -493,8 +514,7 @@ def run_cleanup(args):
             print("  Cancelled")
             return
 
-    done = 0
-    deleted = 0
+    done = deleted = 0
     for d in devices:
         if tb.delete_device(d["id"]["id"]):
             deleted += 1
@@ -503,20 +523,15 @@ def run_cleanup(args):
 
     print(f"\n  ✓ Deleted {deleted}/{len(devices)} devices")
 
-    # Clean up local token files
-    for f in ["gateway_tokens.json", "gateway_tokens.csv"]:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f)
+    base = os.path.dirname(os.path.abspath(__file__))
+    for fname in [TOKEN_FILE, CSV_FILE]:
+        path = os.path.join(base, fname)
         if os.path.exists(path):
             os.remove(path)
-            print(f"  ✓ Removed {f}")
+            print(f"  ✓ Removed {fname}")
 
 
-def run_status(args):
-    """Show current status of provisioned devices."""
-    tb = ThingsBoardClient(args.host, args.user, args.password)
-    if not tb.login():
-        sys.exit(1)
-
+def run_status(tb):
     devices = tb.get_all_gateway_devices()
     print(f"  Devices found: {len(devices)}")
 
@@ -524,12 +539,10 @@ def run_status(args):
         print("  No gateway devices provisioned yet")
         return
 
-    # Count by floor
     floors = {}
     for d in devices:
-        name = d["name"]
         try:
-            room_num = int(name.replace("gateway-room-", ""))
+            room_num = int(d["name"].replace("gateway-room-", ""))
             floor = room_num // 100
             floors[floor] = floors.get(floor, 0) + 1
         except ValueError:
@@ -537,67 +550,70 @@ def run_status(args):
 
     print(f"\n  Floor breakdown:")
     for floor in sorted(floors.keys()):
-        type_name = ROOM_TYPES[FLOOR_TYPE.get(floor, 0)]
         bar = "█" * floors[floor]
-        print(f"    F{floor:2d} ({type_name:8s}): {floors[floor]:2d} {bar}")
+        # Reconstruct type counts for this floor
+        types = [room_type_for_index(i) for i in range(1, ROOMS_PER_FLOOR + 1)]
+        type_summary = f"STD×{types.count('STANDARD')} STE×{types.count('SUITE')} VIP×{types.count('VIP')}"
+        print(f"    F{floor:2d} ({type_summary}): {floors[floor]:2d} {bar}")
     print(f"\n  Total: {len(devices)} / {TOTAL_ROOMS} expected")
 
-    # Check token file
-    token_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway_tokens.json")
+    base = os.path.dirname(os.path.abspath(__file__))
+    token_path = os.path.join(base, TOKEN_FILE)
     if os.path.exists(token_path):
         with open(token_path) as f:
             tokens = json.load(f)
         print(f"  Token file: {len(tokens)} entries")
         if len(tokens) != len(devices):
-            print(f"  ⚠ Mismatch! Token file has {len(tokens)} but TB has {len(devices)} devices")
-            print(f"    Run setup.py again to reconcile")
+            print(f"  ⚠ Mismatch — run setup.py again to reconcile")
     else:
-        print(f"  ⚠ No gateway_tokens.json found — run setup.py to generate")
+        print(f"  ⚠ No {TOKEN_FILE} — run setup.py to generate")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Hilton Grand Hotel — ThingsBoard Device Provisioning",
+        description="iHotel — ThingsBoard Device Provisioning",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python3 setup.py                                  # Standard setup
   python3 setup.py --seed-telemetry                 # Setup + seed data
   python3 setup.py --host http://192.168.1.50:8080  # Custom TB host
+  python3 setup.py --user admin@azhar.com --password azhar123  # Custom credentials
   python3 setup.py --cleanup --force                # Remove all devices
   python3 setup.py --status                         # Check current state
   python3 setup.py --dry-run                        # Preview without creating
         """,
     )
-    parser.add_argument("--host", default="http://localhost:8080",
-                        help="ThingsBoard URL (default: http://localhost:8080)")
-    parser.add_argument("--user", default="admin@hiltongrand.com",
-                        help="Tenant admin username")
-    parser.add_argument("--password", default="hilton",
+    parser.add_argument("--host",     default=TB_HOST,
+                        help=f"ThingsBoard URL (default: {TB_HOST})")
+    parser.add_argument("--user",     default=TB_USER,
+                        help=f"Tenant admin username (default: {TB_USER})")
+    parser.add_argument("--password", default=TB_PASS,
                         help="Tenant admin password")
-    parser.add_argument("--cleanup", action="store_true",
-                        help="Remove all gateway-room-* devices")
-    parser.add_argument("--force", action="store_true",
-                        help="Skip confirmation prompts")
-    parser.add_argument("--status", action="store_true",
-                        help="Show current provisioning status")
-    parser.add_argument("--seed-telemetry", action="store_true",
-                        help="Push initial telemetry after device creation")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Preview what would be created without making changes")
+    parser.add_argument("--cleanup",        action="store_true", help="Remove all gateway-room-* devices")
+    parser.add_argument("--force",          action="store_true", help="Skip confirmation prompts")
+    parser.add_argument("--status",         action="store_true", help="Show current provisioning status")
+    parser.add_argument("--seed-telemetry", action="store_true", help="Push initial telemetry after creation")
+    parser.add_argument("--dry-run",        action="store_true", help="Preview without making changes")
     args = parser.parse_args()
 
-    print("═" * 55)
-    print("  HILTON GRAND HOTEL — ThingsBoard Setup v2")
-    print(f"  {TOTAL_ROOMS} rooms · {FLOORS} floors · ESP32 Gateways")
-    print("═" * 55)
+    print("═" * 60)
+    print("  iHotel Platform — ThingsBoard Setup v3")
+    print(f"  {TOTAL_ROOMS} rooms · {FLOORS} floors · 8 rooms/floor · ESP32 Gateways")
+    print(f"  Layout: Rooms 1-4 STANDARD | 5-6 SUITE | 7-8 VIP")
+    print("═" * 60)
+
+    tb = ThingsBoardClient(args.host, args.user, args.password)
+    if not tb.login():
+        sys.exit(1)
 
     if args.cleanup:
-        run_cleanup(args)
+        run_cleanup(args, tb)
     elif args.status:
-        run_status(args)
+        run_status(tb)
     else:
-        run_setup(args)
+        all_rooms = build_room_list()
+        run_setup(args, tb, all_rooms)
 
 
 if __name__ == "__main__":

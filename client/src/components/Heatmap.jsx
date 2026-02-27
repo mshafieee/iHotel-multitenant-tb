@@ -1,101 +1,151 @@
-import React, { useState } from 'react';
+import { useState, useMemo } from 'react';
 import useHotelStore from '../store/hotelStore';
 
-// Index → roomStatus: 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
+// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
 const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
-const STATUS_LABELS = ['VAC', 'OCC', 'SVC', 'MNT', 'N/OCC'];
-const STATUS_ICONS  = ['🟢', '🔵', '🧹', '🔧', '🟣'];
-const ROOM_TYPES_SHORT = { 0: 'STD', 1: 'DLX', 2: 'STE', 3: 'VIP' };
-const FLOOR_TYPE = { 1:1, 2:0, 3:0, 4:1, 5:2, 6:0, 7:1, 8:0, 9:2, 10:0, 11:1, 12:0, 13:2, 14:3, 15:3 };
+const STATUS_FULL   = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Not Occupied'];
 
 export default function Heatmap({ onSelectRoom }) {
   const rooms = useHotelStore(s => s.rooms);
   const [hoveredRoom, setHoveredRoom] = useState(null);
 
+  const { floors, roomsByFloor, totalRooms } = useMemo(() => {
+    const keys = Object.keys(rooms)
+      .map(Number)
+      .filter(n => !isNaN(n) && n > 0)
+      .sort((a, b) => a - b);
+
+    if (keys.length === 0) return { floors: [], roomsByFloor: {}, totalRooms: 0 };
+
+    const byFloor = {};
+    keys.forEach(rn => {
+      const floor = rooms[String(rn)]?.floor ?? Math.floor(rn / 100);
+      if (!byFloor[floor]) byFloor[floor] = [];
+      byFloor[floor].push(String(rn));
+    });
+
+    const floorList = Object.keys(byFloor).map(Number).sort((a, b) => b - a);
+    return { floors: floorList, roomsByFloor: byFloor, totalRooms: keys.length };
+  }, [rooms]);
+
+  if (floors.length === 0) {
+    return (
+      <div className="card p-6 text-center text-sm text-gray-400">
+        No rooms configured yet. Add rooms from the Platform Admin portal.
+      </div>
+    );
+  }
+
+  const hovered = hoveredRoom ? rooms[hoveredRoom] : null;
+
   return (
     <div className="card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">
-          Room Status — 15 Floors × 20 Rooms
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-xs font-bold text-gray-700">Room Heatmap</div>
+          <div className="text-[10px] text-gray-400">{totalRooms} rooms · {floors.length} floors</div>
         </div>
         {/* Legend */}
-        <div className="flex gap-2 flex-wrap">
-          {STATUS_LABELS.map((l, i) => (
+        <div className="flex gap-3 flex-wrap justify-end">
+          {STATUS_FULL.map((label, i) => (
             <div key={i} className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[i] }} />
-              <span className="text-[8px] text-gray-400 font-semibold">{l}</span>
+              <div className="w-3 h-3 rounded-sm" style={{ background: STATUS_COLORS[i] }} />
+              <span className="text-[10px] text-gray-500">{label}</span>
             </div>
           ))}
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ background: '#1E293B' }} />
+            <span className="text-[10px] text-gray-500">⚡ PD</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-gray-200 opacity-50" />
+            <span className="text-[10px] text-gray-400">Offline</span>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-1 overflow-x-auto pb-2">
-        {Array.from({ length: 15 }, (_, fi) => 15 - fi).map(f => {
-          const floorType = ROOM_TYPES_SHORT[FLOOR_TYPE[f]] || 'STD';
+      {/* Grid */}
+      <div className="space-y-2 overflow-x-auto pb-2">
+        {floors.map(f => {
+          const floorRooms = roomsByFloor[f] || [];
           return (
-            <div key={f} className="flex items-center gap-1">
+            <div key={f} className="flex items-center gap-2">
               {/* Floor label */}
-              <div className="w-14 text-right pr-2 shrink-0">
-                <div className="text-[10px] font-bold text-gray-500">F{f}</div>
-                <div className="text-[7px] text-gray-300">{floorType}</div>
+              <div className="w-10 shrink-0 text-right">
+                <div className="text-xs font-bold text-gray-600">F{f}</div>
+                <div className="text-[9px] text-gray-300">{floorRooms.length}rm</div>
               </div>
 
               {/* Room cells */}
-              <div className="flex gap-0.5 flex-1">
-                {Array.from({ length: 20 }, (_, ri) => ri + 1).map(i => {
-                  const rn = String(f * 100 + i);
+              <div className="flex gap-1 flex-wrap">
+                {floorRooms.map(rn => {
                   const r = rooms[rn];
-                  const status = r?.roomStatus ?? 0;
-                  const color = r ? (r.sosService ? '#DC2626' : (STATUS_COLORS[status] ?? STATUS_COLORS[0])) : '#E5E7EB';
-                  const isOnline = r?.online;
-                  const isHovered = hoveredRoom === rn;
-                  const hasFlag = r?.dndService || r?.murService || r?.sosService;
+                  const status   = r ? (r.roomStatus ?? 0) : 0;
+                  const isSOS    = r ? !!r.sosService : false;
+                  const isMUR    = r ? !!r.murService : false;
+                  const isDND    = r ? !!r.dndService : false;
+                  const isPD     = r ? !!r.pdMode : false;
+                  const isOnline = r ? !!r.online : false;
+                  const isDoor   = r ? !!r.doorStatus : false;
+                  const isPIR    = r ? !!r.pirMotionStatus : false;
+                  const temp     = r?.temperature ?? null;
+
+                  // Priority: SOS > PD > normal status
+                  const bgColor = r
+                    ? (isSOS ? '#DC2626' : isPD ? '#1E293B' : STATUS_COLORS[Math.min(status, 4)])
+                    : '#E5E7EB';
+
+                  const isHov = hoveredRoom === rn;
 
                   return (
                     <button
-                      key={i}
+                      key={rn}
                       onClick={() => onSelectRoom(rn)}
                       onMouseEnter={() => setHoveredRoom(rn)}
                       onMouseLeave={() => setHoveredRoom(null)}
-                      className={`relative flex flex-col items-center justify-center rounded-md transition-all duration-150 
-                        ${isHovered ? 'scale-110 z-10 shadow-lg ring-2 ring-white' : 'hover:scale-105'}
-                        ${r?.sosService ? 'animate-pulse' : ''}
-                        ${!isOnline ? 'opacity-30' : ''}`}
                       style={{
-                        background: color,
-                        width: '3.2rem',
-                        height: '2.4rem',
-                        minWidth: '3.2rem',
+                        background: bgColor,
+                        width: '5rem',
+                        height: '3.5rem',
+                        minWidth: '5rem',
+                        opacity: isOnline ? 1 : 0.45,
                       }}
-                      title={r ? `Room ${rn} · ${STATUS_LABELS[status]} · ${r.temperature ?? '—'}° · ${r.type}` : `Room ${rn}`}
+                      className={`relative flex flex-col items-center justify-center rounded-xl border-2 transition-all duration-150 select-none
+                        ${isHov ? 'scale-110 z-10 shadow-xl border-white' : 'border-transparent hover:scale-105'}
+                        ${isSOS || isPD ? 'animate-pulse' : ''}`}
                     >
                       {/* Room number */}
-                      <span className="text-[9px] font-bold text-white leading-none">
+                      <span className="text-[13px] font-extrabold text-white leading-none tracking-tight drop-shadow">
                         {rn}
                       </span>
 
-                      {/* Status + temp row */}
+                      {/* Temperature / flag row */}
                       <div className="flex items-center gap-0.5 mt-0.5">
-                        {r?.temperature != null && (
-                          <span className="text-[7px] text-white/80 font-mono">
-                            {Math.round(r.temperature)}°
+                        {!isPD && temp !== null && (
+                          <span className="text-[10px] text-white/90 font-semibold font-mono">
+                            {Math.round(temp)}°
                           </span>
                         )}
-                        {hasFlag && (
-                          <span className="text-[7px]">
-                            {r.sosService ? '🚨' : r.murService ? '🧹' : '🔕'}
-                          </span>
-                        )}
+                        {isPD  && <span className="text-[11px]">⚡</span>}
+                        {isSOS && <span className="text-[10px]">🚨</span>}
+                        {!isSOS && !isPD && isMUR && <span className="text-[10px]">🧹</span>}
+                        {!isSOS && !isPD && !isMUR && isDND && <span className="text-[10px]">🔕</span>}
                       </div>
 
-                      {/* Door open indicator */}
-                      {r?.doorStatus && (
-                        <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-yellow-300 rounded-full border border-white" />
+                      {/* Door open dot — top-right */}
+                      {isDoor && (
+                        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-yellow-300 border border-white shadow" />
                       )}
 
-                      {/* Motion indicator */}
-                      {r?.pirMotionStatus && (
-                        <div className="absolute top-0 left-0 w-1.5 h-1.5 bg-cyan-300 rounded-full border border-white" />
+                      {/* PIR motion dot — top-left */}
+                      {isPIR && (
+                        <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-cyan-300 border border-white shadow" />
+                      )}
+
+                      {/* Offline bar — bottom */}
+                      {!isOnline && (
+                        <div className="absolute bottom-0 inset-x-0 h-1 bg-black/20 rounded-b-xl" />
                       )}
                     </button>
                   );
@@ -106,23 +156,29 @@ export default function Heatmap({ onSelectRoom }) {
         })}
       </div>
 
-      {/* Hover detail strip */}
-      {hoveredRoom && rooms[hoveredRoom] && (
-        <div className="mt-2 px-3 py-2 bg-gray-50 rounded-lg flex items-center gap-4 text-xs text-gray-600 transition-all">
-          <span className="font-bold font-mono text-gray-800">Room {hoveredRoom}</span>
-          <span>Floor {rooms[hoveredRoom].floor}</span>
-          <span>{rooms[hoveredRoom].type}</span>
-          <span style={{ color: STATUS_COLORS[rooms[hoveredRoom].roomStatus ?? 0] }} className="font-bold">
-            {STATUS_LABELS[rooms[hoveredRoom].roomStatus ?? 0]}
-          </span>
-          <span>🌡 {rooms[hoveredRoom].temperature ?? '—'}°</span>
-          <span>💧 {rooms[hoveredRoom].humidity ?? '—'}%</span>
-          <span>🚪 {rooms[hoveredRoom].doorStatus ? 'OPEN' : 'Closed'}</span>
-          {rooms[hoveredRoom].reservation && (
-            <span className="text-brand-500 font-semibold">👤 {rooms[hoveredRoom].reservation.guestName}</span>
-          )}
-        </div>
-      )}
+      {/* Fixed detail strip — always rendered, shows info on hover */}
+      <div className="mt-3 px-4 py-2 rounded-xl border border-gray-100 bg-gray-50 min-h-[2.25rem] flex flex-wrap items-center gap-4 text-xs text-gray-600">
+        {hovered && hoveredRoom ? (
+          <>
+            <span className="font-bold text-gray-800 text-sm">Room {hoveredRoom}</span>
+            <span>Floor {hovered.floor}</span>
+            <span className="text-gray-400">{hovered.roomType}</span>
+            <span className="font-semibold" style={{ color: STATUS_COLORS[hovered.roomStatus ?? 0] }}>
+              {STATUS_FULL[hovered.roomStatus ?? 0]}
+            </span>
+            {hovered.temperature != null && <span>🌡 {hovered.temperature}°C</span>}
+            {hovered.humidity != null && <span>💧 {hovered.humidity}%</span>}
+            <span>🚪 {hovered.doorStatus ? 'Open' : 'Closed'}</span>
+            {hovered.pdMode && <span className="font-bold" style={{ color: '#1E293B' }}>⚡ Power Down</span>}
+            <span className={hovered.online ? 'text-emerald-500 font-semibold' : 'text-gray-400'}>
+              {hovered.online ? '● Live' : '○ Offline'}
+            </span>
+            {hovered.reservation && (
+              <span className="text-brand-500 font-semibold">👤 {hovered.reservation.guestName}</span>
+            )}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

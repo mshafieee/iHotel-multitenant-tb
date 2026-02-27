@@ -27,6 +27,28 @@ import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DEVELOPER CONFIGURATION — Edit these values before running
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ThingsBoard connection
+TB_HOST = 'http://localhost:8080'   # override with --tb-host or $TB_HOST env var
+
+# Path to the token CSV produced by setup.py (relative to this script)
+TOKEN_CSV = 'gateway_tokens.csv'
+
+# Default simulation parameters
+DEFAULT_INTERVAL = 15.0   # seconds between telemetry pushes
+DEFAULT_WORKERS  = 30     # parallel HTTP threads
+
+# Firmware/gateway version strings reported in telemetry
+FIRMWARE_VERSION = '2.1.4'
+GATEWAY_VERSION  = '1.8.2'
+
+# ══════════════════════════════════════════════════════════════════════════════
+# END OF CONFIGURATION
+# ══════════════════════════════════════════════════════════════════════════════
+
 try:
     import requests
     SESSION = requests.Session()
@@ -55,8 +77,8 @@ def ts():
 # ── State machine for one room ────────────────────────────────────────────────
 
 class RoomState:
-    FW  = '2.1.4'
-    GW  = '1.8.2'
+    FW  = FIRMWARE_VERSION
+    GW  = GATEWAY_VERSION
 
     def __init__(self, room, floor, room_type, token):
         self.room      = str(room)
@@ -352,9 +374,9 @@ def load_rooms(csv_path, filter_rooms=None):
 
 
 def run(args):
-    csv_path = os.path.join(os.path.dirname(__file__), 'gateway_tokens.csv')
+    csv_path = os.path.join(os.path.dirname(__file__), TOKEN_CSV)
     if not os.path.exists(csv_path):
-        print(f'{R}ERROR:{RST} gateway_tokens.csv not found at {csv_path}')
+        print(f'{R}ERROR:{RST} {TOKEN_CSV} not found at {csv_path}')
         sys.exit(1)
 
     filter_rooms = None
@@ -462,19 +484,19 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
     p.add_argument('--tb-host',
-                   default=os.environ.get('TB_HOST', 'http://localhost:8080'),
-                   help='ThingsBoard host URL (default: http://localhost:8080)\n'
+                   default=os.environ.get('TB_HOST', TB_HOST),
+                   help=f'ThingsBoard host URL (default: {TB_HOST})\n'
                         'Also reads $TB_HOST environment variable')
     p.add_argument('--rooms',
                    default=None,
                    help='Comma-separated room numbers to simulate (default: all)\n'
                         'Example: --rooms 1001,1002,1010')
     p.add_argument('--interval',
-                   type=float, default=15.0,
-                   help='Seconds between telemetry pushes (default: 15)')
+                   type=float, default=DEFAULT_INTERVAL,
+                   help=f'Seconds between telemetry pushes (default: {DEFAULT_INTERVAL})')
     p.add_argument('--workers',
-                   type=int, default=30,
-                   help='Parallel HTTP threads (default: 30)')
+                   type=int, default=DEFAULT_WORKERS,
+                   help=f'Parallel HTTP threads (default: {DEFAULT_WORKERS})')
     p.add_argument('--no-attributes',
                    action='store_true',
                    help='Skip sending relay shared-attributes (faster)')

@@ -14,6 +14,13 @@ server/.env
 server/hilton.db
 server/hilton.db-shm
 server/hilton.db-wal
+server/ihotel.db
+server/ihotel.db-shm
+server/ihotel.db-wal
+*.db
+*.db-shm
+*.db-wal
+
 
 # macOS
 .DS_Store

@@ -25,6 +25,10 @@ export default function RoomTable({ onSelectRoom, role }) {
   const [floor, setFloor] = useState(0);
   const [filter, setFilter] = useState('all');
 
+  const floors = useMemo(() => (
+    [...new Set(Object.values(rooms).map(r => r.floor).filter(Boolean))].sort((a, b) => a - b)
+  ), [rooms]);
+
   const filtered = useMemo(() => {
     let arr = Object.values(rooms);
     if (floor) arr = arr.filter(r => r.floor === floor);
@@ -55,10 +59,14 @@ export default function RoomTable({ onSelectRoom, role }) {
     <div className="card p-4">
       {/* Floor pills */}
       <div className="flex gap-1 flex-wrap mb-2">
-        {Array.from({ length: 16 }, (_, i) => i).map(f => (
+        <button onClick={() => setFloor(0)}
+          className={`px-2 py-1 rounded text-[10px] font-semibold transition ${floor === 0 ? 'bg-brand-500 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+          All
+        </button>
+        {floors.map(f => (
           <button key={f} onClick={() => setFloor(f)}
             className={`px-2 py-1 rounded text-[10px] font-semibold transition ${floor === f ? 'bg-brand-500 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-            {f ? `F${f}` : 'All'}
+            F{f}
           </button>
         ))}
       </div>
@@ -97,7 +105,7 @@ export default function RoomTable({ onSelectRoom, role }) {
                   className="hover:bg-gray-50 cursor-pointer transition">
                   <td className="px-3 py-2 font-bold font-mono">{r.room}</td>
                   <td className="px-3 py-2 text-gray-500">{r.floor}</td>
-                  <td className="px-3 py-2 text-gray-500">{r.type}</td>
+                  <td className="px-3 py-2 text-gray-500">{r.roomType || r.type}</td>
                   <td className="px-3 py-2">
                     <span className="inline-flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: sc }} />
@@ -126,7 +134,7 @@ export default function RoomTable({ onSelectRoom, role }) {
                         )}
                         {/* Status dropdown */}
                         <select value={r.roomStatus ?? 0}
-                          onChange={e => rpc(r.deviceId, 'setRoomStatus', { roomStatus: +e.target.value })}
+                          onChange={e => rpc(r.room, 'setRoomStatus', { roomStatus: +e.target.value })}
                           className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white">
                           {STATUSES.map((s, i) => <option key={i} value={i}>{s}</option>)}
                         </select>

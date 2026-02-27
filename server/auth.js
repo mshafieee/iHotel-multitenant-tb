@@ -1,12 +1,13 @@
 /**
- * Hilton Grand Hotel — Authentication Middleware
+ * iHotel SaaS Platform — Authentication Middleware
  * JWT token verification + role-based access control
+ * Supports: hotel staff tokens (include hotelId) and platform admin tokens
  */
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_hilton_default';
+const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_ihotel_default';
 
-// Verify JWT and attach user to request
+// ── Hotel staff / guest authentication ────────────────────────────────────────
 function authenticate(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
@@ -15,7 +16,7 @@ function authenticate(req, res, next) {
   try {
     const token = header.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { id, username, role }
+    req.user = decoded; // { id, username, role, hotelId?, room? }
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -25,7 +26,29 @@ function authenticate(req, res, next) {
   }
 }
 
-// Role-based access: require one of the specified roles
+// ── Platform super admin authentication ───────────────────────────────────────
+function authenticatePlatformAdmin(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const token = header.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Platform admin access required' });
+    }
+    req.admin = decoded;
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// ── Role-based access: require one of the specified roles ─────────────────────
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
@@ -36,14 +59,24 @@ function requireRole(...roles) {
   };
 }
 
-// Generate access token (short-lived)
+// ── Generate hotel staff/guest access token (short-lived) ─────────────────────
 function generateAccessToken(user) {
   const payload = { id: user.id, username: user.username, role: user.role };
-  if (user.room) payload.room = user.room;
+  if (user.hotelId) payload.hotelId = user.hotelId;
+  if (user.room)    payload.room    = user.room;
   return jwt.sign(payload, JWT_SECRET, { expiresIn: process.env.JWT_EXPIRY || '8h' });
 }
 
-// Generate refresh token (long-lived)
+// ── Generate platform admin access token ──────────────────────────────────────
+function generatePlatformAdminToken(admin) {
+  return jwt.sign(
+    { id: admin.id, username: admin.username, role: 'superadmin' },
+    JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRY || '8h' }
+  );
+}
+
+// ── Generate refresh token (long-lived) ───────────────────────────────────────
 function generateRefreshToken(user) {
   return jwt.sign(
     { id: user.id, type: 'refresh' },
@@ -52,4 +85,12 @@ function generateRefreshToken(user) {
   );
 }
 
-module.exports = { authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET };
+module.exports = {
+  authenticate,
+  authenticatePlatformAdmin,
+  requireRole,
+  generateAccessToken,
+  generatePlatformAdminToken,
+  generateRefreshToken,
+  JWT_SECRET
+};
