@@ -116,17 +116,19 @@ const useHotelStore = create((set, get) => ({
     set({ sse: es2 });
   },
 
-  // Send control command to a device
-  rpc: async (deviceId, method, params) => {
-    // Optimistic local update
+  // Send control command to a room (roomId = room number string, e.g. "101")
+  rpc: async (roomId, method, params) => {
+    // Optimistic local update — rooms are keyed by room number
     const rooms = { ...get().rooms };
-    const room = Object.values(rooms).find(r => r.deviceId === deviceId);
+    const room = rooms[roomId];
     if (room) {
       applyLocal(room, method, params);
       set({ rooms: { ...rooms } });
     }
+    // The server /api/devices/:id/rpc expects the ThingsBoard device UUID
+    const tbDeviceId = room?.deviceId || roomId;
     try {
-      await api(`/api/devices/${deviceId}/rpc`, {
+      await api(`/api/devices/${tbDeviceId}/rpc`, {
         method: 'POST',
         body: JSON.stringify({ method, params })
       });

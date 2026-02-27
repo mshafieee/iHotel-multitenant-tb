@@ -78,6 +78,10 @@ export default function DashboardPage() {
   ].filter(t => t.visible);
 
   useEffect(() => {
+    if (user?.hotelName) document.title = `${user.hotelName} — iHotel`;
+  }, [user?.hotelName]);
+
+  useEffect(() => {
     startPolling();
     connectSSE();
     const t = setInterval(() => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })), 1000);
@@ -102,8 +106,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <Building2 className="w-6 h-6 text-gold-400" />
             <div>
-              <h1 className="font-bold text-sm tracking-tight">{user?.hotelName || 'iHotel'}</h1>
-              <p className="text-[10px] text-white/50">iHotel Platform</p>
+              <h1 className="font-bold text-sm tracking-tight">{user?.hotelName}</h1>
+              <p className="text-[10px] text-white/50">iHotel</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
