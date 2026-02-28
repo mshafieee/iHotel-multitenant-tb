@@ -28,14 +28,23 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
 
   const send = useCallback((method, params) => {
     if (role === 'guest') {
+      // Optimistic update — UI responds instantly, same as staff rpc()
+      useHotelStore.setState(s => {
+        const prev = s.rooms[roomId];
+        if (!prev) return s;
+        const updated = { ...prev };
+        if (method === 'setAC') Object.assign(updated, params);
+        else if (method === 'setLines') Object.assign(updated, params);
+        else if (method === 'setCurtainsBlinds') Object.assign(updated, params);
+        else if (method === 'setService') Object.assign(updated, params);
+        else if (method === 'resetServices') (params.services || []).forEach(k => { updated[k] = false; });
+        return { rooms: { ...s.rooms, [roomId]: updated } };
+      });
       return api('/api/guest/rpc', { method: 'POST', body: JSON.stringify({ method, params }) })
         .catch(e => {
           if (e.message === 'session_expired' && onLockout) {
-            // Reservation cancelled / expired → permanent lockout screen
             onLockout();
           } else if (e.message === 'room_pd') {
-            // PD is active — mark room locally so the banner appears immediately.
-            // Do NOT call onLockout: PD is temporary and can be cleared by staff.
             useHotelStore.setState(s => ({
               rooms: { ...s.rooms, [roomId]: { ...s.rooms[roomId], pdMode: true } }
             }));
@@ -47,7 +56,10 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
   }, [roomId, rpc, role, onLockout]);
 
   const adjTemp = (delta) => {
-    const t = Math.round(Math.max(16, Math.min(30, (r.acTemperatureSet || 22) + delta)) * 10) / 10;
+    // Snap current value to nearest 0.5 before applying delta
+    // This prevents drift when telemetry delivers e.g. 22.1 (→ 22.0 + 0.5 = 22.5)
+    const current = Math.round((r.acTemperatureSet ?? 22) * 2) / 2;
+    const t = Math.max(16, Math.min(30, current + delta));
     send('setAC', { acTemperatureSet: t });
   };
 
@@ -250,7 +262,9 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
                   <span className="text-xs text-gray-600">Temp</span>
                   <div className="flex items-center gap-3">
                     <button onClick={() => adjTemp(-0.5)} className="w-8 h-8 rounded-lg bg-gray-50 hover:bg-gray-100 text-lg font-bold text-gray-500 transition">−</button>
-                    <span className="text-lg font-bold font-mono text-blue-500 w-12 text-center">{r.acTemperatureSet || 22}°</span>
+                    <span className="text-lg font-bold font-mono text-blue-500 w-12 text-center">
+                      {Math.round((r.acTemperatureSet ?? 22) * 2) / 2}°
+                    </span>
                     <button onClick={() => adjTemp(0.5)} className="w-8 h-8 rounded-lg bg-gray-50 hover:bg-gray-100 text-lg font-bold text-gray-500 transition">+</button>
                   </div>
                 </div>

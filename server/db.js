@@ -100,6 +100,7 @@ function initDB() {
       check_in TEXT NOT NULL,
       check_out TEXT NOT NULL,
       password TEXT NOT NULL,
+      password_hash TEXT,
       token TEXT UNIQUE NOT NULL,
       active INTEGER DEFAULT 1,
       created_by TEXT,
@@ -198,6 +199,21 @@ function initDB() {
       FOREIGN KEY (hotel_id) REFERENCES hotels(id)
     )
   `);
+
+  // ── Migration 011: add password_hash column to reservations ──────────────
+  if (!hasMigration('011_guest_password_hash')) {
+    const cols = db.pragma('table_info(reservations)').map(c => c.name);
+    if (!cols.includes('password_hash')) {
+      db.exec('ALTER TABLE reservations ADD COLUMN password_hash TEXT');
+      const rows = db.prepare('SELECT id, password FROM reservations').all();
+      const upd  = db.prepare('UPDATE reservations SET password_hash=? WHERE id=?');
+      for (const r of rows) {
+        if (r.password) upd.run(bcrypt.hashSync(r.password, 10), r.id);
+      }
+      console.log(`✓ Migration 011: hashed ${rows.length} guest reservation passwords`);
+    }
+    markMigration('011_guest_password_hash');
+  }
 
   // ── Migration: migrate single-tenant data to multi-tenant schema ──────────
   // If old 'users' table exists and hotel_users is empty, migrate data

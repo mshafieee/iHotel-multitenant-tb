@@ -726,9 +726,10 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const { room, guestName, checkIn, checkOut, paymentMethod, ratePerNight } = req.body;
   if (!room || !guestName || !checkIn || !checkOut) return res.status(400).json({ error: 'All fields required' });
 
-  const id       = crypto.randomUUID();
-  const password = crypto.randomInt(100000, 999999).toString();
-  const token    = crypto.randomBytes(16).toString('hex');
+  const id            = crypto.randomUUID();
+  const plainPassword = crypto.randomInt(100000, 999999).toString();
+  const hashedPassword = bcrypt.hashSync(plainPassword, 10);
+  const token         = crypto.randomBytes(16).toString('hex');
 
   // Determine room type: check hotel_rooms first, then fall back to floor-based
   const hotelRoom = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, room);
@@ -746,9 +747,9 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const totalAmount = resolvedRate ? nights * resolvedRate : null;
 
   db.prepare(`INSERT INTO reservations
-    (id,hotel_id,room,guest_name,check_in,check_out,password,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(id, hotelId, room, guestName, checkIn, checkOut, password, token, req.user.username,
+    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, hotelId, room, guestName, checkIn, checkOut, plainPassword, hashedPassword, token, req.user.username,
       paymentMethod || 'pending', resolvedRate, elecAtCheckin, waterAtCheckin);
 
   if (resolvedRate) {
@@ -767,7 +768,7 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const guestUrl = `${guestBase}/guest?room=${encodeURIComponent(room)}&hotel=${encodeURIComponent(db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId)?.slug || '')}`;
   res.json({
     reservation: { id, room, guestName, checkIn, checkOut, active: true, token, paymentMethod: paymentMethod || 'pending', ratePerNight: resolvedRate, nights, totalAmount },
-    password, guestUrl
+    password: plainPassword, guestUrl
   });
 
   // Mark room NOT_OCCUPIED now that it has a reservation (non-blocking)
@@ -923,7 +924,6 @@ app.post('/api/guest/login', guestLimiter, (req, res) => {
   }
 
   const providedPassword = String(password || '').trim();
-  const TEST_PW          = process.env.GUEST_TEST_PASSWORD || '000000';
 
   let r        = null;
   let hotelId  = null;
@@ -943,16 +943,6 @@ app.post('/api/guest/login', guestLimiter, (req, res) => {
     return res.status(400).json({ error: 'hotelSlug is required for room-based login' });
   }
 
-  // Static test override
-  if (room && hotelSlug && providedPassword === TEST_PW) {
-    const hotel = db.prepare('SELECT id FROM hotels WHERE slug=? AND active=1').get(hotelSlug.toLowerCase());
-    if (hotel) {
-      const guestToken = generateAccessToken({ id: 0, username: `guest:test`, role: 'guest', room, hotelId: hotel.id });
-      addLog(hotel.id, 'auth', 'Guest test login', { source: `guest:test`, room });
-      return res.json({ accessToken: guestToken, room, guestName: lastName || `TestGuest` });
-    }
-  }
-
   if (!r) return res.status(401).json({ error: 'Invalid or expired link' });
 
   const now = new Date().toISOString().split('T')[0];
@@ -964,9 +954,12 @@ app.post('/api/guest/login', guestLimiter, (req, res) => {
   const storedFull = r.guest_name.trim().toLowerCase();
   const storedParts = r.guest_name.trim().split(/\s+/).map(p => p.toLowerCase());
   const nameMatch  = (inputName === storedFull) || storedParts.includes(inputName);
-  const storedPassword = String(r.password).trim();
 
-  if (!nameMatch || storedPassword !== providedPassword) {
+  const passwordMatch = r.password_hash
+    ? bcrypt.compareSync(providedPassword, r.password_hash)
+    : String(r.password).trim() === providedPassword;  // legacy plaintext fallback
+
+  if (!nameMatch || !passwordMatch) {
     addLog(hotelId, 'auth', 'Guest login failed', { source: `guest:${lastName}`, room: r.room });
     return res.status(401).json({ error: 'Invalid name or password. Use the name given at check-in.' });
   }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
 import RoomModal from '../components/RoomModal';
-import { api, clearTokens, getAccessToken } from '../utils/api';
+import { api, clearTokens } from '../utils/api';
 import useHotelStore from '../store/hotelStore';
 
 function LockoutScreen() {
@@ -63,35 +63,12 @@ export default function GuestPortal() {
     return () => { mounted = false; };
   }, []);
 
-  // Step 2 — SSE for real-time telemetry + immediate lockout, plus 30 s poll fallback
+  // Step 2 — 5s polling for room telemetry (avoids JWT in URL that EventSource requires)
   useEffect(() => {
     if (!room) return;
     let mounted = true;
 
-    const token = getAccessToken();
-    const es = new EventSource(`/api/events?token=${token}`);
-
-    es.addEventListener('telemetry', ev => {
-      try {
-        const d = JSON.parse(ev.data);
-        if (d.room === room && d.data) {
-          useHotelStore.setState(s => ({
-            rooms: { ...s.rooms, [room]: { ...s.rooms[room], ...d.data } }
-          }));
-        }
-      } catch {}
-    });
-
-    // Instant lockout notification pushed by server on PD / reservation cancel
-    es.addEventListener('lockout', ev => {
-      try {
-        const d = JSON.parse(ev.data);
-        if (d.room === room) setLockout(true);
-      } catch {}
-    });
-
-    // 30 s poll — also catches lockout if SSE drops
-    const timer = setInterval(() => {
+    const poll = () => {
       if (!mounted) return;
       api('/api/guest/room/data')
         .then(roomData => {
@@ -101,9 +78,10 @@ export default function GuestPortal() {
           }));
         })
         .catch(e => { if (mounted && e.message === 'session_expired') setLockout(true); });
-    }, 30000);
+    };
 
-    return () => { mounted = false; es.close(); clearInterval(timer); };
+    const timer = setInterval(poll, 5000);
+    return () => { mounted = false; clearInterval(timer); };
   }, [room]);
 
   if (loading) return (
