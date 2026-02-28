@@ -92,6 +92,10 @@ const _lastOverviewRooms  = {}; // { [hotelId]: { [roomNum]: roomData } }
 const _lastKnownTelemetry = {}; // { [hotelId]: { [roomNum]: telemetryObj } }
 const _roomPDState        = {}; // { [hotelId]: { [roomNum]: bool } }
 const _doorOpenTimers     = {}; // { [hotelId]: { [roomNum]: timerHandle } }
+const _overviewFetchTs    = {}; // { [hotelId]: timestamp } — last full TB fetch time
+const _fetchingOverview   = new Set(); // hotelIds currently fetching TB (prevent concurrent fetches)
+
+const OVERVIEW_CACHE_TTL  = 30_000; // ms — re-fetch from TB if data is older than this
 
 function getDeviceRoomMap(hotelId)     { return (_deviceRoomMaps[hotelId]     ??= {}); }
 function getLastOverviewRooms(hotelId) { return (_lastOverviewRooms[hotelId]  ??= {}); }
@@ -480,94 +484,120 @@ app.post('/api/devices/:id/rpc', authenticate, requireRole('owner', 'admin'), as
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Hotel overview
-app.get('/api/hotel/overview', authenticate, async (req, res) => {
-  const hotelId       = req.user.hotelId;
+// Background TB fetch — builds snapshot, stores in _lastOverviewRooms, broadcasts via SSE.
+// Never called while another fetch is in progress (_fetchingOverview set guards this).
+async function fetchAndBroadcast(hotelId) {
   const deviceRoomMap = getDeviceRoomMap(hotelId);
   const lastOverview  = getLastOverviewRooms(hotelId);
 
-  try {
-    const tb      = getHotelTB(hotelId);
-    const devices = await tb.getDevices();
-    if (!devices.length) return res.json({ rooms: {}, deviceCount: 0 });
+  const tb      = getHotelTB(hotelId);
+  const devices = await tb.getDevices();
+  if (!devices.length) return;
 
-    const deviceIds = devices.map(d => d.id.id);
-    const allT      = await tb.getAllTelemetry(deviceIds, TELEMETRY_KEYS);
-    const allRelays = {};
-    const ALL_ATTR_KEYS = [...RELAY_KEYS, ...SHARED_CONTROL_KEYS];
-    for (let i = 0; i < devices.length; i += 20) {
-      const batch = devices.slice(i, i + 20);
-      await Promise.all(batch.map(async d => {
-        try {
-          const attrs  = await tb.getSharedAttributes(d.id.id, ALL_ATTR_KEYS);
-          const parsed = {};
-          if (Array.isArray(attrs)) {
-            attrs.forEach(a => {
-              let v = a.value;
-              if (v === 'true') v = true;
-              else if (v === 'false') v = false;
-              else if (v !== null && v !== '' && !isNaN(v)) v = parseFloat(v);
-              parsed[a.key] = v;
-            });
-          }
-          allRelays[d.id.id] = parsed;
-        } catch { allRelays[d.id.id] = {}; }
-      }));
-    }
+  _overviewFetchTs[hotelId] = Date.now();
 
-    const rooms = {};
-    devices.forEach(d => {
-      const rn = extractRoom(d.name);
-      if (!rn) return;
-      deviceRoomMap[rn] = d.id.id;
-      const floor = parseInt(rn.length <= 3 ? rn[0] : rn.slice(0, -2));
-      const t     = parseTelemetry(allT[d.id.id]);
-      const relays = allRelays[d.id.id] || {};
-      const ar = db.prepare("SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1 AND check_in<=date('now') AND check_out>=date('now')").get(hotelId, rn);
-      detectAndLogChanges(hotelId, rn, t);
+  const deviceIds     = devices.map(d => d.id.id);
+  const allT          = await tb.getAllTelemetry(deviceIds, TELEMETRY_KEYS);
+  const allRelays     = {};
+  const ALL_ATTR_KEYS = [...RELAY_KEYS, ...SHARED_CONTROL_KEYS];
+  for (let i = 0; i < devices.length; i += 20) {
+    const batch = devices.slice(i, i + 20);
+    await Promise.all(batch.map(async d => {
+      try {
+        const attrs  = await tb.getSharedAttributes(d.id.id, ALL_ATTR_KEYS);
+        const parsed = {};
+        if (Array.isArray(attrs)) {
+          attrs.forEach(a => {
+            let v = a.value;
+            if (v === 'true') v = true;
+            else if (v === 'false') v = false;
+            else if (v !== null && v !== '' && !isNaN(v)) v = parseFloat(v);
+            parsed[a.key] = v;
+          });
+        }
+        allRelays[d.id.id] = parsed;
+      } catch { allRelays[d.id.id] = {}; }
+    }));
+  }
 
-      // Look up room type from hotel_rooms table (falls back to floor-based FLOOR_TYPE)
-      const hotelRoom = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id = ? AND room_number = ?').get(hotelId, rn);
-      const typeId    = hotelRoom ? ROOM_TYPES.indexOf(hotelRoom.room_type) : (FLOOR_TYPE[floor] ?? 0);
+  const today = new Date().toISOString().split('T')[0];
+  const activeResRows = db.prepare(
+    "SELECT * FROM reservations WHERE hotel_id=? AND active=1 AND check_in<=date('now') AND check_out>=date('now')"
+  ).all(hotelId);
+  const reservationMap = {};
+  activeResRows.forEach(ar => { reservationMap[ar.room] = ar; });
 
-      rooms[rn] = {
-        room: rn, floor, type: ROOM_TYPES[typeId] || 'STANDARD', typeId, deviceId: d.id.id, deviceName: d.name,
-        online: Object.keys(t).length > 0,
-        temperature: t.temperature ?? null, humidity: t.humidity ?? null, co2: t.co2 ?? null,
-        pirMotionStatus: t.pirMotionStatus ?? false, doorStatus: t.doorStatus ?? false,
-        doorLockBattery: t.doorLockBattery ?? null, doorContactsBattery: t.doorContactsBattery ?? null,
-        airQualityBattery: t.airQualityBattery ?? null,
-        elecConsumption: t.elecConsumption ?? 0, waterConsumption: t.waterConsumption ?? 0,
-        waterMeterBattery: t.waterMeterBattery ?? null,
-        line1: relays.line1 ?? t.line1 ?? false, line2: relays.line2 ?? t.line2 ?? false, line3: relays.line3 ?? t.line3 ?? false,
-        dimmer1: relays.dimmer1 ?? t.dimmer1 ?? 0, dimmer2: relays.dimmer2 ?? t.dimmer2 ?? 0,
-        acTemperatureSet: relays.acTemperatureSet ?? t.acTemperatureSet ?? 22, acMode: relays.acMode ?? t.acMode ?? 0, fanSpeed: relays.fanSpeed ?? t.fanSpeed ?? 3,
-        curtainsPosition: relays.curtainsPosition ?? t.curtainsPosition ?? 0, blindsPosition: relays.blindsPosition ?? t.blindsPosition ?? 0,
-        dndService: relays.dndService ?? t.dndService ?? false, murService: relays.murService ?? t.murService ?? false, sosService: relays.sosService ?? t.sosService ?? false,
-        roomStatus: relays.roomStatus ?? t.roomStatus ?? 0,
-        lastCleanedTime: t.lastCleanedTime ?? null, firmwareVersion: t.firmwareVersion ?? null,
-        gatewayVersion: t.gatewayVersion ?? null, deviceStatus: t.deviceStatus ?? 0,
-        pdMode: relays.pdMode ?? t.pdMode ?? false,
-        relay1: relays.relay1 ?? false, relay2: relays.relay2 ?? false,
-        relay3: relays.relay3 ?? false, relay4: relays.relay4 ?? false,
-        relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
-        relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
-        doorUnlock: relays.doorUnlock ?? false,
-        reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
-      };
-    });
+  const hotelRoomRows = db.prepare('SELECT room_number, room_type FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
+  const hotelRoomMap  = {};
+  hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r.room_type; });
 
-    Object.assign(lastOverview, rooms);
-    sseBroadcast(hotelId, 'snapshot', { rooms, deviceCount: devices.length, timestamp: Date.now() });
+  const rooms = {};
+  devices.forEach(d => {
+    const rn = extractRoom(d.name);
+    if (!rn) return;
+    deviceRoomMap[rn] = d.id.id;
+    const floor  = parseInt(rn.length <= 3 ? rn[0] : rn.slice(0, -2));
+    const t      = parseTelemetry(allT[d.id.id]);
+    const relays = allRelays[d.id.id] || {};
+    const ar     = reservationMap[rn] || null;
+    detectAndLogChanges(hotelId, rn, t);
 
-    const today = new Date().toISOString().split('T')[0];
-    const todayCheckouts = db.prepare('SELECT room, guest_name, check_out FROM reservations WHERE hotel_id=? AND check_out=? AND active=1').all(hotelId, today);
-    if (todayCheckouts.length) {
-      sseBroadcastRoles(hotelId, 'checkout_alert', { rooms: todayCheckouts, ts: Date.now() }, ['admin', 'frontdesk']);
-    }
+    const roomType = hotelRoomMap[rn];
+    const typeId   = roomType ? ROOM_TYPES.indexOf(roomType) : (FLOOR_TYPE[floor] ?? 0);
 
-    res.json({ rooms, deviceCount: devices.length, timestamp: Date.now() });
-  } catch (e) { res.status(502).json({ error: e.message }); }
+    rooms[rn] = {
+      room: rn, floor, type: ROOM_TYPES[typeId] || 'STANDARD', typeId, deviceId: d.id.id, deviceName: d.name,
+      online: Object.keys(t).length > 0,
+      temperature: t.temperature ?? null, humidity: t.humidity ?? null, co2: t.co2 ?? null,
+      pirMotionStatus: t.pirMotionStatus ?? false, doorStatus: t.doorStatus ?? false,
+      doorLockBattery: t.doorLockBattery ?? null, doorContactsBattery: t.doorContactsBattery ?? null,
+      airQualityBattery: t.airQualityBattery ?? null,
+      elecConsumption: t.elecConsumption ?? 0, waterConsumption: t.waterConsumption ?? 0,
+      waterMeterBattery: t.waterMeterBattery ?? null,
+      line1: relays.line1 ?? t.line1 ?? false, line2: relays.line2 ?? t.line2 ?? false, line3: relays.line3 ?? t.line3 ?? false,
+      dimmer1: relays.dimmer1 ?? t.dimmer1 ?? 0, dimmer2: relays.dimmer2 ?? t.dimmer2 ?? 0,
+      acTemperatureSet: relays.acTemperatureSet ?? t.acTemperatureSet ?? 22, acMode: relays.acMode ?? t.acMode ?? 0, fanSpeed: relays.fanSpeed ?? t.fanSpeed ?? 3,
+      curtainsPosition: relays.curtainsPosition ?? t.curtainsPosition ?? 0, blindsPosition: relays.blindsPosition ?? t.blindsPosition ?? 0,
+      dndService: relays.dndService ?? t.dndService ?? false, murService: relays.murService ?? t.murService ?? false, sosService: relays.sosService ?? t.sosService ?? false,
+      roomStatus: relays.roomStatus ?? t.roomStatus ?? 0,
+      lastCleanedTime: t.lastCleanedTime ?? null, firmwareVersion: t.firmwareVersion ?? null,
+      gatewayVersion: t.gatewayVersion ?? null, deviceStatus: t.deviceStatus ?? 0,
+      pdMode: relays.pdMode ?? t.pdMode ?? false,
+      relay1: relays.relay1 ?? false, relay2: relays.relay2 ?? false,
+      relay3: relays.relay3 ?? false, relay4: relays.relay4 ?? false,
+      relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
+      relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
+      doorUnlock: relays.doorUnlock ?? false,
+      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
+    };
+  });
+
+  Object.assign(lastOverview, rooms);
+  sseBroadcast(hotelId, 'snapshot', { rooms, deviceCount: devices.length, timestamp: Date.now() });
+
+  const todayCheckouts = db.prepare('SELECT room, guest_name, check_out FROM reservations WHERE hotel_id=? AND check_out=? AND active=1').all(hotelId, today);
+  if (todayCheckouts.length) {
+    sseBroadcastRoles(hotelId, 'checkout_alert', { rooms: todayCheckouts, ts: Date.now() }, ['admin', 'frontdesk']);
+  }
+}
+
+// Hotel overview — always responds instantly with cached snapshot.
+// If data is stale (> OVERVIEW_CACHE_TTL), kicks off background TB fetch;
+// fresh data is pushed to the client via SSE 'snapshot' event when ready.
+app.get('/api/hotel/overview', authenticate, async (req, res) => {
+  const hotelId      = req.user.hotelId;
+  const lastOverview = getLastOverviewRooms(hotelId);
+  const isStale      = Date.now() - (_overviewFetchTs[hotelId] || 0) >= OVERVIEW_CACHE_TTL;
+
+  // Respond immediately — never block the HTTP connection waiting for TB
+  res.json({ rooms: lastOverview, deviceCount: Object.keys(lastOverview).length, cached: true });
+
+  // Kick off background refresh if stale and not already in progress
+  if (!isStale || _fetchingOverview.has(hotelId)) return;
+  _fetchingOverview.add(hotelId);
+  fetchAndBroadcast(hotelId)
+    .catch(e => console.error(`[${hotelId}] Overview fetch error:`, e.message))
+    .finally(() => _fetchingOverview.delete(hotelId));
 });
 
 // Logs

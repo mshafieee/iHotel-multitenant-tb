@@ -1,562 +1,4202 @@
 {
-  "gateway-room-201": {
-    "device_id": "b2589d70-13e0-11f1-a750-f365853900c5",
-    "token": "JvvanJ2fkU4OYN2oUs8T",
-    "room": "201",
-    "floor": 2,
-    "type": "STANDARD"
-  },
-  "gateway-room-103": {
-    "device_id": "b23b0350-13e0-11f1-a750-f365853900c5",
-    "token": "5x6qoYpYLQxzutEVPnyU",
-    "room": "103",
+  "gateway-room-108": {
+    "device_id": "32560640-1425-11f1-a750-f365853900c5",
+    "token": "iDwpCTm6H6veEce5iJWu",
+    "room": "108",
     "floor": 1,
     "type": "STANDARD"
   },
   "gateway-room-107": {
-    "device_id": "b25e1bb0-13e0-11f1-a750-f365853900c5",
-    "token": "kvcRkJdkS2e8Rmq9mwJQ",
+    "device_id": "325e1c90-1425-11f1-a750-f365853900c5",
+    "token": "ELEtVsGYS8fwIqdpmrap",
     "room": "107",
     "floor": 1,
-    "type": "VIP"
-  },
-  "gateway-room-202": {
-    "device_id": "b264ab60-13e0-11f1-a750-f365853900c5",
-    "token": "jswOwdwDdRpNxcisODpa",
-    "room": "202",
-    "floor": 2,
     "type": "STANDARD"
   },
+  "gateway-room-109": {
+    "device_id": "3262b070-1425-11f1-a750-f365853900c5",
+    "token": "w4f5EfHWSVRJQmsf7CGr",
+    "room": "109",
+    "floor": 1,
+    "type": "SUITE"
+  },
   "gateway-room-102": {
-    "device_id": "b272b520-13e0-11f1-a750-f365853900c5",
-    "token": "5MWAh4hhdHmiKP4R17c3",
+    "device_id": "326b3bf0-1425-11f1-a750-f365853900c5",
+    "token": "uAs8mLne9eKlB5IafZiO",
     "room": "102",
     "floor": 1,
     "type": "STANDARD"
   },
+  "gateway-room-103": {
+    "device_id": "32732b30-1425-11f1-a750-f365853900c5",
+    "token": "giViLGnYJBGmQttTEnJt",
+    "room": "103",
+    "floor": 1,
+    "type": "STANDARD"
+  },
+  "gateway-room-110": {
+    "device_id": "32791ea0-1425-11f1-a750-f365853900c5",
+    "token": "16iB8nhOQcxU1SibA84W",
+    "room": "110",
+    "floor": 1,
+    "type": "SUITE"
+  },
+  "gateway-room-106": {
+    "device_id": "327c52f0-1425-11f1-a750-f365853900c5",
+    "token": "qe8sljEBKbYYmxEv1NGX",
+    "room": "106",
+    "floor": 1,
+    "type": "STANDARD"
+  },
   "gateway-room-104": {
-    "device_id": "b252f820-13e0-11f1-a750-f365853900c5",
-    "token": "N4PSA6o3T5IPaGgaQ39M",
+    "device_id": "3285a1c0-1425-11f1-a750-f365853900c5",
+    "token": "ythGktbIq8eR3CC4zmVB",
     "room": "104",
     "floor": 1,
     "type": "STANDARD"
   },
   "gateway-room-101": {
-    "device_id": "b254f3f0-13e0-11f1-a750-f365853900c5",
-    "token": "dkPCXSC7KRjhpAwa63yH",
+    "device_id": "32815c00-1425-11f1-a750-f365853900c5",
+    "token": "KTqRZCbvV8BrHTZXMuin",
     "room": "101",
     "floor": 1,
     "type": "STANDARD"
   },
-  "gateway-room-106": {
-    "device_id": "b287ead0-13e0-11f1-a750-f365853900c5",
-    "token": "Syz70ZdDyyEfif0UzjW1",
-    "room": "106",
-    "floor": 1,
-    "type": "SUITE"
-  },
   "gateway-room-105": {
-    "device_id": "b2785a70-13e0-11f1-a750-f365853900c5",
-    "token": "0Fb4WMZsKDTfZ7PKtaGt",
+    "device_id": "32897250-1425-11f1-a750-f365853900c5",
+    "token": "8XULQ1Jy34GduqVWUgK4",
     "room": "105",
     "floor": 1,
+    "type": "STANDARD"
+  },
+  "gateway-room-113": {
+    "device_id": "32cd3210-1425-11f1-a750-f365853900c5",
+    "token": "rPtPxlyxqVkEFvc9xkNQ",
+    "room": "113",
+    "floor": 1,
     "type": "SUITE"
   },
-  "gateway-room-108": {
-    "device_id": "b283a510-13e0-11f1-a750-f365853900c5",
-    "token": "am0GcGaR8MhsKualms4G",
-    "room": "108",
+  "gateway-room-112": {
+    "device_id": "32ca24d0-1425-11f1-a750-f365853900c5",
+    "token": "CjRyQNkPlZxs5UepRMh0",
+    "room": "112",
+    "floor": 1,
+    "type": "SUITE"
+  },
+  "gateway-room-116": {
+    "device_id": "32cbd280-1425-11f1-a750-f365853900c5",
+    "token": "mcywsmXE5Qr9z0gr9xrn",
+    "room": "116",
+    "floor": 1,
+    "type": "SUITE"
+  },
+  "gateway-room-114": {
+    "device_id": "32ceb8b0-1425-11f1-a750-f365853900c5",
+    "token": "INT9k0Q6Wxnt6uJq1P1Z",
+    "room": "114",
+    "floor": 1,
+    "type": "SUITE"
+  },
+  "gateway-room-111": {
+    "device_id": "32d06660-1425-11f1-a750-f365853900c5",
+    "token": "JXBcfG9SuxV6YV0Za7Mn",
+    "room": "111",
+    "floor": 1,
+    "type": "SUITE"
+  },
+  "gateway-room-115": {
+    "device_id": "32d23b20-1425-11f1-a750-f365853900c5",
+    "token": "COy83ekVfCJ8bTrCcRLg",
+    "room": "115",
+    "floor": 1,
+    "type": "SUITE"
+  },
+  "gateway-room-118": {
+    "device_id": "32d659d0-1425-11f1-a750-f365853900c5",
+    "token": "01eU7Wfm5rPaiIqrfNgO",
+    "room": "118",
     "floor": 1,
     "type": "VIP"
   },
-  "gateway-room-205": {
-    "device_id": "b305a650-13e0-11f1-a750-f365853900c5",
-    "token": "YuWpZ08fZOxw0KJsKOr8",
-    "room": "205",
-    "floor": 2,
-    "type": "SUITE"
+  "gateway-room-119": {
+    "device_id": "32d7e070-1425-11f1-a750-f365853900c5",
+    "token": "k0pq13sZN8y1pve5UlYR",
+    "room": "119",
+    "floor": 1,
+    "type": "VIP"
   },
-  "gateway-room-204": {
-    "device_id": "b2fd68f0-13e0-11f1-a750-f365853900c5",
-    "token": "VpYYMU8tYPImV7cDHTGj",
-    "room": "204",
+  "gateway-room-120": {
+    "device_id": "32dac6a0-1425-11f1-a750-f365853900c5",
+    "token": "27w1OFyEuDX4F4oRXuTb",
+    "room": "120",
+    "floor": 1,
+    "type": "VIP"
+  },
+  "gateway-room-117": {
+    "device_id": "32d3c1c0-1425-11f1-a750-f365853900c5",
+    "token": "laOIrVrkgjT8QnBz9NfE",
+    "room": "117",
+    "floor": 1,
+    "type": "VIP"
+  },
+  "gateway-room-123": {
+    "device_id": "33197d50-1425-11f1-a750-f365853900c5",
+    "token": "VkJQsVkLo9B2gXqSOrrH",
+    "room": "123",
+    "floor": 1,
+    "type": "VIP"
+  },
+  "gateway-room-201": {
+    "device_id": "331b03f0-1425-11f1-a750-f365853900c5",
+    "token": "ygxXRV7DrBXlNPrh3Z3H",
+    "room": "201",
     "floor": 2,
     "type": "STANDARD"
   },
+  "gateway-room-121": {
+    "device_id": "3317cfa0-1425-11f1-a750-f365853900c5",
+    "token": "oKtLiWG87jBEHaOVjTmo",
+    "room": "121",
+    "floor": 1,
+    "type": "VIP"
+  },
   "gateway-room-203": {
-    "device_id": "b30c8420-13e0-11f1-a750-f365853900c5",
-    "token": "vabbZmO1blCxGhCwl6Cy",
+    "device_id": "331d74f1-1425-11f1-a750-f365853900c5",
+    "token": "eJHeAcOx1fRBitlczZFY",
     "room": "203",
     "floor": 2,
     "type": "STANDARD"
   },
-  "gateway-room-304": {
-    "device_id": "b3142540-13e0-11f1-a750-f365853900c5",
-    "token": "Slxg6JMbMV6W93kcZKEu",
-    "room": "304",
-    "floor": 3,
+  "gateway-room-202": {
+    "device_id": "331c3c70-1425-11f1-a750-f365853900c5",
+    "token": "KWzrhcjY0sFRC1pjZUR7",
+    "room": "202",
+    "floor": 2,
     "type": "STANDARD"
   },
+  "gateway-room-204": {
+    "device_id": "331fe5f0-1425-11f1-a750-f365853900c5",
+    "token": "JSyzRCOlBdd7ayqzTMN2",
+    "room": "204",
+    "floor": 2,
+    "type": "STANDARD"
+  },
+  "gateway-room-124": {
+    "device_id": "331e8661-1425-11f1-a750-f365853900c5",
+    "token": "kBG3MyaSU3YUfoBHfJ3l",
+    "room": "124",
+    "floor": 1,
+    "type": "VIP"
+  },
+  "gateway-room-205": {
+    "device_id": "33211e70-1425-11f1-a750-f365853900c5",
+    "token": "lcFSdx3iNNGfoAgA8oUp",
+    "room": "205",
+    "floor": 2,
+    "type": "STANDARD"
+  },
+  "gateway-room-122": {
+    "device_id": "33227e00-1425-11f1-a750-f365853900c5",
+    "token": "WcTCAJniLPcf3hjzSQL5",
+    "room": "122",
+    "floor": 1,
+    "type": "VIP"
+  },
+  "gateway-room-206": {
+    "device_id": "3324c7f0-1425-11f1-a750-f365853900c5",
+    "token": "KwGlF24mTP9xFvZwDbzO",
+    "room": "206",
+    "floor": 2,
+    "type": "STANDARD"
+  },
+  "gateway-room-211": {
+    "device_id": "336441f0-1425-11f1-a750-f365853900c5",
+    "token": "VbD3ad3laxYiqHMuuh2R",
+    "room": "211",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-207": {
+    "device_id": "3365a180-1425-11f1-a750-f365853900c5",
+    "token": "RJfvKREt6mT8yctMkFWo",
+    "room": "207",
+    "floor": 2,
+    "type": "STANDARD"
+  },
+  "gateway-room-209": {
+    "device_id": "3366da01-1425-11f1-a750-f365853900c5",
+    "token": "ccP56kfVt6L8B5Ix8Sc7",
+    "room": "209",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-208": {
+    "device_id": "3368d5d1-1425-11f1-a750-f365853900c5",
+    "token": "kM96NPnwWCaTjiXTOJrs",
+    "room": "208",
+    "floor": 2,
+    "type": "STANDARD"
+  },
+  "gateway-room-210": {
+    "device_id": "336ad1a0-1425-11f1-a750-f365853900c5",
+    "token": "xoDmfu9q1m8ssSTvf8Vi",
+    "room": "210",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-212": {
+    "device_id": "336d69b0-1425-11f1-a750-f365853900c5",
+    "token": "PMlL90gHSiyiDiQ1lIxx",
+    "room": "212",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-215": {
+    "device_id": "33718860-1425-11f1-a750-f365853900c5",
+    "token": "ebEqhyz3MZTQNaJnLJGv",
+    "room": "215",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-216": {
+    "device_id": "3376b880-1425-11f1-a750-f365853900c5",
+    "token": "wnx1w3UEaMjCQlo9DCYS",
+    "room": "216",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-214": {
+    "device_id": "336f3e70-1425-11f1-a750-f365853900c5",
+    "token": "gwDnASLjN5dd4YnvSSDA",
+    "room": "214",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-213": {
+    "device_id": "33744780-1425-11f1-a750-f365853900c5",
+    "token": "UMC8FTiKe2qCBz4KFxAd",
+    "room": "213",
+    "floor": 2,
+    "type": "SUITE"
+  },
+  "gateway-room-220": {
+    "device_id": "33b4fa00-1425-11f1-a750-f365853900c5",
+    "token": "rDRUnp4B9eFLmc9BXblK",
+    "room": "220",
+    "floor": 2,
+    "type": "VIP"
+  },
+  "gateway-room-223": {
+    "device_id": "33b7b920-1425-11f1-a750-f365853900c5",
+    "token": "qG50iUupbrzir5IfXqFe",
+    "room": "223",
+    "floor": 2,
+    "type": "VIP"
+  },
+  "gateway-room-221": {
+    "device_id": "33b9dc00-1425-11f1-a750-f365853900c5",
+    "token": "vicCqjF4cQ1GKzR1sfY8",
+    "room": "221",
+    "floor": 2,
+    "type": "VIP"
+  },
+  "gateway-room-222": {
+    "device_id": "33baed70-1425-11f1-a750-f365853900c5",
+    "token": "9oxwJY70WtDmtRLWwjxL",
+    "room": "222",
+    "floor": 2,
+    "type": "VIP"
+  },
+  "gateway-room-218": {
+    "device_id": "33b8f1a0-1425-11f1-a750-f365853900c5",
+    "token": "eMZhGbnQu1rzpi62T9Ce",
+    "room": "218",
+    "floor": 2,
+    "type": "VIP"
+  },
+  "gateway-room-219": {
+    "device_id": "33bc7410-1425-11f1-a750-f365853900c5",
+    "token": "h6J9hV8XshTXNI11Ot5J",
+    "room": "219",
+    "floor": 2,
+    "type": "VIP"
+  },
+  "gateway-room-217": {
+    "device_id": "33c12f01-1425-11f1-a750-f365853900c5",
+    "token": "uetgUXSloOytoHD06jnl",
+    "room": "217",
+    "floor": 2,
+    "type": "VIP"
+  },
   "gateway-room-302": {
-    "device_id": "b31e8580-13e0-11f1-a750-f365853900c5",
-    "token": "r3nNMZPifdsT0kRg6Mc5",
+    "device_id": "33be21c0-1425-11f1-a750-f365853900c5",
+    "token": "zUTdQmm0e2kpwDGU8jWb",
     "room": "302",
     "floor": 3,
     "type": "STANDARD"
   },
-  "gateway-room-206": {
-    "device_id": "b3181ce0-13e0-11f1-a750-f365853900c5",
-    "token": "zrIjGkEHIj9GiEiIzebC",
-    "room": "206",
+  "gateway-room-224": {
+    "device_id": "33c24070-1425-11f1-a750-f365853900c5",
+    "token": "QjGkR08cY0BnM7vlgxP5",
+    "room": "224",
     "floor": 2,
-    "type": "SUITE"
-  },
-  "gateway-room-303": {
-    "device_id": "b325ff90-13e0-11f1-a750-f365853900c5",
-    "token": "ygs2wkdk9Z1dyvGlwhui",
-    "room": "303",
-    "floor": 3,
-    "type": "STANDARD"
+    "type": "VIP"
   },
   "gateway-room-301": {
-    "device_id": "b32b08a0-13e0-11f1-a750-f365853900c5",
-    "token": "0CLSl7cWIAK3xuQtHQCw",
+    "device_id": "33c351e0-1425-11f1-a750-f365853900c5",
+    "token": "2Sfo8isfYGjmyjP6mwwj",
     "room": "301",
     "floor": 3,
     "type": "STANDARD"
   },
-  "gateway-room-207": {
-    "device_id": "b33038c0-13e0-11f1-a750-f365853900c5",
-    "token": "6NsJVSyLwy4yFUCIMcmi",
-    "room": "207",
-    "floor": 2,
-    "type": "VIP"
-  },
-  "gateway-room-208": {
-    "device_id": "b336ef80-13e0-11f1-a750-f365853900c5",
-    "token": "xning02AgqZ7LovCwfwz",
-    "room": "208",
-    "floor": 2,
-    "type": "VIP"
+  "gateway-room-305": {
+    "device_id": "3408e660-1425-11f1-a750-f365853900c5",
+    "token": "TbTk1jmGaJYeAaJ1uIYB",
+    "room": "305",
+    "floor": 3,
+    "type": "STANDARD"
   },
   "gateway-room-306": {
-    "device_id": "b38bc640-13e0-11f1-a750-f365853900c5",
-    "token": "OVEYgnSfKpMb7OfaaUhT",
+    "device_id": "34060030-1425-11f1-a750-f365853900c5",
+    "token": "0r8fKnqBwTuGHI4XGB5n",
     "room": "306",
     "floor": 3,
-    "type": "SUITE"
-  },
-  "gateway-room-402": {
-    "device_id": "b38e8560-13e0-11f1-a750-f365853900c5",
-    "token": "p9fen7aLXCBKuckH1kuA",
-    "room": "402",
-    "floor": 4,
     "type": "STANDARD"
   },
   "gateway-room-308": {
-    "device_id": "b39207d0-13e0-11f1-a750-f365853900c5",
-    "token": "CmRCxfl1THyWJjkatDGQ",
+    "device_id": "3407ade0-1425-11f1-a750-f365853900c5",
+    "token": "q17ielLvTlD2TGFCtWtC",
     "room": "308",
+    "floor": 3,
+    "type": "STANDARD"
+  },
+  "gateway-room-310": {
+    "device_id": "340b3050-1425-11f1-a750-f365853900c5",
+    "token": "p4GHoGanr8TF5y57xzNc",
+    "room": "310",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-303": {
+    "device_id": "340a45f1-1425-11f1-a750-f365853900c5",
+    "token": "Cqz6Y99c8iVmh9Rl0OG4",
+    "room": "303",
+    "floor": 3,
+    "type": "STANDARD"
+  },
+  "gateway-room-304": {
+    "device_id": "340c8fe1-1425-11f1-a750-f365853900c5",
+    "token": "GXrAXsJruBULPd0UG1bt",
+    "room": "304",
+    "floor": 3,
+    "type": "STANDARD"
+  },
+  "gateway-room-312": {
+    "device_id": "341876c1-1425-11f1-a750-f365853900c5",
+    "token": "ON1dP7qlRVSYA4MmsD2c",
+    "room": "312",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-309": {
+    "device_id": "340f9d20-1425-11f1-a750-f365853900c5",
+    "token": "nVOGCYyvtAUxUFM8kg8J",
+    "room": "309",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-311": {
+    "device_id": "34125c40-1425-11f1-a750-f365853900c5",
+    "token": "JS7ZWyw394By9M9WjARV",
+    "room": "311",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-307": {
+    "device_id": "340e1680-1425-11f1-a750-f365853900c5",
+    "token": "NyxFHiKshMzLVoD0lgan",
+    "room": "307",
+    "floor": 3,
+    "type": "STANDARD"
+  },
+  "gateway-room-314": {
+    "device_id": "3454bc70-1425-11f1-a750-f365853900c5",
+    "token": "NJVe7OqzwHJtNttkHLF0",
+    "room": "314",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-313": {
+    "device_id": "3455f4f0-1425-11f1-a750-f365853900c5",
+    "token": "gDTwhJ5cfI9nExrtCwPf",
+    "room": "313",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-316": {
+    "device_id": "34575480-1425-11f1-a750-f365853900c5",
+    "token": "Jl4tvQ9i44TdfRTw7E9U",
+    "room": "316",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-317": {
+    "device_id": "345383f0-1425-11f1-a750-f365853900c5",
+    "token": "g2QoKuB97oEuPqHmMJgH",
+    "room": "317",
+    "floor": 3,
+    "type": "VIP"
+  },
+  "gateway-room-320": {
+    "device_id": "345d6f00-1425-11f1-a750-f365853900c5",
+    "token": "16xgKh90DLW0J4zgTD4m",
+    "room": "320",
+    "floor": 3,
+    "type": "VIP"
+  },
+  "gateway-room-315": {
+    "device_id": "345865f0-1425-11f1-a750-f365853900c5",
+    "token": "dKNf8Wr54gkBe1HPCX4V",
+    "room": "315",
+    "floor": 3,
+    "type": "SUITE"
+  },
+  "gateway-room-318": {
+    "device_id": "345b9a40-1425-11f1-a750-f365853900c5",
+    "token": "PlrCyfLZw9m1bSdDE2PT",
+    "room": "318",
+    "floor": 3,
+    "type": "VIP"
+  },
+  "gateway-room-319": {
+    "device_id": "3459ec90-1425-11f1-a750-f365853900c5",
+    "token": "7ThwdaCIN9QQ3M23Ujq5",
+    "room": "319",
+    "floor": 3,
+    "type": "VIP"
+  },
+  "gateway-room-321": {
+    "device_id": "345ece90-1425-11f1-a750-f365853900c5",
+    "token": "cmTvwcpFR3wwTf0cyWOB",
+    "room": "321",
+    "floor": 3,
+    "type": "VIP"
+  },
+  "gateway-room-322": {
+    "device_id": "34613f90-1425-11f1-a750-f365853900c5",
+    "token": "9ULimlEK2yM93Z9IFim9",
+    "room": "322",
+    "floor": 3,
+    "type": "VIP"
+  },
+  "gateway-room-324": {
+    "device_id": "349d5e30-1425-11f1-a750-f365853900c5",
+    "token": "2vRoj0sV4P1qmJZNbQ7H",
+    "room": "324",
     "floor": 3,
     "type": "VIP"
   },
   "gateway-room-401": {
-    "device_id": "b3953c20-13e0-11f1-a750-f365853900c5",
-    "token": "joJ9AbZcvnCK024ZGewf",
+    "device_id": "349bfea0-1425-11f1-a750-f365853900c5",
+    "token": "71UWlT5QYgrf5JyAq1wc",
     "room": "401",
     "floor": 4,
     "type": "STANDARD"
   },
-  "gateway-room-405": {
-    "device_id": "b39ba4c0-13e0-11f1-a750-f365853900c5",
-    "token": "766iMvlzKVGSrtbKzclb",
-    "room": "405",
+  "gateway-room-402": {
+    "device_id": "349f0be0-1425-11f1-a750-f365853900c5",
+    "token": "JMEcs1KTT1r9UtuYI12b",
+    "room": "402",
     "floor": 4,
-    "type": "SUITE"
+    "type": "STANDARD"
   },
-  "gateway-room-305": {
-    "device_id": "b39981e0-13e0-11f1-a750-f365853900c5",
-    "token": "qyTzomY4q3vqjJZAKvPd",
-    "room": "305",
+  "gateway-room-323": {
+    "device_id": "34a09280-1425-11f1-a750-f365853900c5",
+    "token": "b35mXyJPi3GH2thxM0cT",
+    "room": "323",
     "floor": 3,
-    "type": "SUITE"
+    "type": "VIP"
   },
   "gateway-room-403": {
-    "device_id": "b3a5ddf0-13e0-11f1-a750-f365853900c5",
-    "token": "NF9Mp0WiP6HAcatISlVB",
+    "device_id": "34a28e50-1425-11f1-a750-f365853900c5",
+    "token": "ALilk7pdL9jfaIBYUi3K",
     "room": "403",
     "floor": 4,
     "type": "STANDARD"
   },
-  "gateway-room-307": {
-    "device_id": "b3b26110-13e0-11f1-a750-f365853900c5",
-    "token": "HBcIobV9U0AOsl0M4q48",
-    "room": "307",
-    "floor": 3,
-    "type": "VIP"
+  "gateway-room-407": {
+    "device_id": "34a1cb00-1425-11f1-a750-f365853900c5",
+    "token": "Hx33Lh4PpMyYlaHiJCgp",
+    "room": "407",
+    "floor": 4,
+    "type": "STANDARD"
   },
-  "gateway-room-404": {
-    "device_id": "b3bc2510-13e0-11f1-a750-f365853900c5",
-    "token": "zIlexjMJxg4FFdPlQdpu",
-    "room": "404",
+  "gateway-room-405": {
+    "device_id": "34a4ff50-1425-11f1-a750-f365853900c5",
+    "token": "7QJmFYqbopn4Y0BOlAwe",
+    "room": "405",
+    "floor": 4,
+    "type": "STANDARD"
+  },
+  "gateway-room-408": {
+    "device_id": "34a685f0-1425-11f1-a750-f365853900c5",
+    "token": "jbbn3IITkMC1fsjeRDjG",
+    "room": "408",
     "floor": 4,
     "type": "STANDARD"
   },
   "gateway-room-406": {
-    "device_id": "b3b6a6d0-13e0-11f1-a750-f365853900c5",
-    "token": "p3D8S3nwP6KftF1VxlAR",
+    "device_id": "34a39fc0-1425-11f1-a750-f365853900c5",
+    "token": "cOpfOoXfxeU4j1t8sdZL",
     "room": "406",
     "floor": 4,
-    "type": "SUITE"
-  },
-  "gateway-room-502": {
-    "device_id": "b4005a00-13e0-11f1-a750-f365853900c5",
-    "token": "nQqITwLTk2UJw0SQqh3r",
-    "room": "502",
-    "floor": 5,
     "type": "STANDARD"
   },
-  "gateway-room-407": {
-    "device_id": "b402f210-13e0-11f1-a750-f365853900c5",
-    "token": "cDFgEMh7OhocZZ3yyLy3",
-    "room": "407",
+  "gateway-room-404": {
+    "device_id": "34a77051-1425-11f1-a750-f365853900c5",
+    "token": "BRzrONujyvI8pDkStB6b",
+    "room": "404",
+    "floor": 4,
+    "type": "STANDARD"
+  },
+  "gateway-room-413": {
+    "device_id": "34e95b50-1425-11f1-a750-f365853900c5",
+    "token": "ScZukljPWiMtDv7Ax47l",
+    "room": "413",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-409": {
+    "device_id": "34e78690-1425-11f1-a750-f365853900c5",
+    "token": "3fhaMk4XJY6ICK2IFhDt",
+    "room": "409",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-410": {
+    "device_id": "34e89800-1425-11f1-a750-f365853900c5",
+    "token": "Px85TvsCxW2v7V79Elg5",
+    "room": "410",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-412": {
+    "device_id": "34eb3010-1425-11f1-a750-f365853900c5",
+    "token": "Itq3zjs7rcarLR7x9pId",
+    "room": "412",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-415": {
+    "device_id": "34ea6cc0-1425-11f1-a750-f365853900c5",
+    "token": "G2cVeLAplBNVzze2MLNU",
+    "room": "415",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-414": {
+    "device_id": "34f14a90-1425-11f1-a750-f365853900c5",
+    "token": "85qs3oUq7Gjf3zdHMse1",
+    "room": "414",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-417": {
+    "device_id": "34f28310-1425-11f1-a750-f365853900c5",
+    "token": "3Aa7O78XLdsfoTOCHAry",
+    "room": "417",
     "floor": 4,
     "type": "VIP"
   },
-  "gateway-room-501": {
-    "device_id": "b40737d0-13e0-11f1-a750-f365853900c5",
-    "token": "mH0LAK9JnUcKBoUzlUgk",
-    "room": "501",
-    "floor": 5,
-    "type": "STANDARD"
-  },
-  "gateway-room-506": {
-    "device_id": "b40f7530-13e0-11f1-a750-f365853900c5",
-    "token": "g5rI1j1mC65O415lu9Eh",
-    "room": "506",
-    "floor": 5,
+  "gateway-room-411": {
+    "device_id": "34ef9ce0-1425-11f1-a750-f365853900c5",
+    "token": "g1uKLUilqip0hUuxiZQS",
+    "room": "411",
+    "floor": 4,
     "type": "SUITE"
   },
-  "gateway-room-507": {
-    "device_id": "b40b7d90-13e0-11f1-a750-f365853900c5",
-    "token": "MZ7NIt0TTiIeBxuVjfP2",
-    "room": "507",
-    "floor": 5,
+  "gateway-room-416": {
+    "device_id": "34ecddc1-1425-11f1-a750-f365853900c5",
+    "token": "OG02EzcPCRUXSCys7luq",
+    "room": "416",
+    "floor": 4,
+    "type": "SUITE"
+  },
+  "gateway-room-418": {
+    "device_id": "34ee6460-1425-11f1-a750-f365853900c5",
+    "token": "Tc1aFbhueqmlLFoc3BE7",
+    "room": "418",
+    "floor": 4,
     "type": "VIP"
   },
-  "gateway-room-408": {
-    "device_id": "b4140910-13e0-11f1-a750-f365853900c5",
-    "token": "LxGP9dGG4eqUIk7v4PKS",
-    "room": "408",
+  "gateway-room-421": {
+    "device_id": "35330e81-1425-11f1-a750-f365853900c5",
+    "token": "bqMeQvELD1LBncSAVSCb",
+    "room": "421",
     "floor": 4,
     "type": "VIP"
   },
   "gateway-room-503": {
-    "device_id": "b418c400-13e0-11f1-a750-f365853900c5",
-    "token": "Met2yOSt9lqqTGPkHLAx",
+    "device_id": "3531d600-1425-11f1-a750-f365853900c5",
+    "token": "bGmppElfp9V7tzb7xWXh",
     "room": "503",
     "floor": 5,
     "type": "STANDARD"
   },
+  "gateway-room-422": {
+    "device_id": "3530eba0-1425-11f1-a750-f365853900c5",
+    "token": "m5sF9r01xIsbJHd6rXoH",
+    "room": "422",
+    "floor": 4,
+    "type": "VIP"
+  },
   "gateway-room-504": {
-    "device_id": "b423c080-13e0-11f1-a750-f365853900c5",
-    "token": "h7QoGsjTIrSpG0ZKyoVN",
+    "device_id": "35372d30-1425-11f1-a750-f365853900c5",
+    "token": "nXXmpiGh59DhkaiFjb8t",
     "room": "504",
     "floor": 5,
     "type": "STANDARD"
   },
-  "gateway-room-508": {
-    "device_id": "b42917b0-13e0-11f1-a750-f365853900c5",
-    "token": "vw4imdZk81JixOZ5UELG",
-    "room": "508",
-    "floor": 5,
+  "gateway-room-424": {
+    "device_id": "353ad6b0-1425-11f1-a750-f365853900c5",
+    "token": "zbCCLrAthyJZycjYazRd",
+    "room": "424",
+    "floor": 4,
     "type": "VIP"
   },
-  "gateway-room-505": {
-    "device_id": "b41f0590-13e0-11f1-a750-f365853900c5",
-    "token": "s9C51jtpWUbMV6WPL1aG",
-    "room": "505",
+  "gateway-room-501": {
+    "device_id": "353642d0-1425-11f1-a750-f365853900c5",
+    "token": "riX3cZdaFTOUH1bRX0Ju",
+    "room": "501",
+    "floor": 5,
+    "type": "STANDARD"
+  },
+  "gateway-room-423": {
+    "device_id": "35350a50-1425-11f1-a750-f365853900c5",
+    "token": "N1utAzyRVg1HDJQZ0yhz",
+    "room": "423",
+    "floor": 4,
+    "type": "VIP"
+  },
+  "gateway-room-502": {
+    "device_id": "35341ff0-1425-11f1-a750-f365853900c5",
+    "token": "hITsvFOUh93yXt3vqAak",
+    "room": "502",
+    "floor": 5,
+    "type": "STANDARD"
+  },
+  "gateway-room-420": {
+    "device_id": "35383ea0-1425-11f1-a750-f365853900c5",
+    "token": "okjY3g2tOA685D4ueobC",
+    "room": "420",
+    "floor": 4,
+    "type": "VIP"
+  },
+  "gateway-room-419": {
+    "device_id": "35397720-1425-11f1-a750-f365853900c5",
+    "token": "VhTpTQqTIvEkr8N9LqJo",
+    "room": "419",
+    "floor": 4,
+    "type": "VIP"
+  },
+  "gateway-room-506": {
+    "device_id": "357c2570-1425-11f1-a750-f365853900c5",
+    "token": "H2WWwX2AEuPgY3QxDGj7",
+    "room": "506",
+    "floor": 5,
+    "type": "STANDARD"
+  },
+  "gateway-room-507": {
+    "device_id": "357d36e0-1425-11f1-a750-f365853900c5",
+    "token": "GddIJV5JoXtzc7Hpf7Lu",
+    "room": "507",
+    "floor": 5,
+    "type": "STANDARD"
+  },
+  "gateway-room-510": {
+    "device_id": "357fa7e1-1425-11f1-a750-f365853900c5",
+    "token": "RSZOJ9zZwjVRbdjx3Ttx",
+    "room": "510",
     "floor": 5,
     "type": "SUITE"
   },
-  "gateway-room-601": {
-    "device_id": "b4736720-13e0-11f1-a750-f365853900c5",
-    "token": "CwbgfqcpXt7WGg1ZK7SM",
-    "room": "601",
-    "floor": 6,
+  "gateway-room-512": {
+    "device_id": "3583c690-1425-11f1-a750-f365853900c5",
+    "token": "FcKUnzhBMXIvjvSMCjEO",
+    "room": "512",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-509": {
+    "device_id": "357e9670-1425-11f1-a750-f365853900c5",
+    "token": "uJVw3Jn5m4l26RmIvrMQ",
+    "room": "509",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-505": {
+    "device_id": "3581f1d0-1425-11f1-a750-f365853900c5",
+    "token": "hNALZdrYghK6biTKITc3",
+    "room": "505",
+    "floor": 5,
     "type": "STANDARD"
   },
-  "gateway-room-607": {
-    "device_id": "b4714440-13e0-11f1-a750-f365853900c5",
-    "token": "y4yHJqwAmyNUv8Ry7VpS",
-    "room": "607",
-    "floor": 6,
+  "gateway-room-511": {
+    "device_id": "3585c260-1425-11f1-a750-f365853900c5",
+    "token": "B6SDQ7Vyfad8I0cUI4RC",
+    "room": "511",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-508": {
+    "device_id": "35809240-1425-11f1-a750-f365853900c5",
+    "token": "OFfWjfrJvKr1Z9Ql7AcP",
+    "room": "508",
+    "floor": 5,
+    "type": "STANDARD"
+  },
+  "gateway-room-513": {
+    "device_id": "3584d800-1425-11f1-a750-f365853900c5",
+    "token": "p2lAwZWpqBcUGY59vZet",
+    "room": "513",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-514": {
+    "device_id": "35874900-1425-11f1-a750-f365853900c5",
+    "token": "f9NUQ2w6juON2ytFGqcT",
+    "room": "514",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-521": {
+    "device_id": "35c626c0-1425-11f1-a750-f365853900c5",
+    "token": "UF9mmS9oYgwqJck8LSqx",
+    "room": "521",
+    "floor": 5,
     "type": "VIP"
   },
-  "gateway-room-604": {
-    "device_id": "b476c280-13e0-11f1-a750-f365853900c5",
-    "token": "9kcvM9VblX1FSr28195q",
-    "room": "604",
-    "floor": 6,
-    "type": "STANDARD"
+  "gateway-room-523": {
+    "device_id": "35cb2fd0-1425-11f1-a750-f365853900c5",
+    "token": "3q2pvR82i86SzszUrR5E",
+    "room": "523",
+    "floor": 5,
+    "type": "VIP"
+  },
+  "gateway-room-516": {
+    "device_id": "35c82290-1425-11f1-a750-f365853900c5",
+    "token": "iMeyFqdPtjTBL1FyBqP0",
+    "room": "516",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-517": {
+    "device_id": "35c73830-1425-11f1-a750-f365853900c5",
+    "token": "a7PjjudpZ2JPBEpYbTsL",
+    "room": "517",
+    "floor": 5,
+    "type": "VIP"
+  },
+  "gateway-room-524": {
+    "device_id": "35cc1a30-1425-11f1-a750-f365853900c5",
+    "token": "jN8vWuNfjO1jesEADBBr",
+    "room": "524",
+    "floor": 5,
+    "type": "VIP"
+  },
+  "gateway-room-520": {
+    "device_id": "35d038e0-1425-11f1-a750-f365853900c5",
+    "token": "4ovCikySz1YlKJGPfSEX",
+    "room": "520",
+    "floor": 5,
+    "type": "VIP"
+  },
+  "gateway-room-515": {
+    "device_id": "35c95b10-1425-11f1-a750-f365853900c5",
+    "token": "d7zy8xvWdWTJF8o6Chyu",
+    "room": "515",
+    "floor": 5,
+    "type": "SUITE"
+  },
+  "gateway-room-522": {
+    "device_id": "35ca9390-1425-11f1-a750-f365853900c5",
+    "token": "gksUeJ5mCPehUaiBchFs",
+    "room": "522",
+    "floor": 5,
+    "type": "VIP"
+  },
+  "gateway-room-518": {
+    "device_id": "35cd79c0-1425-11f1-a750-f365853900c5",
+    "token": "EMLH8jNblCj0aItd1Uct",
+    "room": "518",
+    "floor": 5,
+    "type": "VIP"
+  },
+  "gateway-room-519": {
+    "device_id": "35cf0060-1425-11f1-a750-f365853900c5",
+    "token": "Wl581ZsDQ1WaMIjzn9sk",
+    "room": "519",
+    "floor": 5,
+    "type": "VIP"
   },
   "gateway-room-603": {
-    "device_id": "b479cfc0-13e0-11f1-a750-f365853900c5",
-    "token": "x1Jag3xB0XvCwKJ75g9j",
+    "device_id": "360db710-1425-11f1-a750-f365853900c5",
+    "token": "XZG477aVY2Q6pdo0X1ek",
     "room": "603",
     "floor": 6,
     "type": "STANDARD"
   },
+  "gateway-room-601": {
+    "device_id": "361223e1-1425-11f1-a750-f365853900c5",
+    "token": "4MXzPrXmeTnwFKkIHYgU",
+    "room": "601",
+    "floor": 6,
+    "type": "STANDARD"
+  },
   "gateway-room-605": {
-    "device_id": "b48170e0-13e0-11f1-a750-f365853900c5",
-    "token": "74Xujwj16Q8NFu8VFKmg",
+    "device_id": "36109d40-1425-11f1-a750-f365853900c5",
+    "token": "zYK7V0ZGopHciwNgfp5u",
     "room": "605",
     "floor": 6,
-    "type": "SUITE"
+    "type": "STANDARD"
+  },
+  "gateway-room-604": {
+    "device_id": "360f16a0-1425-11f1-a750-f365853900c5",
+    "token": "YiasUGHBT1zapeL6a8co",
+    "room": "604",
+    "floor": 6,
+    "type": "STANDARD"
   },
   "gateway-room-606": {
-    "device_id": "b47e63a0-13e0-11f1-a750-f365853900c5",
-    "token": "5qlBVfelCIXycvAEzVpr",
+    "device_id": "36164290-1425-11f1-a750-f365853900c5",
+    "token": "kGRhCc0SaqXBrOksvDJA",
     "room": "606",
+    "floor": 6,
+    "type": "STANDARD"
+  },
+  "gateway-room-608": {
+    "device_id": "36150a10-1425-11f1-a750-f365853900c5",
+    "token": "T0DB4E1dYADH28Gj2OPl",
+    "room": "608",
+    "floor": 6,
+    "type": "STANDARD"
+  },
+  "gateway-room-602": {
+    "device_id": "36186570-1425-11f1-a750-f365853900c5",
+    "token": "Ajcayhrui0mrRSUOMqMO",
+    "room": "602",
+    "floor": 6,
+    "type": "STANDARD"
+  },
+  "gateway-room-609": {
+    "device_id": "3620c9e0-1425-11f1-a750-f365853900c5",
+    "token": "ikf0QChNovaesQYf8TLP",
+    "room": "609",
     "floor": 6,
     "type": "SUITE"
   },
+  "gateway-room-607": {
+    "device_id": "361ad670-1425-11f1-a750-f365853900c5",
+    "token": "phOeYQTU5Nd83UnsyAif",
+    "room": "607",
+    "floor": 6,
+    "type": "STANDARD"
+  },
+  "gateway-room-610": {
+    "device_id": "362313d0-1425-11f1-a750-f365853900c5",
+    "token": "A9sbwSQKtruHUzlhyIxP",
+    "room": "610",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-615": {
+    "device_id": "36663750-1425-11f1-a750-f365853900c5",
+    "token": "axdePbI5tyCYo4A1n5Rp",
+    "room": "615",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-611": {
+    "device_id": "366d6340-1425-11f1-a750-f365853900c5",
+    "token": "B8IKRJ01JHGvfETMpX2U",
+    "room": "611",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-617": {
+    "device_id": "366b6770-1425-11f1-a750-f365853900c5",
+    "token": "nJ8ANikJwY0OOfC2VtZk",
+    "room": "617",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-616": {
+    "device_id": "3675c7b0-1425-11f1-a750-f365853900c5",
+    "token": "kYq6XPoETxtUs3MdmhSY",
+    "room": "616",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-612": {
+    "device_id": "366f5f10-1425-11f1-a750-f365853900c5",
+    "token": "ZQzNbuNXZt6NCyi7COLA",
+    "room": "612",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-620": {
+    "device_id": "36729360-1425-11f1-a750-f365853900c5",
+    "token": "E37wcFM5Zjxrw1WoL1iB",
+    "room": "620",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-614": {
+    "device_id": "367b45f1-1425-11f1-a750-f365853900c5",
+    "token": "5xgJfZ0OjCV5nvQZ4xvD",
+    "room": "614",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-619": {
+    "device_id": "367d1ab0-1425-11f1-a750-f365853900c5",
+    "token": "A776HDuUghghLxGShAsB",
+    "room": "619",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-618": {
+    "device_id": "3680c430-1425-11f1-a750-f365853900c5",
+    "token": "278R2aH98BheSno0WjqU",
+    "room": "618",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-613": {
+    "device_id": "368271e1-1425-11f1-a750-f365853900c5",
+    "token": "V2wuvOsSOV3au4Hq9xuf",
+    "room": "613",
+    "floor": 6,
+    "type": "SUITE"
+  },
+  "gateway-room-623": {
+    "device_id": "36c98d00-1425-11f1-a750-f365853900c5",
+    "token": "v4s48VkVtoXf8H6pYeZO",
+    "room": "623",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-622": {
+    "device_id": "36cfce90-1425-11f1-a750-f365853900c5",
+    "token": "pFfOvWpHLHmvjQK8s1Nx",
+    "room": "622",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-703": {
+    "device_id": "36d302e1-1425-11f1-a750-f365853900c5",
+    "token": "iNan6XMH7KSK0Utlmqxr",
+    "room": "703",
+    "floor": 7,
+    "type": "STANDARD"
+  },
+  "gateway-room-704": {
+    "device_id": "36da7cf0-1425-11f1-a750-f365853900c5",
+    "token": "VO77L2wsoU3nGT7nvGqY",
+    "room": "704",
+    "floor": 7,
+    "type": "STANDARD"
+  },
+  "gateway-room-621": {
+    "device_id": "36d65e40-1425-11f1-a750-f365853900c5",
+    "token": "vGsW45n5mrghmcpPsLFF",
+    "room": "621",
+    "floor": 6,
+    "type": "VIP"
+  },
+  "gateway-room-624": {
+    "device_id": "36de9ba0-1425-11f1-a750-f365853900c5",
+    "token": "BJokuvfOJwvhblx0DYB4",
+    "room": "624",
+    "floor": 6,
+    "type": "VIP"
+  },
   "gateway-room-701": {
-    "device_id": "b484cc40-13e0-11f1-a750-f365853900c5",
-    "token": "kdqSZwYZ24s8IYZzqo6e",
+    "device_id": "36e2ba50-1425-11f1-a750-f365853900c5",
+    "token": "C7dZJrzFDOKngdWHvylN",
     "room": "701",
     "floor": 7,
     "type": "STANDARD"
   },
   "gateway-room-702": {
-    "device_id": "b488eaf0-13e0-11f1-a750-f365853900c5",
-    "token": "zW6RbpOOYFCw81f4UhAr",
+    "device_id": "36e7c360-1425-11f1-a750-f365853900c5",
+    "token": "4fYfzV0ta7xRmflgtyRp",
     "room": "702",
     "floor": 7,
     "type": "STANDARD"
   },
-  "gateway-room-602": {
-    "device_id": "b48b5bf0-13e0-11f1-a750-f365853900c5",
-    "token": "urPiM3RbGxmuRbsh7RLR",
-    "room": "602",
-    "floor": 6,
-    "type": "STANDARD"
-  },
-  "gateway-room-608": {
-    "device_id": "b491c490-13e0-11f1-a750-f365853900c5",
-    "token": "gLsnlvsnx0dt09zUhM4I",
-    "room": "608",
-    "floor": 6,
-    "type": "VIP"
-  },
-  "gateway-room-705": {
-    "device_id": "b4da1830-13e0-11f1-a750-f365853900c5",
-    "token": "v9YNw5LeYGYbSe4TvDU8",
-    "room": "705",
-    "floor": 7,
-    "type": "SUITE"
-  },
-  "gateway-room-703": {
-    "device_id": "b4defa30-13e0-11f1-a750-f365853900c5",
-    "token": "cenG8pLweXHhb8OyGjsY",
-    "room": "703",
-    "floor": 7,
-    "type": "STANDARD"
-  },
-  "gateway-room-708": {
-    "device_id": "b4e1e060-13e0-11f1-a750-f365853900c5",
-    "token": "q8qgbW3LnGjcAJ5m1P4u",
-    "room": "708",
-    "floor": 7,
-    "type": "VIP"
-  },
   "gateway-room-706": {
-    "device_id": "b4e73790-13e0-11f1-a750-f365853900c5",
-    "token": "ZXts41SOHeHoav9Wife5",
+    "device_id": "36ed41a0-1425-11f1-a750-f365853900c5",
+    "token": "yBhupqOCTx4t94lb5Efs",
     "room": "706",
     "floor": 7,
-    "type": "SUITE"
+    "type": "STANDARD"
   },
-  "gateway-room-704": {
-    "device_id": "b4e49f80-13e0-11f1-a750-f365853900c5",
-    "token": "qVPrh0WQNGjre0okSuWx",
-    "room": "704",
+  "gateway-room-705": {
+    "device_id": "36f027d1-1425-11f1-a750-f365853900c5",
+    "token": "ShkOFXjmOtndnnKWD1jn",
+    "room": "705",
     "floor": 7,
     "type": "STANDARD"
   },
-  "gateway-room-803": {
-    "device_id": "b4e95a70-13e0-11f1-a750-f365853900c5",
-    "token": "q8DjlnjRTEYkMAWGQv11",
-    "room": "803",
-    "floor": 8,
+  "gateway-room-710": {
+    "device_id": "372d30d0-1425-11f1-a750-f365853900c5",
+    "token": "OcLYN198Z4zDexYASKae",
+    "room": "710",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-709": {
+    "device_id": "372f2ca0-1425-11f1-a750-f365853900c5",
+    "token": "5CX7amyndiWbNPfv3A2x",
+    "room": "709",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-707": {
+    "device_id": "3730b340-1425-11f1-a750-f365853900c5",
+    "token": "kjCDArFgYJQqOfDFDbGm",
+    "room": "707",
+    "floor": 7,
     "type": "STANDARD"
   },
-  "gateway-room-804": {
-    "device_id": "b4ee1560-13e0-11f1-a750-f365853900c5",
-    "token": "MKyetV1GrInUDkaLlXpZ",
-    "room": "804",
-    "floor": 8,
+  "gateway-room-711": {
+    "device_id": "37337260-1425-11f1-a750-f365853900c5",
+    "token": "KaIO2yqOeugK3RZOGBF6",
+    "room": "711",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-708": {
+    "device_id": "37371be0-1425-11f1-a750-f365853900c5",
+    "token": "Abd52Voq6Uyw3XQnMBcC",
+    "room": "708",
+    "floor": 7,
     "type": "STANDARD"
+  },
+  "gateway-room-713": {
+    "device_id": "3739b3f0-1425-11f1-a750-f365853900c5",
+    "token": "JHdEFFcdhrECass4JyDe",
+    "room": "713",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-712": {
+    "device_id": "373ac560-1425-11f1-a750-f365853900c5",
+    "token": "HeMHErjsIKbk5VHVf2os",
+    "room": "712",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-714": {
+    "device_id": "37428d90-1425-11f1-a750-f365853900c5",
+    "token": "sjhsM1O2t53h8BdwVeFn",
+    "room": "714",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-716": {
+    "device_id": "3747e4c1-1425-11f1-a750-f365853900c5",
+    "token": "9n5CljKMwYdgZSA7tj3g",
+    "room": "716",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-715": {
+    "device_id": "37468530-1425-11f1-a750-f365853900c5",
+    "token": "mNYo69tizsvG8MMGl3dL",
+    "room": "715",
+    "floor": 7,
+    "type": "SUITE"
+  },
+  "gateway-room-720": {
+    "device_id": "37882210-1425-11f1-a750-f365853900c5",
+    "token": "7MzXcY82axaj27O0v8qJ",
+    "room": "720",
+    "floor": 7,
+    "type": "VIP"
+  },
+  "gateway-room-717": {
+    "device_id": "378981a0-1425-11f1-a750-f365853900c5",
+    "token": "Yl3Hw7tU27w3VjJiEsZu",
+    "room": "717",
+    "floor": 7,
+    "type": "VIP"
   },
   "gateway-room-802": {
-    "device_id": "b4f34580-13e0-11f1-a750-f365853900c5",
-    "token": "hsG5Xr62nVCMiuRtKgvx",
+    "device_id": "378aba20-1425-11f1-a750-f365853900c5",
+    "token": "rCxzmPhicwR2u8CmD4z6",
     "room": "802",
     "floor": 8,
     "type": "STANDARD"
   },
+  "gateway-room-722": {
+    "device_id": "378e3c90-1425-11f1-a750-f365853900c5",
+    "token": "QlzGPYJnNgAe7Z4oRTa6",
+    "room": "722",
+    "floor": 7,
+    "type": "VIP"
+  },
+  "gateway-room-719": {
+    "device_id": "378f26f0-1425-11f1-a750-f365853900c5",
+    "token": "4ojkgaJ7fnSnagDiJJIp",
+    "room": "719",
+    "floor": 7,
+    "type": "VIP"
+  },
+  "gateway-room-723": {
+    "device_id": "379197f1-1425-11f1-a750-f365853900c5",
+    "token": "JAcDt2hi1MYIYrVlfb3X",
+    "room": "723",
+    "floor": 7,
+    "type": "VIP"
+  },
+  "gateway-room-721": {
+    "device_id": "37908680-1425-11f1-a750-f365853900c5",
+    "token": "0tJgzu1ke4UU86PrFcWQ",
+    "room": "721",
+    "floor": 7,
+    "type": "VIP"
+  },
+  "gateway-room-724": {
+    "device_id": "3795b6a0-1425-11f1-a750-f365853900c5",
+    "token": "mtCtlwlxiMQEDiAgHD5R",
+    "room": "724",
+    "floor": 7,
+    "type": "VIP"
+  },
+  "gateway-room-718": {
+    "device_id": "37947e20-1425-11f1-a750-f365853900c5",
+    "token": "BfbpDUntQwsjRqXDv9Qr",
+    "room": "718",
+    "floor": 7,
+    "type": "VIP"
+  },
   "gateway-room-801": {
-    "device_id": "b4fede40-13e0-11f1-a750-f365853900c5",
-    "token": "zjfPVvOQDyjY5jrVBDJo",
+    "device_id": "3793bad0-1425-11f1-a750-f365853900c5",
+    "token": "utg37zmYUVTuawlTH7Ah",
     "room": "801",
     "floor": 8,
     "type": "STANDARD"
   },
-  "gateway-room-707": {
-    "device_id": "b4f8c3c1-13e0-11f1-a750-f365853900c5",
-    "token": "oDZjWowPRBmxghhWdahk",
-    "room": "707",
-    "floor": 7,
-    "type": "VIP"
-  },
-  "gateway-room-808": {
-    "device_id": "b5489170-13e0-11f1-a750-f365853900c5",
-    "token": "REUPE3jYMWmQJpDPLuJ9",
-    "room": "808",
-    "floor": 8,
-    "type": "VIP"
-  },
-  "gateway-room-806": {
-    "device_id": "b543af70-13e0-11f1-a750-f365853900c5",
-    "token": "Kvn9ak7qGQG3eg9npo98",
-    "room": "806",
-    "floor": 8,
-    "type": "SUITE"
-  },
   "gateway-room-805": {
-    "device_id": "b5466e90-13e0-11f1-a750-f365853900c5",
-    "token": "RnuYt5IoiEqYHwWcgckX",
+    "device_id": "37cfb260-1425-11f1-a750-f365853900c5",
+    "token": "HgFqlPb8kf25iJ9a0FSg",
     "room": "805",
     "floor": 8,
+    "type": "STANDARD"
+  },
+  "gateway-room-803": {
+    "device_id": "37d075b0-1425-11f1-a750-f365853900c5",
+    "token": "aDZumwbIhM34vCtGUvT7",
+    "room": "803",
+    "floor": 8,
+    "type": "STANDARD"
+  },
+  "gateway-room-806": {
+    "device_id": "37d18721-1425-11f1-a750-f365853900c5",
+    "token": "vLohXPcqCMfOz4QdcgLK",
+    "room": "806",
+    "floor": 8,
+    "type": "STANDARD"
+  },
+  "gateway-room-812": {
+    "device_id": "37d27180-1425-11f1-a750-f365853900c5",
+    "token": "WkO25naeEHUK0wvdJNNp",
+    "room": "812",
+    "floor": 8,
     "type": "SUITE"
   },
+  "gateway-room-811": {
+    "device_id": "37d9c480-1425-11f1-a750-f365853900c5",
+    "token": "ZYxjp5wcNlZjQqSciVJW",
+    "room": "811",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-808": {
+    "device_id": "37db2410-1425-11f1-a750-f365853900c5",
+    "token": "ubf8wbqiEqzd1mA5Ig7g",
+    "room": "808",
+    "floor": 8,
+    "type": "STANDARD"
+  },
+  "gateway-room-810": {
+    "device_id": "37d88c01-1425-11f1-a750-f365853900c5",
+    "token": "FtxgebbdK0LrQYGoKAlr",
+    "room": "810",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-807": {
+    "device_id": "37d69030-1425-11f1-a750-f365853900c5",
+    "token": "LrpHBXn3Yafy6FlRU8OW",
+    "room": "807",
+    "floor": 8,
+    "type": "STANDARD"
+  },
+  "gateway-room-804": {
+    "device_id": "37d4e280-1425-11f1-a750-f365853900c5",
+    "token": "qolRsyf50WO1R9jQl9Yu",
+    "room": "804",
+    "floor": 8,
+    "type": "STANDARD"
+  },
+  "gateway-room-809": {
+    "device_id": "37d35be0-1425-11f1-a750-f365853900c5",
+    "token": "XGe139RR3Dv1AMIVHyu3",
+    "room": "809",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-816": {
+    "device_id": "381769c0-1425-11f1-a750-f365853900c5",
+    "token": "zmku0P4A4zLNThRcN8e1",
+    "room": "816",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-818": {
+    "device_id": "3818f060-1425-11f1-a750-f365853900c5",
+    "token": "fhSxQHqopcx9XeUZsltc",
+    "room": "818",
+    "floor": 8,
+    "type": "VIP"
+  },
+  "gateway-room-815": {
+    "device_id": "3819dac0-1425-11f1-a750-f365853900c5",
+    "token": "9dzZRPWHcdb5GehedfW1",
+    "room": "815",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-819": {
+    "device_id": "381c72d0-1425-11f1-a750-f365853900c5",
+    "token": "23uo0gKOVQ8rePOFeuCQ",
+    "room": "819",
+    "floor": 8,
+    "type": "VIP"
+  },
+  "gateway-room-821": {
+    "device_id": "38257380-1425-11f1-a750-f365853900c5",
+    "token": "CCCO3hVFZ3AGDMNPWPTw",
+    "room": "821",
+    "floor": 8,
+    "type": "VIP"
+  },
+  "gateway-room-817": {
+    "device_id": "381aec30-1425-11f1-a750-f365853900c5",
+    "token": "f3unhkMIe5P5b8OPH4hb",
+    "room": "817",
+    "floor": 8,
+    "type": "VIP"
+  },
+  "gateway-room-813": {
+    "device_id": "38239ec0-1425-11f1-a750-f365853900c5",
+    "token": "w1eU1k4r1umiu4LhPajZ",
+    "room": "813",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-814": {
+    "device_id": "38248920-1425-11f1-a750-f365853900c5",
+    "token": "JSZfO7kBucwvc2ZG2czh",
+    "room": "814",
+    "floor": 8,
+    "type": "SUITE"
+  },
+  "gateway-room-820": {
+    "device_id": "3828a7d0-1425-11f1-a750-f365853900c5",
+    "token": "q3oItlAR4RjY0FXrJgc6",
+    "room": "820",
+    "floor": 8,
+    "type": "VIP"
+  },
+  "gateway-room-822": {
+    "device_id": "38279660-1425-11f1-a750-f365853900c5",
+    "token": "is8CKjdemt1jSQ6aouYw",
+    "room": "822",
+    "floor": 8,
+    "type": "VIP"
+  },
   "gateway-room-903": {
-    "device_id": "b54bc5c0-13e0-11f1-a750-f365853900c5",
-    "token": "G4BXXHstJZyCsfxQzVU6",
+    "device_id": "3867aca0-1425-11f1-a750-f365853900c5",
+    "token": "z8kwxctPO2qEpAGtHuwM",
     "room": "903",
     "floor": 9,
     "type": "STANDARD"
   },
-  "gateway-room-807": {
-    "device_id": "b54efa10-13e0-11f1-a750-f365853900c5",
-    "token": "A5eENMNNp805ZxgfKKio",
-    "room": "807",
-    "floor": 8,
-    "type": "VIP"
-  },
-  "gateway-room-905": {
-    "device_id": "b551e040-13e0-11f1-a750-f365853900c5",
-    "token": "9cBFGkIn79FBO7n9L6Qo",
-    "room": "905",
-    "floor": 9,
-    "type": "SUITE"
-  },
   "gateway-room-904": {
-    "device_id": "b55562b0-13e0-11f1-a750-f365853900c5",
-    "token": "kle40alBjyis8KTqBiY7",
+    "device_id": "386a6bc0-1425-11f1-a750-f365853900c5",
+    "token": "sq6okpFl3waaDaqG4gLO",
     "room": "904",
     "floor": 9,
     "type": "STANDARD"
   },
-  "gateway-room-906": {
-    "device_id": "b5598160-13e0-11f1-a750-f365853900c5",
-    "token": "n2th8RmQ220O3pUtCahE",
-    "room": "906",
-    "floor": 9,
-    "type": "SUITE"
-  },
-  "gateway-room-901": {
-    "device_id": "b55b5620-13e0-11f1-a750-f365853900c5",
-    "token": "RBrWHtsp9AYCLqJdq09j",
-    "room": "901",
-    "floor": 9,
-    "type": "STANDARD"
+  "gateway-room-824": {
+    "device_id": "386f9be0-1425-11f1-a750-f365853900c5",
+    "token": "8kVFniXtBN4vVQauPxcO",
+    "room": "824",
+    "floor": 8,
+    "type": "VIP"
   },
   "gateway-room-902": {
-    "device_id": "b55f4dc0-13e0-11f1-a750-f365853900c5",
-    "token": "PWdtSAheWwECY7we3Nd3",
+    "device_id": "386e6360-1425-11f1-a750-f365853900c5",
+    "token": "lNdSqIBSNe4VSaZLuZz4",
     "room": "902",
     "floor": 9,
     "type": "STANDARD"
   },
+  "gateway-room-901": {
+    "device_id": "38712281-1425-11f1-a750-f365853900c5",
+    "token": "vmgJFsRFwrAenlm6021i",
+    "room": "901",
+    "floor": 9,
+    "type": "STANDARD"
+  },
+  "gateway-room-823": {
+    "device_id": "386d2ae0-1425-11f1-a750-f365853900c5",
+    "token": "PuOPVJEON7stYAwsqt8I",
+    "room": "823",
+    "floor": 8,
+    "type": "VIP"
+  },
+  "gateway-room-906": {
+    "device_id": "38758f50-1425-11f1-a750-f365853900c5",
+    "token": "R1eYhLDCwdDBb7leMDGI",
+    "room": "906",
+    "floor": 9,
+    "type": "STANDARD"
+  },
   "gateway-room-907": {
-    "device_id": "b5a88bc0-13e0-11f1-a750-f365853900c5",
-    "token": "TB4huZCLJBfkGIodYIyc",
+    "device_id": "38773d01-1425-11f1-a750-f365853900c5",
+    "token": "gIcQCStpOpimL0Rr4rkX",
     "room": "907",
+    "floor": 9,
+    "type": "STANDARD"
+  },
+  "gateway-room-905": {
+    "device_id": "38739380-1425-11f1-a750-f365853900c5",
+    "token": "7xHOr0Yh26u2Fskl8756",
+    "room": "905",
+    "floor": 9,
+    "type": "STANDARD"
+  },
+  "gateway-room-908": {
+    "device_id": "387938d1-1425-11f1-a750-f365853900c5",
+    "token": "A9tqvPjkU9RHTTkHufe6",
+    "room": "908",
+    "floor": 9,
+    "type": "STANDARD"
+  },
+  "gateway-room-910": {
+    "device_id": "38b50950-1425-11f1-a750-f365853900c5",
+    "token": "BcP1n1HmMnpC4fLElRnD",
+    "room": "910",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-912": {
+    "device_id": "38b900f0-1425-11f1-a750-f365853900c5",
+    "token": "vrPPIWZZIJJNpbVdmo6A",
+    "room": "912",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-909": {
+    "device_id": "38b7ef80-1425-11f1-a750-f365853900c5",
+    "token": "ZhToqwj8hLp2GImJxeVb",
+    "room": "909",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-913": {
+    "device_id": "38ba1260-1425-11f1-a750-f365853900c5",
+    "token": "QGD977ibdmpfO7Ozj3e2",
+    "room": "913",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-911": {
+    "device_id": "38b61ac0-1425-11f1-a750-f365853900c5",
+    "token": "Q9QEa7oipln8R7XfyqfL",
+    "room": "911",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-914": {
+    "device_id": "38bc8360-1425-11f1-a750-f365853900c5",
+    "token": "2cKxmN8anagHLshASUhK",
+    "room": "914",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-917": {
+    "device_id": "38bf6990-1425-11f1-a750-f365853900c5",
+    "token": "Qxsl36PglbqvYdHH9W9Q",
+    "room": "917",
+    "floor": 9,
+    "type": "VIP"
+  },
+  "gateway-room-916": {
+    "device_id": "38bb4ae0-1425-11f1-a750-f365853900c5",
+    "token": "iLkYseNBI8lUIJgYePUJ",
+    "room": "916",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-915": {
+    "device_id": "38bd6dc0-1425-11f1-a750-f365853900c5",
+    "token": "tQaKQt0dGGENPg5gLaon",
+    "room": "915",
+    "floor": 9,
+    "type": "SUITE"
+  },
+  "gateway-room-918": {
+    "device_id": "38be5820-1425-11f1-a750-f365853900c5",
+    "token": "GO6hU7VTQJGIMsRwvyKg",
+    "room": "918",
+    "floor": 9,
+    "type": "VIP"
+  },
+  "gateway-room-920": {
+    "device_id": "39030240-1425-11f1-a750-f365853900c5",
+    "token": "cB8LzUpTyfBmZJLc1bhu",
+    "room": "920",
+    "floor": 9,
+    "type": "VIP"
+  },
+  "gateway-room-921": {
+    "device_id": "3906abc0-1425-11f1-a750-f365853900c5",
+    "token": "vQ0mTazZvFUskFDTYxTJ",
+    "room": "921",
+    "floor": 9,
+    "type": "VIP"
+  },
+  "gateway-room-919": {
+    "device_id": "3908cea0-1425-11f1-a750-f365853900c5",
+    "token": "MIMH1t6b6ZlRaSbdyJY6",
+    "room": "919",
     "floor": 9,
     "type": "VIP"
   },
   "gateway-room-1001": {
-    "device_id": "b5aad5b0-13e0-11f1-a750-f365853900c5",
-    "token": "ZUmkQQUR6KwEnThTGhLg",
+    "device_id": "3912e0c0-1425-11f1-a750-f365853900c5",
+    "token": "sEMN4922NMfLwd7B8gEG",
     "room": "1001",
     "floor": 10,
     "type": "STANDARD"
   },
-  "gateway-room-908": {
-    "device_id": "b5acd180-13e0-11f1-a750-f365853900c5",
-    "token": "vSUsnn1Tcnnnd63y07J5",
-    "room": "908",
+  "gateway-room-923": {
+    "device_id": "392186c0-1425-11f1-a750-f365853900c5",
+    "token": "LDLJax69bW5pUBxhahfx",
+    "room": "923",
+    "floor": 9,
+    "type": "VIP"
+  },
+  "gateway-room-924": {
+    "device_id": "3929c420-1425-11f1-a750-f365853900c5",
+    "token": "8KUv7dinjsBlP70gP4NY",
+    "room": "924",
+    "floor": 9,
+    "type": "VIP"
+  },
+  "gateway-room-922": {
+    "device_id": "39246cf0-1425-11f1-a750-f365853900c5",
+    "token": "SOwMMgWTRYeQ5MiSzDGo",
+    "room": "922",
     "floor": 9,
     "type": "VIP"
   },
   "gateway-room-1003": {
-    "device_id": "b5ae7f30-13e0-11f1-a750-f365853900c5",
-    "token": "JialH03EB2pNepJ71XP3",
+    "device_id": "392e09e0-1425-11f1-a750-f365853900c5",
+    "token": "jAgmF0emktXdX22lKYmq",
     "room": "1003",
     "floor": 10,
     "type": "STANDARD"
   },
-  "gateway-room-1005": {
-    "device_id": "b5b36131-13e0-11f1-a750-f365853900c5",
-    "token": "LpGIjZ56RJwx7SlFnjik",
-    "room": "1005",
-    "floor": 10,
-    "type": "SUITE"
-  },
   "gateway-room-1004": {
-    "device_id": "b5b0a210-13e0-11f1-a750-f365853900c5",
-    "token": "Kr4gU1mbcaOskP7FaqSX",
+    "device_id": "392afca0-1425-11f1-a750-f365853900c5",
+    "token": "pe7D6Bp8obUpsEDIBcav",
     "room": "1004",
     "floor": 10,
     "type": "STANDARD"
   },
-  "gateway-room-1008": {
-    "device_id": "b5b6bc90-13e0-11f1-a750-f365853900c5",
-    "token": "EJ6hTztxcTnzd0oHooOq",
-    "room": "1008",
+  "gateway-room-1002": {
+    "device_id": "39233470-1425-11f1-a750-f365853900c5",
+    "token": "6MNWHf1pNsVGd1PnB2ZC",
+    "room": "1002",
     "floor": 10,
-    "type": "VIP"
+    "type": "STANDARD"
+  },
+  "gateway-room-1005": {
+    "device_id": "398132f0-1425-11f1-a750-f365853900c5",
+    "token": "YUdBHEON3CliWlBk7fEm",
+    "room": "1005",
+    "floor": 10,
+    "type": "STANDARD"
   },
   "gateway-room-1006": {
-    "device_id": "b5bc61e0-13e0-11f1-a750-f365853900c5",
-    "token": "5MlUfogTSlVXoqjoNkTh",
+    "device_id": "398551a0-1425-11f1-a750-f365853900c5",
+    "token": "fEZbFchBGQ9Boj3wyBv1",
     "room": "1006",
+    "floor": 10,
+    "type": "STANDARD"
+  },
+  "gateway-room-1013": {
+    "device_id": "398ca4a0-1425-11f1-a750-f365853900c5",
+    "token": "UtA4uxrBxA3p7QTuyvTr",
+    "room": "1013",
     "floor": 10,
     "type": "SUITE"
   },
   "gateway-room-1007": {
-    "device_id": "b5c896e0-13e0-11f1-a750-f365853900c5",
-    "token": "kOclXzPg6TwIjSH3afjX",
+    "device_id": "3987e9b0-1425-11f1-a750-f365853900c5",
+    "token": "GQsQjflRpn8h26RJUyZ0",
     "room": "1007",
+    "floor": 10,
+    "type": "STANDARD"
+  },
+  "gateway-room-1011": {
+    "device_id": "398f15a0-1425-11f1-a750-f365853900c5",
+    "token": "LgIazCUSEXBqRQEj9jos",
+    "room": "1011",
+    "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1008": {
+    "device_id": "39929810-1425-11f1-a750-f365853900c5",
+    "token": "pufEchUpPzZVibvNa1PR",
+    "room": "1008",
+    "floor": 10,
+    "type": "STANDARD"
+  },
+  "gateway-room-1009": {
+    "device_id": "399900b0-1425-11f1-a750-f365853900c5",
+    "token": "DF2ShbIBwa21x3BtG9qr",
+    "room": "1009",
+    "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1014": {
+    "device_id": "39a29da0-1425-11f1-a750-f365853900c5",
+    "token": "QwohUJBiW7PUVunPOu6Z",
+    "room": "1014",
+    "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1012": {
+    "device_id": "39a07ac0-1425-11f1-a750-f365853900c5",
+    "token": "niqQBx4KuesX8crd4x9V",
+    "room": "1012",
+    "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1010": {
+    "device_id": "39a49970-1425-11f1-a750-f365853900c5",
+    "token": "0evtDPgXE7IiuriCw4St",
+    "room": "1010",
+    "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1018": {
+    "device_id": "39e85930-1425-11f1-a750-f365853900c5",
+    "token": "UgJFfGUp6mhVuVbZnPuH",
+    "room": "1018",
     "floor": 10,
     "type": "VIP"
   },
-  "gateway-room-1002": {
-    "device_id": "b5c2ca80-13e0-11f1-a750-f365853900c5",
-    "token": "hzNCrn5eFJINzg6vehLO",
-    "room": "1002",
+  "gateway-room-1015": {
+    "device_id": "39e6f9a0-1425-11f1-a750-f365853900c5",
+    "token": "v2Gr87aDqVZ8TmYsfpt4",
+    "room": "1015",
     "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1019": {
+    "device_id": "39ec77e0-1425-11f1-a750-f365853900c5",
+    "token": "MD8NKmVOkAH2ycTvUj31",
+    "room": "1019",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1021": {
+    "device_id": "39ed6240-1425-11f1-a750-f365853900c5",
+    "token": "MCW0gELjCP1sfc82gOBz",
+    "room": "1021",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1024": {
+    "device_id": "39e9dfd0-1425-11f1-a750-f365853900c5",
+    "token": "bZEXCxRNihA7FuE2b6FL",
+    "room": "1024",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1020": {
+    "device_id": "39ee73b0-1425-11f1-a750-f365853900c5",
+    "token": "sK0AOlJ440bxiL50MrDj",
+    "room": "1020",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1022": {
+    "device_id": "39f24440-1425-11f1-a750-f365853900c5",
+    "token": "ztvhte97huOcCRBSzi9l",
+    "room": "1022",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1016": {
+    "device_id": "39ef8520-1425-11f1-a750-f365853900c5",
+    "token": "8zu8LWzg09qR3yKYWwG5",
+    "room": "1016",
+    "floor": 10,
+    "type": "SUITE"
+  },
+  "gateway-room-1017": {
+    "device_id": "39eaf140-1425-11f1-a750-f365853900c5",
+    "token": "NxhWWcr6Gv7pAPsNJL2x",
+    "room": "1017",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1023": {
+    "device_id": "39f0e4b0-1425-11f1-a750-f365853900c5",
+    "token": "9k9YWA58iNNq6K5mxhY1",
+    "room": "1023",
+    "floor": 10,
+    "type": "VIP"
+  },
+  "gateway-room-1102": {
+    "device_id": "3a395f60-1425-11f1-a750-f365853900c5",
+    "token": "qIlG1O7L5I5uxl7BZ6dH",
+    "room": "1102",
+    "floor": 11,
     "type": "STANDARD"
+  },
+  "gateway-room-1103": {
+    "device_id": "3a384df0-1425-11f1-a750-f365853900c5",
+    "token": "B2pl67uYVRea6V1i01tw",
+    "room": "1103",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1108": {
+    "device_id": "3a408b50-1425-11f1-a750-f365853900c5",
+    "token": "Yns9BdnqGY6csQ397LNq",
+    "room": "1108",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1109": {
+    "device_id": "3a41c3d0-1425-11f1-a750-f365853900c5",
+    "token": "yVqxFULJFb9lbTcimd3T",
+    "room": "1109",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1105": {
+    "device_id": "3a3b5b30-1425-11f1-a750-f365853900c5",
+    "token": "j5PA6l12c1aUzjnsdeZ0",
+    "room": "1105",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1101": {
+    "device_id": "3a3f2bc0-1425-11f1-a750-f365853900c5",
+    "token": "5MB3BAFpktmWiej3GrTD",
+    "room": "1101",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1106": {
+    "device_id": "3a3e6870-1425-11f1-a750-f365853900c5",
+    "token": "pJ0RzAnjuWFpItzcS0py",
+    "room": "1106",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1104": {
+    "device_id": "3a3d5700-1425-11f1-a750-f365853900c5",
+    "token": "jrHEpXOXoG8ZMA88RCoi",
+    "room": "1104",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1110": {
+    "device_id": "3a3fc801-1425-11f1-a750-f365853900c5",
+    "token": "qG5CSW1zcUK0W2mUIk1L",
+    "room": "1110",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1107": {
+    "device_id": "3a3c6ca0-1425-11f1-a750-f365853900c5",
+    "token": "ftIpJLlAm4l1pSfiSSAT",
+    "room": "1107",
+    "floor": 11,
+    "type": "STANDARD"
+  },
+  "gateway-room-1111": {
+    "device_id": "3a800550-1425-11f1-a750-f365853900c5",
+    "token": "xljqbDNGJy4ZOR8RFybc",
+    "room": "1111",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1115": {
+    "device_id": "3a7c82e0-1425-11f1-a750-f365853900c5",
+    "token": "2D08zHY8bfBOCxpc7juK",
+    "room": "1115",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1114": {
+    "device_id": "3a7f1af0-1425-11f1-a750-f365853900c5",
+    "token": "y426CzsJyCsJTWh3zLoT",
+    "room": "1114",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1120": {
+    "device_id": "3a80efb1-1425-11f1-a750-f365853900c5",
+    "token": "ny6ZJVTmzLBAh55aWxTJ",
+    "room": "1120",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1113": {
+    "device_id": "3a7dbb60-1425-11f1-a750-f365853900c5",
+    "token": "wEsWIpenJ5G5u7hpEgf6",
+    "room": "1113",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1118": {
+    "device_id": "3a870a30-1425-11f1-a750-f365853900c5",
+    "token": "DeatPhLEid3B57AfCHaa",
+    "room": "1118",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1116": {
+    "device_id": "3a824f40-1425-11f1-a750-f365853900c5",
+    "token": "a2wIlzi1b1mpoArAV6sR",
+    "room": "1116",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1119": {
+    "device_id": "3a84e750-1425-11f1-a750-f365853900c5",
+    "token": "zeMqmzhwx7jqZVlNxZaw",
+    "room": "1119",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1112": {
+    "device_id": "3a83fcf0-1425-11f1-a750-f365853900c5",
+    "token": "FxyqLXSzZJqdKlfgdvIj",
+    "room": "1112",
+    "floor": 11,
+    "type": "SUITE"
+  },
+  "gateway-room-1117": {
+    "device_id": "3a85f8c1-1425-11f1-a750-f365853900c5",
+    "token": "02kBe5JrLisGKnJVnplR",
+    "room": "1117",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1202": {
+    "device_id": "3ac6f960-1425-11f1-a750-f365853900c5",
+    "token": "dk2x8aXyRZQuozdgbmBj",
+    "room": "1202",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1123": {
+    "device_id": "3acc2980-1425-11f1-a750-f365853900c5",
+    "token": "Uw59kxiU2AdW4050b3Vv",
+    "room": "1123",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1122": {
+    "device_id": "3ad02120-1425-11f1-a750-f365853900c5",
+    "token": "ayZ1MPqmeieqoc14ozxc",
+    "room": "1122",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1205": {
+    "device_id": "3acac9f0-1425-11f1-a750-f365853900c5",
+    "token": "7wYgpsd3Jq7yVF7KmvZp",
+    "room": "1205",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1124": {
+    "device_id": "3ad159a0-1425-11f1-a750-f365853900c5",
+    "token": "Ug2mS8P7HpVred93dU1z",
+    "room": "1124",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1201": {
+    "device_id": "3acd8910-1425-11f1-a750-f365853900c5",
+    "token": "9itEUpzvonu5auj0mWLY",
+    "room": "1201",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1203": {
+    "device_id": "3ad26b10-1425-11f1-a750-f365853900c5",
+    "token": "TsqafdZ6Y2xfTAtvviPt",
+    "room": "1203",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1204": {
+    "device_id": "3ad48df0-1425-11f1-a750-f365853900c5",
+    "token": "lG0pI84JHhY65Ztg83YH",
+    "room": "1204",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1206": {
+    "device_id": "3ad7c240-1425-11f1-a750-f365853900c5",
+    "token": "jdqOFVAemuvMP4F1znbs",
+    "room": "1206",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1121": {
+    "device_id": "3adb1da0-1425-11f1-a750-f365853900c5",
+    "token": "AAzSuTSVYSCTlnspwCcU",
+    "room": "1121",
+    "floor": 11,
+    "type": "VIP"
+  },
+  "gateway-room-1211": {
+    "device_id": "3b27de10-1425-11f1-a750-f365853900c5",
+    "token": "gKZL3idB3SR3N0TstSRO",
+    "room": "1211",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1216": {
+    "device_id": "3b2d8360-1425-11f1-a750-f365853900c5",
+    "token": "B20jkwGdjNGXYJZeESgj",
+    "room": "1216",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1213": {
+    "device_id": "3b3090a0-1425-11f1-a750-f365853900c5",
+    "token": "V5V4WnneSYfitSf4FBTh",
+    "room": "1213",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1210": {
+    "device_id": "3b6b9dd0-1425-11f1-a750-f365853900c5",
+    "token": "ORLfuEa6fKIye7zaUeQ9",
+    "room": "1210",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1207": {
+    "device_id": "3b666db0-1425-11f1-a750-f365853900c5",
+    "token": "wnbRBKen6PFoqPwUwpZu",
+    "room": "1207",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1208": {
+    "device_id": "3b742950-1425-11f1-a750-f365853900c5",
+    "token": "pnkLBm8VAwqBRFIf3OfX",
+    "room": "1208",
+    "floor": 12,
+    "type": "STANDARD"
+  },
+  "gateway-room-1215": {
+    "device_id": "3b77f9e0-1425-11f1-a750-f365853900c5",
+    "token": "F2OiDMPhGefO27NjpywK",
+    "room": "1215",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1214": {
+    "device_id": "3b7e1460-1425-11f1-a750-f365853900c5",
+    "token": "EBJltXjwId5igxATmAKp",
+    "room": "1214",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1209": {
+    "device_id": "3b823310-1425-11f1-a750-f365853900c5",
+    "token": "jyYQf7WakNzf784ggxKQ",
+    "room": "1209",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1212": {
+    "device_id": "3b85b580-1425-11f1-a750-f365853900c5",
+    "token": "I5tdTlzsMSVUcUjhS0aZ",
+    "room": "1212",
+    "floor": 12,
+    "type": "SUITE"
+  },
+  "gateway-room-1221": {
+    "device_id": "3bc815b0-1425-11f1-a750-f365853900c5",
+    "token": "4idnituKj4jrOhiWIMVN",
+    "room": "1221",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1220": {
+    "device_id": "3bcb9820-1425-11f1-a750-f365853900c5",
+    "token": "BNnkbcGg5sdFa6WwGZhg",
+    "room": "1220",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1217": {
+    "device_id": "3bc75260-1425-11f1-a750-f365853900c5",
+    "token": "NrXzdR3QGe55ovGt7WtP",
+    "room": "1217",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1218": {
+    "device_id": "3bca1180-1425-11f1-a750-f365853900c5",
+    "token": "Dx5ApBiRsKZe9ZoFuaLc",
+    "room": "1218",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1222": {
+    "device_id": "3bcd93f0-1425-11f1-a750-f365853900c5",
+    "token": "PAvj2He9QQM363HPIgk8",
+    "room": "1222",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1223": {
+    "device_id": "3bd004f0-1425-11f1-a750-f365853900c5",
+    "token": "vCiezFh5OjKwSUC8wwzg",
+    "room": "1223",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1224": {
+    "device_id": "3bcea560-1425-11f1-a750-f365853900c5",
+    "token": "eL0bnchIZAKmgvN8MVfm",
+    "room": "1224",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1301": {
+    "device_id": "3bd18b90-1425-11f1-a750-f365853900c5",
+    "token": "TwXykxmQXxyHOHqvcRgn",
+    "room": "1301",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1219": {
+    "device_id": "3bd50e00-1425-11f1-a750-f365853900c5",
+    "token": "t4VnHlFekyKv1yYLqxpv",
+    "room": "1219",
+    "floor": 12,
+    "type": "VIP"
+  },
+  "gateway-room-1302": {
+    "device_id": "3bd77f00-1425-11f1-a750-f365853900c5",
+    "token": "ourZGqb48yoStdvTxR1M",
+    "room": "1302",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1306": {
+    "device_id": "3c1c0210-1425-11f1-a750-f365853900c5",
+    "token": "smPTFydrIamLpAug29R2",
+    "room": "1306",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1304": {
+    "device_id": "3c21a760-1425-11f1-a750-f365853900c5",
+    "token": "ZWDiN0xeNh9Qa5ANefRX",
+    "room": "1304",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1303": {
+    "device_id": "3c1ee840-1425-11f1-a750-f365853900c5",
+    "token": "OtDR7UfdnQQ45f7Y2OO0",
+    "room": "1303",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1309": {
+    "device_id": "3c1dafc0-1425-11f1-a750-f365853900c5",
+    "token": "dkQ3uVXJjVX48mOVs6sE",
+    "room": "1309",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1305": {
+    "device_id": "3c2996a0-1425-11f1-a750-f365853900c5",
+    "token": "uwcDqcxjynd2ynwDpEsm",
+    "room": "1305",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1311": {
+    "device_id": "3c2af630-1425-11f1-a750-f365853900c5",
+    "token": "YYPqEkW6OPm2GPnBXmnG",
+    "room": "1311",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1308": {
+    "device_id": "3c246680-1425-11f1-a750-f365853900c5",
+    "token": "dLOdkC4wMUeFib3JUq9s",
+    "room": "1308",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1312": {
+    "device_id": "3c2725a0-1425-11f1-a750-f365853900c5",
+    "token": "Nu9MOeLTjzItMtQeornc",
+    "room": "1312",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1307": {
+    "device_id": "3c2cf200-1425-11f1-a750-f365853900c5",
+    "token": "hGUyqP1NSuzCQdHnWUMI",
+    "room": "1307",
+    "floor": 13,
+    "type": "STANDARD"
+  },
+  "gateway-room-1310": {
+    "device_id": "3c2f3bf0-1425-11f1-a750-f365853900c5",
+    "token": "Ey6waKiLjFpd22ZKHOHK",
+    "room": "1310",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1316": {
+    "device_id": "3c72ad90-1425-11f1-a750-f365853900c5",
+    "token": "dTaDrAAYBWozeAaDVHp7",
+    "room": "1316",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1319": {
+    "device_id": "3c75e1e0-1425-11f1-a750-f365853900c5",
+    "token": "AEtCj0MwfLxXRoJFGApl",
+    "room": "1319",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1317": {
+    "device_id": "3c740d20-1425-11f1-a750-f365853900c5",
+    "token": "GbcpbDEYr6XIhJ45r93X",
+    "room": "1317",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1318": {
+    "device_id": "3c7ac3e0-1425-11f1-a750-f365853900c5",
+    "token": "0GlGotCnvaQ1pu3tKEkc",
+    "room": "1318",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1314": {
+    "device_id": "3c78ef21-1425-11f1-a750-f365853900c5",
+    "token": "1vKdQtrt0djv9ZSNk7ls",
+    "room": "1314",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1320": {
+    "device_id": "3c774170-1425-11f1-a750-f365853900c5",
+    "token": "lrvFHlaqz9rUMSMclIN2",
+    "room": "1320",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1321": {
+    "device_id": "3c7bfc61-1425-11f1-a750-f365853900c5",
+    "token": "FpkLqTarQ68lzrL2NOnV",
+    "room": "1321",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1322": {
+    "device_id": "3c817aa0-1425-11f1-a750-f365853900c5",
+    "token": "n2T6CWbs1a4jonMSaS6n",
+    "room": "1322",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1315": {
+    "device_id": "3c82b321-1425-11f1-a750-f365853900c5",
+    "token": "DE8mf51Wwxas0Ftco4H8",
+    "room": "1315",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1313": {
+    "device_id": "3c7ebb80-1425-11f1-a750-f365853900c5",
+    "token": "ygORyesLeW9WAqAYVws4",
+    "room": "1313",
+    "floor": 13,
+    "type": "SUITE"
+  },
+  "gateway-room-1323": {
+    "device_id": "3cc53a60-1425-11f1-a750-f365853900c5",
+    "token": "9Kr73H24CUCeozwODRAu",
+    "room": "1323",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1402": {
+    "device_id": "3cc7d270-1425-11f1-a750-f365853900c5",
+    "token": "rBBDIYupV6i6WPImFMTg",
+    "room": "1402",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1324": {
+    "device_id": "3cca1c60-1425-11f1-a750-f365853900c5",
+    "token": "MuPbbCOLBdnnrR4gAC0p",
+    "room": "1324",
+    "floor": 13,
+    "type": "VIP"
+  },
+  "gateway-room-1406": {
+    "device_id": "3cced751-1425-11f1-a750-f365853900c5",
+    "token": "BxExwRu0OevF3KmQWjSn",
+    "room": "1406",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1407": {
+    "device_id": "3ccd29a0-1425-11f1-a750-f365853900c5",
+    "token": "6IKirgWA8fbaOwgYCcuL",
+    "room": "1407",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1404": {
+    "device_id": "3cce3b11-1425-11f1-a750-f365853900c5",
+    "token": "2qHoUXvUP4fL13KX26v5",
+    "room": "1404",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1405": {
+    "device_id": "3ccdecf0-1425-11f1-a750-f365853900c5",
+    "token": "4UEvkiVVQZoGq6QGAOkp",
+    "room": "1405",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1403": {
+    "device_id": "3cd34420-1425-11f1-a750-f365853900c5",
+    "token": "7HZvext0dIkG14PaGK8d",
+    "room": "1403",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1401": {
+    "device_id": "3ccc8d60-1425-11f1-a750-f365853900c5",
+    "token": "nN6raDj1nqL94C757V8s",
+    "room": "1401",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1408": {
+    "device_id": "3cd9d3d0-1425-11f1-a750-f365853900c5",
+    "token": "8XZYOFEDDaHtDa6VfBNB",
+    "room": "1408",
+    "floor": 14,
+    "type": "STANDARD"
+  },
+  "gateway-room-1413": {
+    "device_id": "3d3e13e0-1425-11f1-a750-f365853900c5",
+    "token": "6wRPFQVkLMfMZNyXKNM8",
+    "room": "1413",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1410": {
+    "device_id": "3d436b10-1425-11f1-a750-f365853900c5",
+    "token": "P7sXU2jDD7O3FwD35mrB",
+    "room": "1410",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1414": {
+    "device_id": "3d465140-1425-11f1-a750-f365853900c5",
+    "token": "4Y1a1nuftlzBKdo4E80B",
+    "room": "1414",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1409": {
+    "device_id": "3d56cc00-1425-11f1-a750-f365853900c5",
+    "token": "298mp13L5sN40aApAhBU",
+    "room": "1409",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1415": {
+    "device_id": "3d534990-1425-11f1-a750-f365853900c5",
+    "token": "dGlLdzN05HrrhVPpTjRz",
+    "room": "1415",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1418": {
+    "device_id": "3d50b180-1425-11f1-a750-f365853900c5",
+    "token": "wEgpNUnkKojyiU68TtP8",
+    "room": "1418",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1417": {
+    "device_id": "3d9582b0-1425-11f1-a750-f365853900c5",
+    "token": "cWPBALtgpEfbPUWqlyL0",
+    "room": "1417",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1412": {
+    "device_id": "3df555f0-1425-11f1-a750-f365853900c5",
+    "token": "Ld6gdTW3fpRuwfjcXKXr",
+    "room": "1412",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1411": {
+    "device_id": "3e2f51b0-1425-11f1-a750-f365853900c5",
+    "token": "vpwJZGHEEx3tWJc2QXIj",
+    "room": "1411",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1416": {
+    "device_id": "3e4bda60-1425-11f1-a750-f365853900c5",
+    "token": "lGWteQnqDyDpp66718bw",
+    "room": "1416",
+    "floor": 14,
+    "type": "SUITE"
+  },
+  "gateway-room-1419": {
+    "device_id": "3ed1fa50-1425-11f1-a750-f365853900c5",
+    "token": "pRMm8vYZVCD3lgItL1zn",
+    "room": "1419",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1422": {
+    "device_id": "3ed5f1f0-1425-11f1-a750-f365853900c5",
+    "token": "3nsU7nLZLcQVSjXpX1Bu",
+    "room": "1422",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1420": {
+    "device_id": "3edd1de0-1425-11f1-a750-f365853900c5",
+    "token": "LzFVw5MTbNTEo0WpuFNz",
+    "room": "1420",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1423": {
+    "device_id": "3ee00410-1425-11f1-a750-f365853900c5",
+    "token": "hpv3eBH2AVEaBzQhg1Io",
+    "room": "1423",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1424": {
+    "device_id": "3ee77e20-1425-11f1-a750-f365853900c5",
+    "token": "MBA3LeYSdvzDvMqmMDeD",
+    "room": "1424",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1504": {
+    "device_id": "3ee449d0-1425-11f1-a750-f365853900c5",
+    "token": "fiZEPmP85rE5j9oatyBJ",
+    "room": "1504",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1421": {
+    "device_id": "3eeb27a0-1425-11f1-a750-f365853900c5",
+    "token": "8EK3CrbnMbWvJCf6iAnk",
+    "room": "1421",
+    "floor": 14,
+    "type": "VIP"
+  },
+  "gateway-room-1502": {
+    "device_id": "3ef95870-1425-11f1-a750-f365853900c5",
+    "token": "1C3FzNJzsLX9lGqtdm8R",
+    "room": "1502",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1503": {
+    "device_id": "3f082580-1425-11f1-a750-f365853900c5",
+    "token": "F50Ro8CxgTmyjO5zh85b",
+    "room": "1503",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1501": {
+    "device_id": "3f121090-1425-11f1-a750-f365853900c5",
+    "token": "WSYduskLEsalpgG5IVQE",
+    "room": "1501",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1505": {
+    "device_id": "3f5d9880-1425-11f1-a750-f365853900c5",
+    "token": "EOAwXVKCTlJsnRkKhkoj",
+    "room": "1505",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1508": {
+    "device_id": "3f5ef810-1425-11f1-a750-f365853900c5",
+    "token": "97aQSrhCulLJmOKtR4hd",
+    "room": "1508",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1510": {
+    "device_id": "3f611af0-1425-11f1-a750-f365853900c5",
+    "token": "u2QXrIwPqZRYPvbNhV6E",
+    "room": "1510",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1509": {
+    "device_id": "3f64eb80-1425-11f1-a750-f365853900c5",
+    "token": "M6nDIZPNVgqBMJlmubzI",
+    "room": "1509",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1507": {
+    "device_id": "3f6a69c0-1425-11f1-a750-f365853900c5",
+    "token": "k6v6ndNyAgXvDBfpHNxM",
+    "room": "1507",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1511": {
+    "device_id": "3f68e320-1425-11f1-a750-f365853900c5",
+    "token": "tQMcQUNhtBqJTxeAjHMt",
+    "room": "1511",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1512": {
+    "device_id": "3f6cb3b0-1425-11f1-a750-f365853900c5",
+    "token": "6M0AnI0m4QDos3uopb7Y",
+    "room": "1512",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1506": {
+    "device_id": "3f74f110-1425-11f1-a750-f365853900c5",
+    "token": "v30xIjGb8ymnBoqNPW3D",
+    "room": "1506",
+    "floor": 15,
+    "type": "STANDARD"
+  },
+  "gateway-room-1513": {
+    "device_id": "3f6b7b31-1425-11f1-a750-f365853900c5",
+    "token": "RUIudKKtAxNHTKmQEkXH",
+    "room": "1513",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1514": {
+    "device_id": "3f70d260-1425-11f1-a750-f365853900c5",
+    "token": "X15POacXYPa0wjHXCTfV",
+    "room": "1514",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1519": {
+    "device_id": "3fc4e5d0-1425-11f1-a750-f365853900c5",
+    "token": "hhR8Sj7gSBQqxgdtAqO5",
+    "room": "1519",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1516": {
+    "device_id": "3fce34a0-1425-11f1-a750-f365853900c5",
+    "token": "eNiIY0Wy2KH3WBFObVyR",
+    "room": "1516",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1515": {
+    "device_id": "3fd93120-1425-11f1-a750-f365853900c5",
+    "token": "Mj9SZlVFsmFcehA6fYOy",
+    "room": "1515",
+    "floor": 15,
+    "type": "SUITE"
+  },
+  "gateway-room-1524": {
+    "device_id": "3fde8850-1425-11f1-a750-f365853900c5",
+    "token": "7j2zNQlhS1oJRbE6e7X4",
+    "room": "1524",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1518": {
+    "device_id": "3ff74070-1425-11f1-a750-f365853900c5",
+    "token": "qvTDZF4cDPd1xOwOQmUJ",
+    "room": "1518",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1517": {
+    "device_id": "3fe9d2f0-1425-11f1-a750-f365853900c5",
+    "token": "xarp46Q4MIqrPhZNBjBx",
+    "room": "1517",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1521": {
+    "device_id": "3ffd33e0-1425-11f1-a750-f365853900c5",
+    "token": "bCO01H8GWhzqejW5I9DZ",
+    "room": "1521",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1523": {
+    "device_id": "40004120-1425-11f1-a750-f365853900c5",
+    "token": "WH5WBBJSeBmRFwsZUmiD",
+    "room": "1523",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1520": {
+    "device_id": "400e71f0-1425-11f1-a750-f365853900c5",
+    "token": "R6UkJaOBveKw6iMTqpU8",
+    "room": "1520",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1522": {
+    "device_id": "40059850-1425-11f1-a750-f365853900c5",
+    "token": "C6ZfUBbJIO5sBZsXqZYp",
+    "room": "1522",
+    "floor": 15,
+    "type": "VIP"
+  },
+  "gateway-room-1602": {
+    "device_id": "40590f80-1425-11f1-a750-f365853900c5",
+    "token": "C8gr68N1e6Jg1f0v3IKo",
+    "room": "1602",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1605": {
+    "device_id": "405c6ae0-1425-11f1-a750-f365853900c5",
+    "token": "dLVjMFYGP8eTgc39e04l",
+    "room": "1605",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1601": {
+    "device_id": "405d5540-1425-11f1-a750-f365853900c5",
+    "token": "txK1p4FM7fVYFWYclCvL",
+    "room": "1601",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1604": {
+    "device_id": "405fed50-1425-11f1-a750-f365853900c5",
+    "token": "TN9X3LbE7eojLPklINn0",
+    "room": "1604",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1603": {
+    "device_id": "4062d380-1425-11f1-a750-f365853900c5",
+    "token": "u4uCPTzpUugQIhDv7Wos",
+    "room": "1603",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1608": {
+    "device_id": "406ce5a1-1425-11f1-a750-f365853900c5",
+    "token": "M3SVk713fs4KBBPdIJlK",
+    "room": "1608",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1607": {
+    "device_id": "406878d0-1425-11f1-a750-f365853900c5",
+    "token": "ju3qhG6havFvGhcwxiiC",
+    "room": "1607",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1610": {
+    "device_id": "406b37f0-1425-11f1-a750-f365853900c5",
+    "token": "1ZYPzmZ8KpwjzelbHsXl",
+    "room": "1610",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1606": {
+    "device_id": "40654480-1425-11f1-a750-f365853900c5",
+    "token": "Ax7phsOvhW5bl1Yhfyg4",
+    "room": "1606",
+    "floor": 16,
+    "type": "STANDARD"
+  },
+  "gateway-room-1609": {
+    "device_id": "4078f390-1425-11f1-a750-f365853900c5",
+    "token": "9ISKWJERDnIe3ZSIG6tj",
+    "room": "1609",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1613": {
+    "device_id": "40c9d2b0-1425-11f1-a750-f365853900c5",
+    "token": "201369XWa0lBdxholtGy",
+    "room": "1613",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1616": {
+    "device_id": "40cf9f10-1425-11f1-a750-f365853900c5",
+    "token": "qQfXKABBrUr79x7TUi0w",
+    "room": "1616",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1615": {
+    "device_id": "40d34890-1425-11f1-a750-f365853900c5",
+    "token": "yg4ryNJlrjXCe2lxEpnm",
+    "room": "1615",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1612": {
+    "device_id": "40cd0700-1425-11f1-a750-f365853900c5",
+    "token": "DKEoUKXhk5RfSsesHowm",
+    "room": "1612",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1611": {
+    "device_id": "40d51d50-1425-11f1-a750-f365853900c5",
+    "token": "MNqz1fMAReor8qOakICg",
+    "room": "1611",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1620": {
+    "device_id": "40d914f0-1425-11f1-a750-f365853900c5",
+    "token": "ppPWLBlYfbtwxHxuzyTs",
+    "room": "1620",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1619": {
+    "device_id": "40e39c40-1425-11f1-a750-f365853900c5",
+    "token": "cgFXpMvDnnMKrb4MXW26",
+    "room": "1619",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1618": {
+    "device_id": "40ddf6f0-1425-11f1-a750-f365853900c5",
+    "token": "tHZknbrljKFfCZek7fAt",
+    "room": "1618",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1614": {
+    "device_id": "40e98fb0-1425-11f1-a750-f365853900c5",
+    "token": "puPI5LjkbqTzGAJXLq13",
+    "room": "1614",
+    "floor": 16,
+    "type": "SUITE"
+  },
+  "gateway-room-1617": {
+    "device_id": "40ef5c11-1425-11f1-a750-f365853900c5",
+    "token": "QE1K2bZyjO4hXpY6NZHm",
+    "room": "1617",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1621": {
+    "device_id": "41460790-1425-11f1-a750-f365853900c5",
+    "token": "i13Zj9RRQGZXgAFG7rBp",
+    "room": "1621",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1704": {
+    "device_id": "416a5870-1425-11f1-a750-f365853900c5",
+    "token": "1t1hPMtSV8VhxkIb6WI6",
+    "room": "1704",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1622": {
+    "device_id": "41659d80-1425-11f1-a750-f365853900c5",
+    "token": "9UFY0GVzZnJXcPG3Kly5",
+    "room": "1622",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1702": {
+    "device_id": "415dfc60-1425-11f1-a750-f365853900c5",
+    "token": "spH4Bq15Jsuctv8194BE",
+    "room": "1702",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1624": {
+    "device_id": "416db3d0-1425-11f1-a750-f365853900c5",
+    "token": "CzkxoH7GVXUzUEXkjCMq",
+    "room": "1624",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1623": {
+    "device_id": "41718460-1425-11f1-a750-f365853900c5",
+    "token": "1yyK7uu4ibSgAzgt9E0n",
+    "room": "1623",
+    "floor": 16,
+    "type": "VIP"
+  },
+  "gateway-room-1701": {
+    "device_id": "4173f560-1425-11f1-a750-f365853900c5",
+    "token": "vVt77ANwhZY2pLDj2x6E",
+    "room": "1701",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1706": {
+    "device_id": "41763f50-1425-11f1-a750-f365853900c5",
+    "token": "ZSdjVbHZJyXUy9pEBN2l",
+    "room": "1706",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1703": {
+    "device_id": "41794c90-1425-11f1-a750-f365853900c5",
+    "token": "gAbXL94TWROIEobhALFd",
+    "room": "1703",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1705": {
+    "device_id": "4181ff20-1425-11f1-a750-f365853900c5",
+    "token": "CEjLqkT4DKRlQhRfzcF2",
+    "room": "1705",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1710": {
+    "device_id": "41e83b00-1425-11f1-a750-f365853900c5",
+    "token": "ERe6tTu5dNvwudqwErn9",
+    "room": "1710",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1707": {
+    "device_id": "41ef3fe0-1425-11f1-a750-f365853900c5",
+    "token": "vOx3IQqpeajUjHsKq1ii",
+    "room": "1707",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1708": {
+    "device_id": "41e9e8b0-1425-11f1-a750-f365853900c5",
+    "token": "HboSigwk8vQbbnVLkv8c",
+    "room": "1708",
+    "floor": 17,
+    "type": "STANDARD"
+  },
+  "gateway-room-1712": {
+    "device_id": "41f33780-1425-11f1-a750-f365853900c5",
+    "token": "mjgDsTECjSG6iwkPrcWK",
+    "room": "1712",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1711": {
+    "device_id": "41f88eb0-1425-11f1-a750-f365853900c5",
+    "token": "YjLJSiIGt5zNrRisjgTJ",
+    "room": "1711",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1709": {
+    "device_id": "41fd2290-1425-11f1-a750-f365853900c5",
+    "token": "oJ8PmdzrXECLgRXxJOxk",
+    "room": "1709",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1713": {
+    "device_id": "4200a500-1425-11f1-a750-f365853900c5",
+    "token": "KAbSrWKZAu90LsxFUInx",
+    "room": "1713",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1714": {
+    "device_id": "4202a0d0-1425-11f1-a750-f365853900c5",
+    "token": "5ZPqlJbsU2xud9GzttIs",
+    "room": "1714",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1715": {
+    "device_id": "4207f800-1425-11f1-a750-f365853900c5",
+    "token": "cjMFiF2RXeXXrRF4Takc",
+    "room": "1715",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1716": {
+    "device_id": "420b7a70-1425-11f1-a750-f365853900c5",
+    "token": "rWvNcZqVV0fdFYuCEvjA",
+    "room": "1716",
+    "floor": 17,
+    "type": "SUITE"
+  },
+  "gateway-room-1722": {
+    "device_id": "42ffec90-1425-11f1-a750-f365853900c5",
+    "token": "OVUF9LIqPSL8remBqLP7",
+    "room": "1722",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1717": {
+    "device_id": "430fcb10-1425-11f1-a750-f365853900c5",
+    "token": "zXyqLd66selgxFIJWdlk",
+    "room": "1717",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1718": {
+    "device_id": "4316f700-1425-11f1-a750-f365853900c5",
+    "token": "Bj0n57uUUecoMZW6z0sZ",
+    "room": "1718",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1724": {
+    "device_id": "4327bfe0-1425-11f1-a750-f365853900c5",
+    "token": "rJTJPcZbEHEpaBFPuWHj",
+    "room": "1724",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1721": {
+    "device_id": "4321a560-1425-11f1-a750-f365853900c5",
+    "token": "xGyB6io0k3uSgLUDMhnA",
+    "room": "1721",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1719": {
+    "device_id": "432f12e0-1425-11f1-a750-f365853900c5",
+    "token": "sItko2ReMiJAjhfOY1gq",
+    "room": "1719",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1802": {
+    "device_id": "4338fdf0-1425-11f1-a750-f365853900c5",
+    "token": "5AiyRVScJpYBuDJiCfpn",
+    "room": "1802",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1723": {
+    "device_id": "433c3240-1425-11f1-a750-f365853900c5",
+    "token": "IGU9Unei8h53uDl3IuB9",
+    "room": "1723",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1801": {
+    "device_id": "434029e0-1425-11f1-a750-f365853900c5",
+    "token": "ZzKHLXhGD3AOWtspwwhO",
+    "room": "1801",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1720": {
+    "device_id": "43464460-1425-11f1-a750-f365853900c5",
+    "token": "3viA1sSSN2w4XkA0z08W",
+    "room": "1720",
+    "floor": 17,
+    "type": "VIP"
+  },
+  "gateway-room-1804": {
+    "device_id": "439ffd20-1425-11f1-a750-f365853900c5",
+    "token": "uKMZQpMqNnqAullhnHOv",
+    "room": "1804",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1805": {
+    "device_id": "43a24710-1425-11f1-a750-f365853900c5",
+    "token": "mRvaxqPUONvuya4Pk7zc",
+    "room": "1805",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1803": {
+    "device_id": "43a37f90-1425-11f1-a750-f365853900c5",
+    "token": "5LCIvxN4gk4iOTAxuE7D",
+    "room": "1803",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1811": {
+    "device_id": "43aea320-1425-11f1-a750-f365853900c5",
+    "token": "CVl8UozKxMpZKJSDgCXf",
+    "room": "1811",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1809": {
+    "device_id": "43a70200-1425-11f1-a750-f365853900c5",
+    "token": "SwQBpyopS34fXjAPScHx",
+    "room": "1809",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1812": {
+    "device_id": "43ac8040-1425-11f1-a750-f365853900c5",
+    "token": "h6a8WNQi2SJnaQDOjf0v",
+    "room": "1812",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1806": {
+    "device_id": "43b0ed10-1425-11f1-a750-f365853900c5",
+    "token": "95TIvzVxNNmoDze1Tgyz",
+    "room": "1806",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1810": {
+    "device_id": "43b33700-1425-11f1-a750-f365853900c5",
+    "token": "bN1qahvwuSztAc7pBQGs",
+    "room": "1810",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1808": {
+    "device_id": "43b5cf10-1425-11f1-a750-f365853900c5",
+    "token": "bJRiLqgjlHWN9Ec2pH2A",
+    "room": "1808",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1807": {
+    "device_id": "43b7a3d0-1425-11f1-a750-f365853900c5",
+    "token": "nRLSqMaPieeIx6dN7SZh",
+    "room": "1807",
+    "floor": 18,
+    "type": "STANDARD"
+  },
+  "gateway-room-1815": {
+    "device_id": "43f80830-1425-11f1-a750-f365853900c5",
+    "token": "TSO8voP0EV3Jb4zoTJXA",
+    "room": "1815",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1816": {
+    "device_id": "44077180-1425-11f1-a750-f365853900c5",
+    "token": "TxRmEHJwyBMnZxZbDhCV",
+    "room": "1816",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1820": {
+    "device_id": "44059cc0-1425-11f1-a750-f365853900c5",
+    "token": "TTp4Q8oNapd6ZxqptAaS",
+    "room": "1820",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1821": {
+    "device_id": "44068720-1425-11f1-a750-f365853900c5",
+    "token": "J7Zt1ZJzYOrliayOus76",
+    "room": "1821",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1819": {
+    "device_id": "43fc9c10-1425-11f1-a750-f365853900c5",
+    "token": "Zy23dGwSvmoUJMf0srj2",
+    "room": "1819",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1817": {
+    "device_id": "43f98ed0-1425-11f1-a750-f365853900c5",
+    "token": "Grwr5YhaIxsKhiPpG1S2",
+    "room": "1817",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1813": {
+    "device_id": "43fac750-1425-11f1-a750-f365853900c5",
+    "token": "edyT5xVe5UxaJyaItrJA",
+    "room": "1813",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1814": {
+    "device_id": "43f8cb80-1425-11f1-a750-f365853900c5",
+    "token": "ImE0NLEkht2BeMhkXqVp",
+    "room": "1814",
+    "floor": 18,
+    "type": "SUITE"
+  },
+  "gateway-room-1818": {
+    "device_id": "44099460-1425-11f1-a750-f365853900c5",
+    "token": "Jz2VaFgcwINHCq2Hplrk",
+    "room": "1818",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1822": {
+    "device_id": "44085be1-1425-11f1-a750-f365853900c5",
+    "token": "9wypIR4jRCYJ09G45wEc",
+    "room": "1822",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1904": {
+    "device_id": "444c1ba0-1425-11f1-a750-f365853900c5",
+    "token": "1y9dufVekNY25ouvRBTg",
+    "room": "1904",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1823": {
+    "device_id": "44490e60-1425-11f1-a750-f365853900c5",
+    "token": "SzDjA9wfcazeyMvfnCuv",
+    "room": "1823",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1824": {
+    "device_id": "444abc10-1425-11f1-a750-f365853900c5",
+    "token": "MaOwj4jr1oDu4Qfe20Fj",
+    "room": "1824",
+    "floor": 18,
+    "type": "VIP"
+  },
+  "gateway-room-1907": {
+    "device_id": "444fc520-1425-11f1-a750-f365853900c5",
+    "token": "f9bQ8iE86j4Vbjt1fpLv",
+    "room": "1907",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1905": {
+    "device_id": "444e1770-1425-11f1-a750-f365853900c5",
+    "token": "auudjZocnrvmugdIRenO",
+    "room": "1905",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1902": {
+    "device_id": "4450d690-1425-11f1-a750-f365853900c5",
+    "token": "ULO2aV39SFFUdDcQA7Un",
+    "room": "1902",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1906": {
+    "device_id": "44548011-1425-11f1-a750-f365853900c5",
+    "token": "G6GmbwPkzHm62PTdNpIm",
+    "room": "1906",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1901": {
+    "device_id": "444d0600-1425-11f1-a750-f365853900c5",
+    "token": "YU1QZmeG7ZUO15Q1UFEc",
+    "room": "1901",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1908": {
+    "device_id": "44554360-1425-11f1-a750-f365853900c5",
+    "token": "3fZArFSPfUZZRVaXKtUy",
+    "room": "1908",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1903": {
+    "device_id": "44534790-1425-11f1-a750-f365853900c5",
+    "token": "OJIFERyZuitFK4KExKVA",
+    "room": "1903",
+    "floor": 19,
+    "type": "STANDARD"
+  },
+  "gateway-room-1910": {
+    "device_id": "44975570-1425-11f1-a750-f365853900c5",
+    "token": "zBqUjO2Jlrt7fwGAXQKz",
+    "room": "1910",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1911": {
+    "device_id": "44988df0-1425-11f1-a750-f365853900c5",
+    "token": "G0zMhgJ97rFwJruqKYbF",
+    "room": "1911",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1912": {
+    "device_id": "449a3ba0-1425-11f1-a750-f365853900c5",
+    "token": "NTu4ePnpM1zEmt9OR0Te",
+    "room": "1912",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1909": {
+    "device_id": "44992a30-1425-11f1-a750-f365853900c5",
+    "token": "bEFflDoTXwP36YBmd7w9",
+    "room": "1909",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1915": {
+    "device_id": "449c5e80-1425-11f1-a750-f365853900c5",
+    "token": "WpUQuqpwA5oFDQRJarLY",
+    "room": "1915",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1913": {
+    "device_id": "449b4d10-1425-11f1-a750-f365853900c5",
+    "token": "x88dOpxCblyiVf5ZxDjr",
+    "room": "1913",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1918": {
+    "device_id": "44a0cb50-1425-11f1-a750-f365853900c5",
+    "token": "WUI1snEK6SUZpH8GLTUC",
+    "room": "1918",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-1916": {
+    "device_id": "449e0c30-1425-11f1-a750-f365853900c5",
+    "token": "iUUhbRIoEspmtOhfPXIz",
+    "room": "1916",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1917": {
+    "device_id": "449fe0f0-1425-11f1-a750-f365853900c5",
+    "token": "Rb4B8SZCsVLolazi0rgD",
+    "room": "1917",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-1914": {
+    "device_id": "449d21d0-1425-11f1-a750-f365853900c5",
+    "token": "TwKVmdIoH23JxHMsEQZj",
+    "room": "1914",
+    "floor": 19,
+    "type": "SUITE"
+  },
+  "gateway-room-1920": {
+    "device_id": "44df33e0-1425-11f1-a750-f365853900c5",
+    "token": "aUPaiYdpDbjUyHvAiBbm",
+    "room": "1920",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-1923": {
+    "device_id": "44e04550-1425-11f1-a750-f365853900c5",
+    "token": "IvIDMW2jX04HSvT2IFjA",
+    "room": "1923",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-1921": {
+    "device_id": "44e0e191-1425-11f1-a750-f365853900c5",
+    "token": "QZw87IdYl8u6LyYLoZI2",
+    "room": "1921",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-2002": {
+    "device_id": "44e611b0-1425-11f1-a750-f365853900c5",
+    "token": "gdf28oC1Dd0kw51QNqf3",
+    "room": "2002",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-1922": {
+    "device_id": "44e1f300-1425-11f1-a750-f365853900c5",
+    "token": "axce4bb4XDHqQOoaRvF2",
+    "room": "1922",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-1919": {
+    "device_id": "44e3a0b0-1425-11f1-a750-f365853900c5",
+    "token": "n8hsvoiTE2D1Z3CK1ozc",
+    "room": "1919",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-2001": {
+    "device_id": "44e2b650-1425-11f1-a750-f365853900c5",
+    "token": "X7qcuX39F2PkLe7ilp07",
+    "room": "2001",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-2003": {
+    "device_id": "44e48b10-1425-11f1-a750-f365853900c5",
+    "token": "pDDvwatWDyM4LlIGoUQp",
+    "room": "2003",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-1924": {
+    "device_id": "44e72320-1425-11f1-a750-f365853900c5",
+    "token": "N2xLmH4Le2qoVEFjYlVd",
+    "room": "1924",
+    "floor": 19,
+    "type": "VIP"
+  },
+  "gateway-room-2004": {
+    "device_id": "44e94600-1425-11f1-a750-f365853900c5",
+    "token": "KvY3ul4srd5mlqDswKh1",
+    "room": "2004",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-2007": {
+    "device_id": "4529aa60-1425-11f1-a750-f365853900c5",
+    "token": "KN5bdfi6KPi04f8EwXXk",
+    "room": "2007",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-2005": {
+    "device_id": "452a94c0-1425-11f1-a750-f365853900c5",
+    "token": "C32bCPUgtdmKaYArQ3kC",
+    "room": "2005",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-2008": {
+    "device_id": "452d2cd0-1425-11f1-a750-f365853900c5",
+    "token": "uSguX3fmKSaxFkooX0yj",
+    "room": "2008",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-2014": {
+    "device_id": "452c4270-1425-11f1-a750-f365853900c5",
+    "token": "849kpog2sobzXfitv3Tt",
+    "room": "2014",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2011": {
+    "device_id": "452b3100-1425-11f1-a750-f365853900c5",
+    "token": "vm93XKDrzmNUVLSI2gfB",
+    "room": "2011",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2006": {
+    "device_id": "452e3e40-1425-11f1-a750-f365853900c5",
+    "token": "6kQW6Sx3xSsvpQdK03ic",
+    "room": "2006",
+    "floor": 20,
+    "type": "STANDARD"
+  },
+  "gateway-room-2009": {
+    "device_id": "4530d651-1425-11f1-a750-f365853900c5",
+    "token": "hmo9ROZeZQn4jTuN0Hmb",
+    "room": "2009",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2010": {
+    "device_id": "452febf0-1425-11f1-a750-f365853900c5",
+    "token": "cnpK0jSbH0FtrOVdHNC1",
+    "room": "2010",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2013": {
+    "device_id": "45332040-1425-11f1-a750-f365853900c5",
+    "token": "nLHItlAU8EmMTd5cUFFM",
+    "room": "2013",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2012": {
+    "device_id": "4531e7c0-1425-11f1-a750-f365853900c5",
+    "token": "mwauFlrHrJXkvYld2snN",
+    "room": "2012",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2015": {
+    "device_id": "4574e430-1425-11f1-a750-f365853900c5",
+    "token": "uAU1iCUmLWvPdf6Sr1UI",
+    "room": "2015",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2021": {
+    "device_id": "4573f9d0-1425-11f1-a750-f365853900c5",
+    "token": "DCvwNE5cVSSmcNYyfBCh",
+    "room": "2021",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2024": {
+    "device_id": "45797810-1425-11f1-a750-f365853900c5",
+    "token": "cHT0uF3nq9ggwAZKXhgQ",
+    "room": "2024",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2018": {
+    "device_id": "4575ce90-1425-11f1-a750-f365853900c5",
+    "token": "ejY9ckvhQRPiGOAzJDCo",
+    "room": "2018",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2017": {
+    "device_id": "4577f170-1425-11f1-a750-f365853900c5",
+    "token": "9r6qBHWtQaiJsiAzNrAB",
+    "room": "2017",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2016": {
+    "device_id": "4576b8f0-1425-11f1-a750-f365853900c5",
+    "token": "7GakesoqJ4Y4KzJIfbDj",
+    "room": "2016",
+    "floor": 20,
+    "type": "SUITE"
+  },
+  "gateway-room-2022": {
+    "device_id": "457c8551-1425-11f1-a750-f365853900c5",
+    "token": "mLww8CuXtx48MPPByrAz",
+    "room": "2022",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2023": {
+    "device_id": "457f4470-1425-11f1-a750-f365853900c5",
+    "token": "ZQXQMZkfdyXbdfdBxnIy",
+    "room": "2023",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2020": {
+    "device_id": "457b25c0-1425-11f1-a750-f365853900c5",
+    "token": "P2PB55FLeJCZw6Q2QlPw",
+    "room": "2020",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2019": {
+    "device_id": "457e0bf0-1425-11f1-a750-f365853900c5",
+    "token": "hEyY0InThGC0kE1p3Ng6",
+    "room": "2019",
+    "floor": 20,
+    "type": "VIP"
+  },
+  "gateway-room-2105": {
+    "device_id": "45c2b610-1425-11f1-a750-f365853900c5",
+    "token": "Aq3Ynd5yzdfygUdeGOqI",
+    "room": "2105",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2106": {
+    "device_id": "45c48ad0-1425-11f1-a750-f365853900c5",
+    "token": "VHp898OrmxltUv3O13gg",
+    "room": "2106",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2102": {
+    "device_id": "45c1a4a0-1425-11f1-a750-f365853900c5",
+    "token": "nGJnFuky63Kg4adCVPsM",
+    "room": "2102",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2101": {
+    "device_id": "45c0ba40-1425-11f1-a750-f365853900c5",
+    "token": "wIxlIikpbCnwNZpNtRlt",
+    "room": "2101",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2108": {
+    "device_id": "45c80d40-1425-11f1-a750-f365853900c5",
+    "token": "y1aBbvHSHzevFFoViuJ1",
+    "room": "2108",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2104": {
+    "device_id": "45cacc60-1425-11f1-a750-f365853900c5",
+    "token": "ionefXhhKBHB0iecGhXK",
+    "room": "2104",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2103": {
+    "device_id": "45c6d4c0-1425-11f1-a750-f365853900c5",
+    "token": "1LxxcGXJ1veLGsejbzT1",
+    "room": "2103",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2109": {
+    "device_id": "45c993e0-1425-11f1-a750-f365853900c5",
+    "token": "sEpvoc90kml18rUAGjgL",
+    "room": "2109",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2110": {
+    "device_id": "45cbb6c0-1425-11f1-a750-f365853900c5",
+    "token": "wEVP46LhIIcqIXakv2re",
+    "room": "2110",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2107": {
+    "device_id": "45c5c350-1425-11f1-a750-f365853900c5",
+    "token": "Zx652QW67V7o0PPAB5B5",
+    "room": "2107",
+    "floor": 21,
+    "type": "STANDARD"
+  },
+  "gateway-room-2111": {
+    "device_id": "4607ae50-1425-11f1-a750-f365853900c5",
+    "token": "DtKq1w7omaUmwndD04Sc",
+    "room": "2111",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2113": {
+    "device_id": "460898b0-1425-11f1-a750-f365853900c5",
+    "token": "eAoEx41YS3uVHp5f24Ob",
+    "room": "2113",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2112": {
+    "device_id": "46095c00-1425-11f1-a750-f365853900c5",
+    "token": "hWl4DP0hB50AB7jU3BSw",
+    "room": "2112",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2115": {
+    "device_id": "460ae2a0-1425-11f1-a750-f365853900c5",
+    "token": "N7jNIfqnTEXFBMy6QRX8",
+    "room": "2115",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2114": {
+    "device_id": "460c6940-1425-11f1-a750-f365853900c5",
+    "token": "dFW0N2hxxAwe4gdIcOrm",
+    "room": "2114",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2116": {
+    "device_id": "460defe0-1425-11f1-a750-f365853900c5",
+    "token": "8i0AJslLDof0MEU6cdcZ",
+    "room": "2116",
+    "floor": 21,
+    "type": "SUITE"
+  },
+  "gateway-room-2120": {
+    "device_id": "461235a1-1425-11f1-a750-f365853900c5",
+    "token": "A1Tua27YIjn3qntB750Z",
+    "room": "2120",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2117": {
+    "device_id": "460f2860-1425-11f1-a750-f365853900c5",
+    "token": "oGrpfjex4G56qAvuc6Tv",
+    "room": "2117",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2119": {
+    "device_id": "4610fd20-1425-11f1-a750-f365853900c5",
+    "token": "vBbsHma5Fkq8kdCcSKgX",
+    "room": "2119",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2118": {
+    "device_id": "46132000-1425-11f1-a750-f365853900c5",
+    "token": "lIWkhuB0WH5dxqGNIRk6",
+    "room": "2118",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2121": {
+    "device_id": "4655f560-1425-11f1-a750-f365853900c5",
+    "token": "a3qopNGvwTztdR1S3Tct",
+    "room": "2121",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2122": {
+    "device_id": "46586660-1425-11f1-a750-f365853900c5",
+    "token": "mlQgZ9ufz4JrwPQlvaLI",
+    "room": "2122",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2204": {
+    "device_id": "465d6f70-1425-11f1-a750-f365853900c5",
+    "token": "fV3cVBifTWGXMUPxhlS1",
+    "room": "2204",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2203": {
+    "device_id": "465c36f1-1425-11f1-a750-f365853900c5",
+    "token": "WSaJ2OMCRmOWfCN3d93L",
+    "room": "2203",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2123": {
+    "device_id": "465a6230-1425-11f1-a750-f365853900c5",
+    "token": "qVbaBR4Ytb5mIaEAkTI1",
+    "room": "2123",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2206": {
+    "device_id": "466118f0-1425-11f1-a750-f365853900c5",
+    "token": "R4tpHvdw9LvH3PLGg5Zm",
+    "room": "2206",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2124": {
+    "device_id": "465f1d20-1425-11f1-a750-f365853900c5",
+    "token": "j8nOcEKSGtd4j73pjUxD",
+    "room": "2124",
+    "floor": 21,
+    "type": "VIP"
+  },
+  "gateway-room-2202": {
+    "device_id": "46625171-1425-11f1-a750-f365853900c5",
+    "token": "CIh2QbRggAqW4FZnA8Uc",
+    "room": "2202",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2205": {
+    "device_id": "465e59d0-1425-11f1-a750-f365853900c5",
+    "token": "WfnBCzQi6ipYE238aITJ",
+    "room": "2205",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2201": {
+    "device_id": "46649b60-1425-11f1-a750-f365853900c5",
+    "token": "jqeYjqY9SWwBWY8IpEhB",
+    "room": "2201",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2209": {
+    "device_id": "46a4ffc0-1425-11f1-a750-f365853900c5",
+    "token": "r09s2WQBXKMwRWlbtera",
+    "room": "2209",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2211": {
+    "device_id": "46a61130-1425-11f1-a750-f365853900c5",
+    "token": "1KYJauTDZlqBBt1jFuex",
+    "room": "2211",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2214": {
+    "device_id": "46a6d480-1425-11f1-a750-f365853900c5",
+    "token": "DPhwDxOLF3kJ2RkHCGpO",
+    "room": "2214",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2216": {
+    "device_id": "46a88230-1425-11f1-a750-f365853900c5",
+    "token": "tMI08baknvoHZUobXYax",
+    "room": "2216",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2213": {
+    "device_id": "46a797d0-1425-11f1-a750-f365853900c5",
+    "token": "3gxCrEsf2IXJ4Dy2XpR7",
+    "room": "2213",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2215": {
+    "device_id": "46add960-1425-11f1-a750-f365853900c5",
+    "token": "tETyKRNurA6g8Y9Ywph2",
+    "room": "2215",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2207": {
+    "device_id": "46af8711-1425-11f1-a750-f365853900c5",
+    "token": "6hUR2SLjsWZw6J2kPc4H",
+    "room": "2207",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2210": {
+    "device_id": "46aa2fe1-1425-11f1-a750-f365853900c5",
+    "token": "zCwbYGuV1IZFp1r2eP4l",
+    "room": "2210",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2208": {
+    "device_id": "46b07171-1425-11f1-a750-f365853900c5",
+    "token": "GFbWnOZMHscLUrM3l4IT",
+    "room": "2208",
+    "floor": 22,
+    "type": "STANDARD"
+  },
+  "gateway-room-2212": {
+    "device_id": "46ac2bb0-1425-11f1-a750-f365853900c5",
+    "token": "fT1TKyZzKOg78YhmebPC",
+    "room": "2212",
+    "floor": 22,
+    "type": "SUITE"
+  },
+  "gateway-room-2220": {
+    "device_id": "46ee16b0-1425-11f1-a750-f365853900c5",
+    "token": "NCwBhOWqUkilNlzPjQpe",
+    "room": "2220",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2219": {
+    "device_id": "46f087b1-1425-11f1-a750-f365853900c5",
+    "token": "OrwhJhm1Z4hjHT24nTcB",
+    "room": "2219",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2222": {
+    "device_id": "46efc460-1425-11f1-a750-f365853900c5",
+    "token": "Uck1fi6y14CgkMCpOiEr",
+    "room": "2222",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2221": {
+    "device_id": "46f14b00-1425-11f1-a750-f365853900c5",
+    "token": "50uwaba7mwGuOMWiSGSj",
+    "room": "2221",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2217": {
+    "device_id": "46ef2820-1425-11f1-a750-f365853900c5",
+    "token": "aTbUwah8xjk9JOP7IRNR",
+    "room": "2217",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2218": {
+    "device_id": "46f2f8b0-1425-11f1-a750-f365853900c5",
+    "token": "iXfAhMFIAFE0zPbmi8XC",
+    "room": "2218",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2223": {
+    "device_id": "46f23561-1425-11f1-a750-f365853900c5",
+    "token": "C62wTrnidHlQWQZfaPSL",
+    "room": "2223",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2301": {
+    "device_id": "46f5b7d0-1425-11f1-a750-f365853900c5",
+    "token": "U0ZYRRgG4osoCQneRQK8",
+    "room": "2301",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2224": {
+    "device_id": "46f6a230-1425-11f1-a750-f365853900c5",
+    "token": "pA0witxklp9mLEQrnyxP",
+    "room": "2224",
+    "floor": 22,
+    "type": "VIP"
+  },
+  "gateway-room-2302": {
+    "device_id": "46f40a20-1425-11f1-a750-f365853900c5",
+    "token": "YWSGf1nilLuNKnlQJoSu",
+    "room": "2302",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2303": {
+    "device_id": "47366a50-1425-11f1-a750-f365853900c5",
+    "token": "VXRc2k7gnl6u8LzDnvFt",
+    "room": "2303",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2305": {
+    "device_id": "4738b440-1425-11f1-a750-f365853900c5",
+    "token": "tgjco1T4p4RzxkxU9uUc",
+    "room": "2305",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2307": {
+    "device_id": "4739c5b1-1425-11f1-a750-f365853900c5",
+    "token": "gUVYShJT5Q90KsAdBpCH",
+    "room": "2307",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2304": {
+    "device_id": "4737a2d0-1425-11f1-a750-f365853900c5",
+    "token": "mxZ0Wprf3kpPWElL1WOJ",
+    "room": "2304",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2306": {
+    "device_id": "473b4c50-1425-11f1-a750-f365853900c5",
+    "token": "QFDlo8OihEzhiQwMXk25",
+    "room": "2306",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2309": {
+    "device_id": "473c0fa0-1425-11f1-a750-f365853900c5",
+    "token": "W59lmnnhAhwliBgB9oq8",
+    "room": "2309",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2308": {
+    "device_id": "473d2110-1425-11f1-a750-f365853900c5",
+    "token": "lKK9sinC12BZKzR4xWEb",
+    "room": "2308",
+    "floor": 23,
+    "type": "STANDARD"
+  },
+  "gateway-room-2311": {
+    "device_id": "47405560-1425-11f1-a750-f365853900c5",
+    "token": "jc8hlF8YrwFPYnHZ88NY",
+    "room": "2311",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2312": {
+    "device_id": "473ef5d1-1425-11f1-a750-f365853900c5",
+    "token": "i1NP8i0w3LKamaFz4hvW",
+    "room": "2312",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2310": {
+    "device_id": "474362a0-1425-11f1-a750-f365853900c5",
+    "token": "oqdcNolQyZGDAv1Bv8Bx",
+    "room": "2310",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2318": {
+    "device_id": "4786d440-1425-11f1-a750-f365853900c5",
+    "token": "ZZSKNz1z0DjSj0l3IYpL",
+    "room": "2318",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2317": {
+    "device_id": "4783ee10-1425-11f1-a750-f365853900c5",
+    "token": "GUzcJdT01ioK7JUip5ZQ",
+    "room": "2317",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2313": {
+    "device_id": "4785e9e0-1425-11f1-a750-f365853900c5",
+    "token": "8bh4bOhDQREdsExPV0Tu",
+    "room": "2313",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2314": {
+    "device_id": "47852690-1425-11f1-a750-f365853900c5",
+    "token": "gyjpQ7XehVvsI6EMGyzT",
+    "room": "2314",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2319": {
+    "device_id": "478a2fa0-1425-11f1-a750-f365853900c5",
+    "token": "YxEcy2k2spXrrUvS8ldc",
+    "room": "2319",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2316": {
+    "device_id": "4788d010-1425-11f1-a750-f365853900c5",
+    "token": "4JqGtgCpwxPRtV8bvsVX",
+    "room": "2316",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2320": {
+    "device_id": "478dd920-1425-11f1-a750-f365853900c5",
+    "token": "zgridlmceWCRV5D15fPt",
+    "room": "2320",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2322": {
+    "device_id": "478bb641-1425-11f1-a750-f365853900c5",
+    "token": "WWR8C8JUFUHszg620SeL",
+    "room": "2322",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2315": {
+    "device_id": "478acbe0-1425-11f1-a750-f365853900c5",
+    "token": "jJHt0zoDLBsNbK8XPt0t",
+    "room": "2315",
+    "floor": 23,
+    "type": "SUITE"
+  },
+  "gateway-room-2321": {
+    "device_id": "478c7991-1425-11f1-a750-f365853900c5",
+    "token": "pZ8s9kSq4hu2rcbalqiq",
+    "room": "2321",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2324": {
+    "device_id": "47d54260-1425-11f1-a750-f365853900c5",
+    "token": "GS2W6UG7iYAcJ7LYbPPg",
+    "room": "2324",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2401": {
+    "device_id": "47d45800-1425-11f1-a750-f365853900c5",
+    "token": "BEbLEftNIabeGW1N3iWp",
+    "room": "2401",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2403": {
+    "device_id": "47d6a1f0-1425-11f1-a750-f365853900c5",
+    "token": "p2LVHdsUp5F7htIhV45i",
+    "room": "2403",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2402": {
+    "device_id": "47d7da70-1425-11f1-a750-f365853900c5",
+    "token": "vY9sPb0O7pE4DFvwuO3v",
+    "room": "2402",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2406": {
+    "device_id": "47dc4741-1425-11f1-a750-f365853900c5",
+    "token": "zxQiJANbNtB2pTWtHr9n",
+    "room": "2406",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2405": {
+    "device_id": "47db83f0-1425-11f1-a750-f365853900c5",
+    "token": "olFGhBuHiLjVN9nk3Pd7",
+    "room": "2405",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2323": {
+    "device_id": "47da2460-1425-11f1-a750-f365853900c5",
+    "token": "9MyZbu4t5CGTM6iliNpM",
+    "room": "2323",
+    "floor": 23,
+    "type": "VIP"
+  },
+  "gateway-room-2407": {
+    "device_id": "47df7b91-1425-11f1-a750-f365853900c5",
+    "token": "oMh2fiyEL5cyAk219kQL",
+    "room": "2407",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2408": {
+    "device_id": "47dd58b0-1425-11f1-a750-f365853900c5",
+    "token": "Wn8yJTGax9WW5FpvxQgQ",
+    "room": "2408",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2404": {
+    "device_id": "47de1c00-1425-11f1-a750-f365853900c5",
+    "token": "z0gsr2wLLWHO6MQK9b2x",
+    "room": "2404",
+    "floor": 24,
+    "type": "STANDARD"
+  },
+  "gateway-room-2413": {
+    "device_id": "48211870-1425-11f1-a750-f365853900c5",
+    "token": "jazhyQ3DrE3dJHMij0lz",
+    "room": "2413",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2412": {
+    "device_id": "481fb8e0-1425-11f1-a750-f365853900c5",
+    "token": "1rC7EngRBPALDfrJIf1g",
+    "room": "2412",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2416": {
+    "device_id": "4821dbc0-1425-11f1-a750-f365853900c5",
+    "token": "uos4GFx4A18RrZ6VpXFi",
+    "room": "2416",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2410": {
+    "device_id": "481e3240-1425-11f1-a750-f365853900c5",
+    "token": "bAeHF5y2vM7pnS5pOI6H",
+    "room": "2410",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2417": {
+    "device_id": "4823d791-1425-11f1-a750-f365853900c5",
+    "token": "XQyegtHPhRMaRP3nNYs1",
+    "room": "2417",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2418": {
+    "device_id": "48275a00-1425-11f1-a750-f365853900c5",
+    "token": "uemPAIMbOZbbc32qFqZY",
+    "room": "2418",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2411": {
+    "device_id": "4825fa70-1425-11f1-a750-f365853900c5",
+    "token": "7GMmUC9cH2Mcavl0rH38",
+    "room": "2411",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2415": {
+    "device_id": "482907b0-1425-11f1-a750-f365853900c5",
+    "token": "IkYs3Qx1tNhZVipHdQZ9",
+    "room": "2415",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2409": {
+    "device_id": "482cd840-1425-11f1-a750-f365853900c5",
+    "token": "WiYdpZkycJO072XLUYQ0",
+    "room": "2409",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2414": {
+    "device_id": "482e85f1-1425-11f1-a750-f365853900c5",
+    "token": "TmuJefRQDbMvajI5ZK7d",
+    "room": "2414",
+    "floor": 24,
+    "type": "SUITE"
+  },
+  "gateway-room-2501": {
+    "device_id": "486e2701-1425-11f1-a750-f365853900c5",
+    "token": "YKdjDIxIEhINue0Q19xJ",
+    "room": "2501",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2422": {
+    "device_id": "486ca060-1425-11f1-a750-f365853900c5",
+    "token": "uuqe2Rx7iYZtyzf9cXyq",
+    "room": "2422",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2420": {
+    "device_id": "486d3ca0-1425-11f1-a750-f365853900c5",
+    "token": "gUnQLecpAG4IE5mBvlXs",
+    "room": "2420",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2502": {
+    "device_id": "486f3870-1425-11f1-a750-f365853900c5",
+    "token": "QUOOdB9IhyRsP3ud1R7H",
+    "room": "2502",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2419": {
+    "device_id": "486b67e0-1425-11f1-a750-f365853900c5",
+    "token": "AuI2QCxUtmw02gjulZyo",
+    "room": "2419",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2503": {
+    "device_id": "48744180-1425-11f1-a750-f365853900c5",
+    "token": "xmLyUacRLRRYZeH6cG7Y",
+    "room": "2503",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2504": {
+    "device_id": "487049e0-1425-11f1-a750-f365853900c5",
+    "token": "0816wxuxfWD9kLmWGXHt",
+    "room": "2504",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2421": {
+    "device_id": "487293d0-1425-11f1-a750-f365853900c5",
+    "token": "V8IrfSOpt0TJuGL8toEo",
+    "room": "2421",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2424": {
+    "device_id": "4871f791-1425-11f1-a750-f365853900c5",
+    "token": "K2N8T1kM7GOfXy6jLyYR",
+    "room": "2424",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2423": {
+    "device_id": "48713440-1425-11f1-a750-f365853900c5",
+    "token": "Ri4H3nNKs0xdx6jCqxOy",
+    "room": "2423",
+    "floor": 24,
+    "type": "VIP"
+  },
+  "gateway-room-2507": {
+    "device_id": "48b1bfb0-1425-11f1-a750-f365853900c5",
+    "token": "g9OLLhUeVUVV62weyOtW",
+    "room": "2507",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2510": {
+    "device_id": "48b4a5e0-1425-11f1-a750-f365853900c5",
+    "token": "ckCogArzkQDbsGbOhzbC",
+    "room": "2510",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2505": {
+    "device_id": "48b2d120-1425-11f1-a750-f365853900c5",
+    "token": "geWzlmBuheXyYShFneZa",
+    "room": "2505",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2508": {
+    "device_id": "48b3e290-1425-11f1-a750-f365853900c5",
+    "token": "XOMVMW636qyhruT1XwNj",
+    "room": "2508",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2506": {
+    "device_id": "48b73df0-1425-11f1-a750-f365853900c5",
+    "token": "6T99uZMERf14ImBN32rV",
+    "room": "2506",
+    "floor": 25,
+    "type": "STANDARD"
+  },
+  "gateway-room-2511": {
+    "device_id": "48b62c80-1425-11f1-a750-f365853900c5",
+    "token": "8uMFNlsPKsJSyFIu5gaV",
+    "room": "2511",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2513": {
+    "device_id": "48bda690-1425-11f1-a750-f365853900c5",
+    "token": "tHM2jv8tOUXpyKMBg6MA",
+    "room": "2513",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2509": {
+    "device_id": "48b80140-1425-11f1-a750-f365853900c5",
+    "token": "0tSmiMs08LslR9wj3OOs",
+    "room": "2509",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2512": {
+    "device_id": "48ba7240-1425-11f1-a750-f365853900c5",
+    "token": "ZVaMvMApotlNWB9ACau9",
+    "room": "2512",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2514": {
+    "device_id": "48bbaac0-1425-11f1-a750-f365853900c5",
+    "token": "hGB0KmBGr6tFzwUlir6t",
+    "room": "2514",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2519": {
+    "device_id": "48f901e0-1425-11f1-a750-f365853900c5",
+    "token": "THz3YmGvtMtOOyCrtyMY",
+    "room": "2519",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2518": {
+    "device_id": "48fa1350-1425-11f1-a750-f365853900c5",
+    "token": "rTJWCIi5ZLxR7beUQzOJ",
+    "room": "2518",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2515": {
+    "device_id": "48fa8880-1425-11f1-a750-f365853900c5",
+    "token": "jqBsT5ho7cwW7D3ASBKP",
+    "room": "2515",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2523": {
+    "device_id": "48fb24c1-1425-11f1-a750-f365853900c5",
+    "token": "qKMrgNm6yk2KkDX64Po6",
+    "room": "2523",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2524": {
+    "device_id": "48fbe810-1425-11f1-a750-f365853900c5",
+    "token": "lHiKQhRzWUdih4VeAhnf",
+    "room": "2524",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2517": {
+    "device_id": "48fdbcd0-1425-11f1-a750-f365853900c5",
+    "token": "Eyrdr0YkkWW6r1dcdlhZ",
+    "room": "2517",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2520": {
+    "device_id": "48ff9190-1425-11f1-a750-f365853900c5",
+    "token": "777pDqsbc3iZwNl7tAQx",
+    "room": "2520",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2522": {
+    "device_id": "490006c1-1425-11f1-a750-f365853900c5",
+    "token": "WOsdEtpB7Z8KkNC0iyPK",
+    "room": "2522",
+    "floor": 25,
+    "type": "VIP"
+  },
+  "gateway-room-2516": {
+    "device_id": "48fcd270-1425-11f1-a750-f365853900c5",
+    "token": "dtW6yPI42WOTdoxeNhud",
+    "room": "2516",
+    "floor": 25,
+    "type": "SUITE"
+  },
+  "gateway-room-2521": {
+    "device_id": "49011830-1425-11f1-a750-f365853900c5",
+    "token": "wHXj0nYvUESp1C1bjTiI",
+    "room": "2521",
+    "floor": 25,
+    "type": "VIP"
   }
 }

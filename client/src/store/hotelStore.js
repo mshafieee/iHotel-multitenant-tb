@@ -12,7 +12,10 @@ const useHotelStore = create((set, get) => ({
   sse: null,
   pollTimer: null,
 
-  // Fetch full overview from server
+  // Fetch overview — server always responds instantly with cached snapshot.
+  // If data was stale, a background TB fetch runs on the server and delivers
+  // fresh data via SSE 'snapshot'. So we always update from HTTP here, and
+  // the SSE listener will update again when fresh data arrives.
   fetchOverview: async () => {
     try {
       const d = await api('/api/hotel/overview');
@@ -45,7 +48,7 @@ const useHotelStore = create((set, get) => ({
     fetchReservations();
     fetchLogs();
     fetchTodayCheckouts();
-    const timer = setInterval(fetchOverview, 15000);
+    const timer = setInterval(fetchOverview, 60000);
     set({ pollTimer: timer });
     setInterval(fetchReservations, 30000);
     setInterval(fetchLogs, 15000);

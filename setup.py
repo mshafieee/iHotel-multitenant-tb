@@ -36,19 +36,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ThingsBoard connection
 TB_HOST = 'http://localhost:8080'
-TB_USER = 'admin@azhar.com'
-TB_PASS = 'azhar123'
+TB_USER = 'admin@hayat.com'
+TB_PASS = 'hayat123'
 
 # Hotel layout
-FLOORS          = 10   # number of floors
-ROOMS_PER_FLOOR = 8    # rooms per floor
+FLOORS          = 25   # number of floors
+ROOMS_PER_FLOOR = 24    # rooms per floor
 
 # Room type ranges — list of (first_idx, last_idx, type_name)
 # room index runs 1..ROOMS_PER_FLOOR; inclusive on both ends
 ROOM_TYPE_RANGES = [
-    (1, 4, 'STANDARD'),
-    (5, 6, 'SUITE'),
-    (7, 8, 'VIP'),
+    (1, 8, 'STANDARD'),
+    (9, 16, 'SUITE'),
+    (17, 24, 'VIP'),
 ]
 
 # Rack rates per night (SAR) — must include every type in ROOM_TYPE_RANGES
