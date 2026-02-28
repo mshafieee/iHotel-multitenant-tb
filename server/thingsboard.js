@@ -87,6 +87,68 @@ class ThingsBoardClient {
   }
 
   getWsToken() { return this.token; }
+
+  /**
+   * Open a server-side WebSocket to ThingsBoard and subscribe to LATEST_TELEMETRY
+   * for the given devices.  Calls onUpdate(roomNum, deviceId, parsedData) whenever
+   * a device publishes new telemetry — no polling needed.
+   *
+   * @param {Object} deviceIdToRoom  { [deviceId]: roomNum }
+   * @param {Function} onUpdate      (roomNum, deviceId, data) => void
+   * @returns {WebSocket}            Call .terminate() to cancel the subscription.
+   */
+  async openTelemetryWs(deviceIdToRoom, onUpdate) {
+    await this.ensureAuth();
+    const WebSocket = require('ws');
+
+    // Build cmdId ↔ device mapping
+    const cmdMap = new Map(); // cmdId → { deviceId, roomNum }
+    let cmdId = 1;
+    const allSubCmds = [];
+    for (const [deviceId, roomNum] of Object.entries(deviceIdToRoom)) {
+      cmdMap.set(cmdId, { deviceId, roomNum });
+      allSubCmds.push({ entityType: 'DEVICE', entityId: deviceId, scope: 'LATEST_TELEMETRY', cmdId });
+      cmdId++;
+    }
+
+    const wsUrl = this.host.replace(/^https?/, m => m === 'https' ? 'wss' : 'ws') +
+                  `/api/ws/plugins/telemetry?token=${this.token}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.on('open', () => {
+      // Send subscriptions in batches of 100 to avoid oversized frames
+      const BATCH = 100;
+      for (let i = 0; i < allSubCmds.length; i += BATCH) {
+        ws.send(JSON.stringify({ tsSubCmds: allSubCmds.slice(i, i + BATCH) }));
+      }
+    });
+
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        // TB sends { subscriptionId, data: { key: [[ts, val], ...] } }
+        if (!msg.subscriptionId || !msg.data) return;
+        const info = cmdMap.get(msg.subscriptionId);
+        if (!info) return;
+
+        const parsed = {};
+        for (const [key, arr] of Object.entries(msg.data)) {
+          if (!Array.isArray(arr) || !arr.length) continue;
+          let val = arr[0][1]; // [[timestamp, value], ...]
+          if (val === 'true')       val = true;
+          else if (val === 'false') val = false;
+          else if (val !== null && val !== '' && !isNaN(val)) val = parseFloat(val);
+          parsed[key] = val;
+        }
+
+        if (Object.keys(parsed).length) {
+          onUpdate(info.roomNum, info.deviceId, parsed);
+        }
+      } catch {}
+    });
+
+    return ws;
+  }
 }
 
 // ── Per-hotel client pool ─────────────────────────────────────────────────────

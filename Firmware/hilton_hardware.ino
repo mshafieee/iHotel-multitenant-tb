@@ -500,6 +500,11 @@ void handleAttributeUpdate(const char* json, unsigned int len) {
     bool pd = doc["pdMode"].as<bool>();
     if (pd != room.pdMode) applyPDMode(pd);
   }
+
+  // Publish updated state immediately so the server's ThingsBoard WebSocket
+  // subscription receives confirmation within ~200 ms instead of waiting up
+  // to 10 s for the next periodic snapshot.
+  if (mqtt.connected()) publishTelemetry();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -67,6 +67,18 @@ router.get('/auth/me', authenticatePlatformAdmin, (req, res) => {
   res.json({ id: admin.id, username: admin.username, fullName: admin.full_name });
 });
 
+router.put('/auth/password', authenticatePlatformAdmin, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  const admin = _db.prepare('SELECT * FROM platform_admins WHERE id = ?').get(req.admin.id);
+  if (!admin || !bcrypt.compareSync(currentPassword || '', admin.password_hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  _db.prepare('UPDATE platform_admins SET password_hash = ? WHERE id = ?')
+    .run(bcrypt.hashSync(newPassword, 10), admin.id);
+  res.json({ success: true });
+});
+
 // ── Hotel management ───────────────────────────────────────────────────────────
 router.post('/hotels', authenticatePlatformAdmin, (req, res) => {
   const { name, slug, contactEmail, plan, tbHost, tbUser, tbPass } = req.body;
@@ -85,11 +97,11 @@ router.post('/hotels', authenticatePlatformAdmin, (req, res) => {
            tbHost || null, tbUser || null, tbPass || null);
 
     seedHotelRates(_db, id);
-    seedHotelUsers(_db, id);
+    seedHotelUsers(_db, id, slug);
 
     res.json({
       hotel: { id, name, slug, contactEmail, plan: plan || 'starter', active: true },
-      defaultUserPassword: 'iHotel2026!'
+      defaultUserPassword: `iHotel-${slug}-2026`
     });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Slug already taken' });

@@ -1,6 +1,6 @@
-# Hilton Grand Hotel — IoT Room Management System v2.0
+# iHotel — Smart Hotel IoT Platform
 
-A full-stack hotel room management platform that bridges physical IoT room gateways (ESP32 via ThingsBoard) with a real-time web dashboard for hotel staff and an in-room control portal for guests.
+A multi-tenant SaaS hotel management platform. Each hotel (tenant) gets its own staff dashboard, guest portal, PMS, and real-time room control over physical IoT gateways (ESP32 via ThingsBoard MQTT).
 
 ---
 
@@ -8,16 +8,13 @@ A full-stack hotel room management platform that bridges physical IoT room gatew
 
 - [Overview](#overview)
 - [Architecture](#architecture)
-- [Features](#features)
-  - [Staff Dashboard](#staff-dashboard)
-  - [Guest Portal](#guest-portal)
-  - [Room Status Flow](#room-status-flow)
-  - [Power Down Mode](#power-down-mode)
-  - [Real-time Events](#real-time-events)
-  - [Audit Logging](#audit-logging)
-  - [Gateway Simulator](#gateway-simulator)
+- [Multi-Tenant Model](#multi-tenant-model)
 - [User Roles](#user-roles)
-- [Prerequisites](#prerequisites)
+- [Features](#features)
+- [Room Status Flow](#room-status-flow)
+- [Room Automation](#room-automation)
+- [Guest Portal](#guest-portal)
+- [Platform Admin Portal](#platform-admin-portal)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the System](#running-the-system)
@@ -31,12 +28,12 @@ A full-stack hotel room management platform that bridges physical IoT room gatew
 
 ## Overview
 
-This system manages up to **300 hotel rooms** across 15 floors. Each room has an ESP32 gateway connected to ThingsBoard over MQTT. The gateway reports sensor data (temperature, humidity, CO₂, door contacts, PIR motion) and accepts relay commands (lights, AC, curtains, door lock).
+iHotel manages multiple hotels from a single cloud server. Each hotel has:
+- A **staff dashboard** (owner / admin / frontdesk roles) with live room overview, heatmap, KPIs, PMS, logs, finance, and shifts
+- A **guest portal** accessible via room-specific QR code or link for in-room appliance control
+- A **platform super-admin portal** to provision and manage all hotel tenants
 
-The platform provides:
-- A **staff dashboard** with live room overview, heatmap, KPIs, PMS, and audit logs
-- A **guest portal** accessible via room-specific QR code for in-room appliance control
-- A **Python gateway simulator** for testing all 300 rooms without physical hardware
+Real-time updates are delivered via Server-Sent Events (SSE). Control commands are applied **optimistically** — the dashboard reflects changes instantly while the ThingsBoard write happens in the background.
 
 ---
 
@@ -45,40 +42,58 @@ The platform provides:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Physical Layer                           │
-│  ESP32 Room Gateways (300 rooms) ──MQTT──▶ ThingsBoard     │
+│  ESP32 Room Gateways ──MQTT──▶ ThingsBoard                 │
 │  Sensors: Temp · Humidity · CO₂ · Door · PIR · Battery     │
 │  Relays:  Lights · AC · Curtains · Door Lock               │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ REST API (polling + telemetry write)
+                           │ REST API (telemetry read/write)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Express Server  :3000                      │
+│              Express Server  :3000                          │
 │                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
-│  │ JWT Auth │  │ SQLite   │  │ SSE Push │  │Background │  │
-│  │ bcrypt   │  │ Users    │  │ Real-time│  │ Telemetry │  │
-│  │ Roles    │  │ PMS      │  │ Alerts   │  │ Poller    │  │
-│  │          │  │ Audit Log│  │ Logs     │  │ (15s)     │  │
-│  └──────────┘  └──────────┘  └──────────┘  └───────────┘  │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ REST + SSE
-          ┌────────────────┴────────────────┐
-          ▼                                 ▼
-┌─────────────────┐               ┌─────────────────┐
-│  Staff Dashboard│               │  Guest Portal   │
-│  React + Zustand│               │  React + Zustand│
-│  :5173 (dev)    │               │  QR code login  │
-│  :3000 (prod)   │               │  Room controls  │
-└─────────────────┘               └─────────────────┘
+│  JWT Auth · SQLite · SSE Push · Rate Limiting · Helmet      │
+│  Multi-tenant hotel scoping via hotelId on all routes       │
+│  Optimistic SSE broadcast (instant UI, async TB writes)     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ REST + SSE
+          ┌───────────┼───────────┐
+          ▼           ▼           ▼
+   Staff Dashboard  Guest Portal  Platform Admin
+   /               /guest        /platform
 ```
 
-### Data Flow
+---
 
-1. **ESP32 gateway** sends sensor telemetry to ThingsBoard via MQTT every ~30 seconds
-2. **Express server** background poller fetches all device telemetry from ThingsBoard every 15 seconds
-3. **Change detection** compares new telemetry against previous values and emits SSE events for every state change
-4. **Staff dashboard** receives live updates via SSE (`snapshot`, `telemetry`, `log`, `alert` events)
-5. **Control commands** from the dashboard write to ThingsBoard telemetry + shared attributes → gateway applies relay changes
+## Multi-Tenant Model
+
+- One server, one database, one codebase serves **all hotels**
+- Every hotel has its own: rooms, users, reservations, logs, income, shifts
+- Hotel staff see only their own hotel's data — enforced server-side via `hotelId` in JWT
+- Platform super-admin can manage all tenants from `/platform`
+
+### Login Flows
+
+| Portal | URL | Credentials |
+|--------|-----|-------------|
+| Hotel Staff | `/` | Hotel Code + Username + Password |
+| Guest | `/guest?room=101&hotel=hayat` | Last name + 6-digit room code |
+| Platform Admin | `/platform/login` | Username + Password (superadmin only) |
+
+---
+
+## User Roles
+
+### Hotel Staff
+
+| Role | Finance | Logs | Users | Rooms | PMS | Shifts | Heatmap |
+|------|---------|------|-------|-------|-----|--------|---------|
+| **Owner** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Admin** | — | ✓ | — | ✓ | ✓ | ✓ | ✓ |
+| **Front Desk** | — | — | — | View | ✓ | ✓ | ✓ |
+
+### Platform Super-Admin
+
+Full access to all hotels: create, suspend, configure, manage users and rooms.
 
 ---
 
@@ -86,265 +101,174 @@ The platform provides:
 
 ### Staff Dashboard
 
-#### KPI Row
-- Occupancy rate (rooms occupied / total)
-- Revenue estimate (rack rate × occupied rooms, owner only)
-- Alert count (active SOS + offline devices)
-- Average temperature across all rooms
-- MUR service count (housekeeping requests)
-- DND service count
-- Room status distribution donut chart
+- **KPI Row** — live occupancy count, active reservations, SOS/MUR alerts, check-in/out today
+- **Room Heatmap** — color-coded grid by floor; configurable columns per row (Auto / 5 / 8 / 10 / 12 / 15 / 20); click any cell to open room control
+- **Room Table** — sortable list with floor/status/temperature/door/flag filters; inline status dropdown and checkout button
+- **Room Modal** — full room control: lights (3 circuits + dimmers), AC (mode/temperature/fan), curtains, blinds, door unlock, DND/MUR/SOS/PD services
+- **PMS** — create reservations (auto-marks room NOT_OCCUPIED on creation), checkout, extend stay, export CSV, QR code generation
+- **Logs** — searchable audit trail: room, category, user, timestamp
+- **Finance** — income log, night rates management, revenue summary (owner only)
+- **Users** — create/deactivate hotel users; owner can reset any user's password
+- **Shifts** — shift handover accounting
+- **Simulator** — inject mock telemetry from the browser for testing
 
-#### Room Heatmap
-- Color-coded grid showing all 300 rooms at a glance
-- Each cell shows room number and status color
-- Click any room to open the Room Control Modal
-- Live updates via SSE
+### Hotel Name Branding
 
-#### Room Table
-- Sortable list of all rooms with floor, type, status, temperature, door state, active lines, and service flags
-- **Filter by**: All / Vacant / Occupied / MUR / Maintenance / DND / SOS / Power Down
-- **Filter by floor**: 1–15
-- **Checkout button**: appears for occupied rooms with an active reservation (all staff roles)
-- **Status dropdown**: quick status change without opening the full modal
-- Shows PD (Power Down) flag badge in red when active
+- Hotel name displayed prominently in the staff header, guest portal header, and guest login page
+- iHotel shown as the sub-label in small text
+- Guest login page shows hotel name fetched from URL slug; shows a polite "Link Not Recognised" screen for invalid or missing hotel parameters
 
-#### Room Control Modal
-Accessible by clicking any room. Contents depend on role:
+### Real-Time Updates
 
-| Section | Owner / Admin | Front Desk | Guest |
-|---------|:---:|:---:|:---:|
-| Power Down toggle | ✓ | ✓ | — |
-| Checkout button | ✓ | ✓ | — |
-| Sensors (Temp/Humid/CO₂) | ✓ | ✓ | ✓ |
-| PIR motion status | ✓ | ✓ | — |
-| Door contact + unlock | ✓ | ✓ | ✓ |
-| Lights & Dimmers | ✓ | — | ✓ |
-| AC (mode, temp, fan) | ✓ | — | ✓ |
-| Curtains & Blinds | ✓ | — | ✓ |
-| Services (DND/MUR/SOS) | ✓ | view | ✓ |
-| Electricity/Water meters | ✓ | ✓ | — |
-| Device info (FW/GW version) | ✓ | — | — |
-| Set room status | ✓ | ✓ | — |
-
-#### PMS (Property Management System)
-- Create reservations: room number, guest name, check-in/out dates
-- Auto-generates a 6-digit guest password
-- Stable room-based QR code (same URL per room, credentials change per reservation)
-- Guest name matching: accepts full name, first name, or last name
-- Active / Expired reservation list
-- **Export all reservations to CSV** (⬇ Export CSV button)
-- **Delete expired history** (🗑 Delete History — active reservations are never deleted)
-- Cancelling a reservation instantly locks the guest out via SSE push
-
-#### Logs Panel
-- Live audit log stream via SSE — no page refresh needed
-- Filter by category: System / Control / PMS / Telemetry / Sensor / Service
-- **Export log to CSV** (⬇ Export CSV button)
-- **Clear all logs** from the database (🗑 Clear button)
-- Logged events include: logins, control commands, room status changes, door events, motion detection, service requests, PMS operations
+- SSE (Server-Sent Events) connection per client, scoped to hotel
+- **Optimistic broadcast**: dashboard updates instantly on control commands — ThingsBoard writes happen in the background without blocking the UI
+- Audio alerts for SOS (urgent beep pattern) and MUR (housekeeping chime) events
+- Today's checkouts banner shown to admin and frontdesk on login
 
 ---
 
-### Guest Portal
-
-Guests access the portal by scanning a room QR code or visiting `/guest?room=XXXX`.
-
-**Login flow:**
-1. Guest enters their name (full, first, or last) and the 6-digit password from their room card
-2. Server validates against the active reservation for that room and today's date
-3. JWT token issued with `role: guest` and `room` claim embedded
-4. Guest is redirected to `/guest-portal` — their personal room control page
-
-**Guest capabilities:**
-- View sensors: temperature, humidity, CO₂
-- Control lights (Line 1/2/3, dimmers)
-- Control AC (mode, setpoint, fan speed)
-- Control curtains and blinds
-- Unlock door (5-second countdown, auto-relocks if door contact stays closed)
-- Toggle DND / request MUR / trigger SOS
-
-**Automatic updates:**
-- Real-time telemetry via SSE (same SSE endpoint as staff)
-- 30-second polling fallback if SSE drops
-
-**Lockout screen:**
-- Shown instantly when hotel management cancels the reservation or triggers checkout
-- Polite message asking guest to visit reception
-- Triggered by SSE `lockout` event — no page reload needed
-
----
-
-### Room Status Flow
+## Room Status Flow
 
 ```
-  VACANT (0)
-     │
-     │  Door opens (auto)
-     ▼
-  OCCUPIED (1)
-     │
-     │  Frontdesk / Admin clicks "Checkout"
-     ▼
-  MUR (2) — Make Up Room (housekeeping needed)
-     │
-     │  Housekeeping done → staff sets to VACANT
-     ▼
-  VACANT (0)
-
-  Any state ─── Admin sets "Maintenance" ──▶ MAINTENANCE (3)
-  MAINTENANCE ── After fix → staff sets to MUR or VACANT
+VACANT (0) ──── PMS Reservation ────▶ NOT_OCCUPIED (4)
+                                           │
+                              Guest arrives, door opens
+                                           │
+                                           ▼
+                                      OCCUPIED (1)
+                                           │
+                              ┌────────────┴────────────┐
+                              │                         │
+                      Guest leaves              5-min no motion
+                      (checkout)                (timer fires)
+                              │                         │
+                              ▼                         ▼
+                         SERVICE (2)           NOT_OCCUPIED (4)
+                              │                         │
+                      Housekeeping done        Guest returns → OCCUPIED
+                              │
+                              ▼
+                          VACANT (0)
 ```
 
-**Auto-occupancy:** When the door contact opens and the room is currently VACANT, the server automatically sets the room to OCCUPIED. This is logged as `source: auto` in the audit trail.
-
-**DND / MUR / SOS** are independent service flags, not room statuses. Any number of them can be active simultaneously alongside any room status.
-
----
-
-### Power Down Mode
-
-Power Down (PD) is a separate management control — it does not change the room status.
-
-| | Normal Mode | PD Mode |
-|--|--|--|
-| Room status | As set by staff | Unchanged |
-| Lights / AC / Curtains | Controlled by relay | All cut to OFF immediately |
-| Guest controls | Enabled | **Blocked server-side** |
-| Guest portal | Full access | Red banner: "Power restricted" |
-| Re-enable | — | Staff toggles off PD |
-
-**How it works:**
-1. Admin/Owner/Front Desk clicks **⚡ Power Down Room** in the Room Modal
-2. Server writes `pdMode=true` + cuts all relays to OFF in ThingsBoard
-3. `roomPDState[room]` is updated in-memory immediately — guest RPC calls are blocked within milliseconds
-4. Guest portal receives SSE `telemetry` event with `pdMode: true` → PD banner shown, controls hidden
-5. To restore: staff clicks **⚡ Power Down ACTIVE — Tap to Restore**
-6. Server writes `pdMode=false`, guest portal receives SSE update, controls reappear
-
-> PD mode is distinct from checkout/lockout. Lockout cancels the reservation (permanent until re-check-in). PD mode only cuts power and can be toggled freely.
+| Status | Color | Meaning |
+|--------|-------|---------|
+| VACANT | Green | Room empty, no reservation |
+| OCCUPIED | Blue | Guest present |
+| SERVICE | Amber | Post-checkout, housekeeping in progress |
+| MAINTENANCE | Red | Room taken out of service |
+| NOT_OCCUPIED | Purple | Reserved (guest not yet arrived) or guest inactive 5 min |
 
 ---
 
-### Real-time Events
+## Room Automation
 
-The server pushes events to all connected browsers via Server-Sent Events (SSE):
+### On VACANT or NOT_OCCUPIED
 
-| Event | Payload | Recipients |
-|-------|---------|-----------|
-| `snapshot` | Full room overview (all 300 rooms) | Staff only |
-| `telemetry` | `{ room, data: { key: value, ... } }` | Staff + Guest (own room) |
-| `log` | `{ ts, cat, msg, room, source }` | Staff only |
-| `alert` | `{ type: 'SOS'\|'MUR', room, message, ts }` | Staff only |
-| `lockout` | `{ room }` | Guest (own room) — triggers lockout screen |
+Whenever a room transitions to status 0 (VACANT) or 4 (NOT_OCCUPIED) — whether by:
+- The 5-minute no-motion timer firing automatically
+- Staff manually setting the status dropdown
+- PMS reservation creation
 
-**Audio alerts:** The staff dashboard plays audio tones via the Web Audio API:
-- **SOS**: 3 urgent high-pitched pulses at 1100 Hz
-- **MUR**: 2 medium chimes at 750 Hz
+The server automatically sends these commands to the hardware:
+
+| Setting | Value |
+|---------|-------|
+| Lights (Line 1/2/3) | OFF |
+| Dimmers (1/2) | 0% |
+| AC Mode | COOL |
+| AC Temperature | 26 °C |
+| Fan Speed | LOW |
+| Curtains | Closed (0%) |
+| Blinds | Closed (0%) |
+
+This ensures rooms are always left in an energy-efficient state between guests.
+
+### On Activity While NOT_OCCUPIED
+
+If any physical activity is detected (PIR motion, door open, lights turned on, AC set above OFF) while the room is NOT_OCCUPIED, it is automatically restored to OCCUPIED.
+
+### PMS Reservation
+
+Creating a reservation in the PMS immediately sets the room to NOT_OCCUPIED, signalling to reception that the room is reserved but the guest hasn't arrived yet. The full cleanup automation runs at this point.
 
 ---
 
-### Audit Logging
+## Guest Portal
 
-Every significant action is written to SQLite and broadcast via SSE:
+Guests access their room controls via a unique link or QR code generated at check-in:
 
-| Category | Examples |
-|----------|---------|
-| `auth` | Login success/failure, logout, guest login |
-| `control` | setLines, setAC, setDoorUnlock, setPDMode, setRoomStatus |
-| `pms` | Reservation created/cancelled, checkout, history cleared |
-| `system` | Server start, room status change, auto-occupancy, PD mode, lockdown |
-| `sensor` | Door opened/closed, motion detected/cleared |
-| `service` | DND/MUR/SOS activated/cleared |
-| `telemetry` | AC mode, fan speed, dimmer changes |
-
----
-
-### Gateway Simulator
-
-`gateway_simulator.py` simulates all 300 room gateways sending realistic telemetry to ThingsBoard. Use it for demos and testing without physical hardware.
-
-```bash
-# Basic usage (reads gateway_tokens.csv automatically)
-python3 gateway_simulator.py
-
-# Options
-python3 gateway_simulator.py \
-  --tb-host http://localhost:8080 \
-  --rooms 50          # simulate only 50 rooms
-  --interval 30       # send every 30 seconds (default)
-  --workers 20        # parallel HTTP threads
-  --fast              # rapid mode (5s interval)
-  --verbose           # show per-room details
-  --no-attributes     # skip relay attribute writes
+```
+https://hotel.example.com/guest?room=101&hotel=hayat
 ```
 
-**Simulated behaviors:**
-- Temperature drift, humidity changes, CO₂ fluctuation
-- Door open/close events based on occupancy
-- PIR motion detection during occupied hours
-- Random MUR requests (0.4% chance per tick)
-- Random SOS alerts (0.15% chance per tick)
-- Device fault simulation (0.1% chance)
-- DND and service flags with auto-clear after random ticks
-- Realistic occupancy patterns by room type (Standard/Deluxe/Suite/VIP)
+**Authentication**: guest enters their last name + 6-digit code provided by reception.
 
-All simulator events appear in the dashboard **Logs panel** within 15 seconds (via the background telemetry poller), including SOS/MUR alerts with audio notification.
+**Controls available to guests**:
+- Lights (on/off + dimmer)
+- Air conditioning (mode / temperature / fan speed)
+- Curtains and blinds
+- DND (Do Not Disturb) and MUR (Make Up Room) service flags
+- Door unlock
 
----
-
-## User Roles
-
-| Role | Username | Description |
-|------|----------|-------------|
-| **Owner** | `owner` | Full access — all controls, revenue KPI, user management |
-| **Admin** | `admin` | Operations — room controls, PMS, audit logs |
-| **Front Desk** | `frontdesk` | Room status changes, checkout, PMS, view sensors |
-| **Guest** | *(dynamic)* | Own room only — lights, AC, curtains, door, DND/MUR/SOS |
-
-Default password for all staff accounts: **`hilton2026`**
-
-> Change passwords immediately in production. Use `POST /api/users` with an owner token.
+The guest portal shows the hotel name and room number in the header.
 
 ---
 
-## Prerequisites
+## Platform Admin Portal
 
-| Requirement | Version | Notes |
-|------------|---------|-------|
-| **Node.js** | 18 LTS or newer | [nodejs.org](https://nodejs.org) |
-| **ThingsBoard Community Edition** | 3.x | Running at `localhost:8080` |
-| **Python** | 3.8+ | Required only for the gateway simulator |
-| **Git** | Any | For cloning the repository |
+Access at `/platform/login`. Provides:
 
-ThingsBoard must have devices named `gateway-room-XXXX` (where XXXX is the room number). Run the v1 `setup.py` to create all 300 devices if starting fresh.
+- **Hotel Management** — create, view, suspend hotels; set name, slug, contact email, plan
+- **Room Import** — bulk import rooms (CSV or JSON) per hotel
+- **Room Discovery** — auto-discover rooms from ThingsBoard devices
+- **User Management** — create and manage hotel staff accounts per tenant; reset any user's password
+- **Password Management** — superadmin can change their own password via the key icon in the header
+- **Metrics** — platform-wide: active hotels, total rooms, active reservations
+
+### Default Staff Passwords
+
+When a hotel is created, three default users are seeded:
+
+```
+owner / iHotel-{slug}-2026
+admin / iHotel-{slug}-2026
+frontdesk / iHotel-{slug}-2026
+```
+
+For example, for hotel slug `hayat`: password is `iHotel-hayat-2026`.
 
 ---
 
 ## Installation
 
-### 1. Clone the repository
+### Prerequisites
+
+| Requirement | Version |
+|-------------|---------|
+| Node.js | v18 or later |
+| ThingsBoard | CE running (local or cloud) |
+
+### Steps
 
 ```bash
-git clone https://github.com/mshafieee/hilton-hotel-grms.git
-cd hilton-hotel-grms
-```
+# 1. Install root dependencies
+npm install
 
-### 2. Install dependencies
-
-```bash
-# Server dependencies
+# 2. Install server dependencies
 cd server && npm install && cd ..
 
-# Client dependencies
+# 3. Install client dependencies
 cd client && npm install && cd ..
-```
 
-### 3. Configure environment
-
-```bash
+# 4. Copy environment template
 cp server/.env.example server/.env
+# Edit server/.env with your settings
 ```
+
+---
+
+## Configuration
 
 Edit `server/.env`:
 
@@ -352,22 +276,25 @@ Edit `server/.env`:
 PORT=3000
 NODE_ENV=development
 
-# ThingsBoard — must match your TB instance
+# ThingsBoard connection
 TB_HOST=http://localhost:8080
-TB_USER=admin@hiltongrand.com
-TB_PASS=hilton
+TB_USER=admin@yourdomain.com
+TB_PASS=your_tb_password
 
-# Generate a strong secret:
-# node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-JWT_SECRET=your_random_64_char_string_here
+# JWT — generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+JWT_SECRET=CHANGE_ME_strong_random_32_char_secret
 JWT_EXPIRY=8h
 JWT_REFRESH_EXPIRY=7d
 
-# Frontend URL (change in production)
-CORS_ORIGIN=http://localhost:5173
+# Platform super-admin (seeded on first run)
+PLATFORM_ADMIN_USER=superadmin
+PLATFORM_ADMIN_PASS=CHANGE_ME_strong_password
 
-# Background telemetry poll interval (milliseconds)
-POLL_INTERVAL_MS=15000
+# CORS — comma-separated list for multi-origin (LAN + localhost)
+CORS_ORIGIN=http://localhost:5173,http://192.168.1.100:5173
+
+# Guest QR code base URL (must be reachable from guests' phones)
+GUEST_URL_BASE=http://192.168.1.100:5173
 
 # Rate limiting
 LOGIN_RATE_LIMIT=10
@@ -386,40 +313,17 @@ cd server
 node index.js
 ```
 
-Expected output:
-```
-═══════════════════════════════════════════════════════
-  HILTON GRAND HOTEL IoT Platform v2.0
-  JWT Auth · SQLite · Helmet · Rate Limit
-═══════════════════════════════════════════════════════
-  Server:    http://localhost:3000
-  Frontend:  http://localhost:5173
-  Telemetry poll: every 15s
-═══════════════════════════════════════════════════════
-✓ Seeded 3 default users (password: hilton2026)
-✓ ThingsBoard authenticated
-✓ 300 ThingsBoard devices
-```
-
 **Terminal 2 — Frontend:**
 ```bash
 cd client
-npx vite --host
+npx vite
 ```
 
-Open **http://localhost:5173** in your browser.
+Open `http://localhost:5173` for staff dashboard, `http://localhost:5173/platform/login` for admin portal.
 
-### Running the Gateway Simulator (optional)
+### LAN Access (mobile devices on same network)
 
-```bash
-# Install requests library (recommended for better performance)
-pip3 install requests
-
-# Start simulating all 300 rooms
-python3 gateway_simulator.py
-```
-
-Press `Ctrl+C` to stop.
+The Vite dev server binds to all interfaces (`0.0.0.0`) by default. Use your machine's LAN IP, e.g. `http://192.168.1.100:5173`. Set `GUEST_URL_BASE` and `CORS_ORIGIN` accordingly in `.env`.
 
 ---
 
@@ -432,8 +336,6 @@ cd client
 npx vite build
 ```
 
-The built files go into `client/dist/`.
-
 ### 2. Run in production mode
 
 ```bash
@@ -441,51 +343,31 @@ cd server
 NODE_ENV=production node index.js
 ```
 
-The server serves both the API and the static frontend from port 3000. Open **http://your-server:3000**.
+The server serves the built frontend from `client/dist` on port 3000.
 
-### 3. HTTPS with nginx (recommended)
+### 3. Nginx reverse proxy with HTTPS
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name hotel.yourdomain.com;
 
-    ssl_certificate     /etc/ssl/certs/hotel.crt;
-    ssl_certificate_key /etc/ssl/private/hotel.key;
+    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    # Required for SSE (Server-Sent Events)
+    proxy_buffering off;
+    proxy_cache off;
 
     location / {
         proxy_pass         http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection 'upgrade';
+        proxy_set_header   Connection keep-alive;
         proxy_set_header   Host $host;
-        proxy_cache_bypass $http_upgrade;
-
-        # Required for SSE (Server-Sent Events)
-        proxy_buffering    off;
-        proxy_read_timeout 24h;
+        proxy_read_timeout 3600s;
     }
 }
-
-server {
-    listen 80;
-    server_name hotel.yourdomain.com;
-    return 301 https://$host$request_uri;
-}
-```
-
-### 4. Process manager
-
-```bash
-# Install PM2
-npm install -g pm2
-
-# Start the server
-pm2 start server/index.js --name hilton-grms
-
-# Auto-restart on reboot
-pm2 startup
-pm2 save
 ```
 
 ---
@@ -493,49 +375,47 @@ pm2 save
 ## Project Structure
 
 ```
-hilton-hotel-grms/
-├── README.md
-├── SETUP_GUIDE.md              ← Simplified setup guide for non-technical users
-├── package.json                ← Root package (npm run dev shortcut)
-├── setup.py                    ← ThingsBoard device provisioning script
-├── gateway_simulator.py        ← Python simulator for all 300 rooms
-├── gateway_tokens.csv          ← Room tokens for ThingsBoard (300 rooms)
-│
+hilton-v2/
 ├── server/
-│   ├── index.js                ← Express server — all routes, SSE, control logic
-│   ├── auth.js                 ← JWT middleware, token generation, role guards
-│   ├── db.js                   ← SQLite schema, table creation, user seeding
-│   ├── thingsboard.js          ← ThingsBoard REST API client
-│   ├── .env.example            ← Configuration template
-│   └── package.json
+│   ├── index.js          Main Express server — all API routes, SSE, control logic
+│   ├── db.js             SQLite schema, migrations, tenant seeding
+│   ├── auth.js           JWT middleware — token generation, verification, roles
+│   ├── thingsboard.js    ThingsBoard REST API client (per-hotel instances)
+│   ├── platform.js       Platform super-admin router (hotel CRUD, metrics)
+│   ├── .env              Environment config (not committed)
+│   ├── .env.example      Config template
+│   └── hilton.db         SQLite database (auto-created)
 │
-└── client/
-    ├── index.html
-    ├── vite.config.js
-    ├── tailwind.config.js
-    ├── postcss.config.js
-    ├── package.json
-    └── src/
-        ├── main.jsx
-        ├── App.jsx             ← Routing (login / dashboard / guest-portal)
-        ├── index.css           ← Global styles + Tailwind
-        ├── utils/
-        │   └── api.js          ← Fetch wrapper — auto JWT, auto-refresh on 401
-        ├── store/
-        │   ├── authStore.js    ← Auth state — login, logout, token persistence
-        │   └── hotelStore.js   ← Room state, SSE, polling, RPC, checkout
-        ├── pages/
-        │   ├── LoginPage.jsx   ← Staff + guest login
-        │   ├── DashboardPage.jsx ← Main staff layout with tabs + audio alerts
-        │   └── GuestPortal.jsx ← Guest room control page with SSE + lockout
-        └── components/
-            ├── KPIRow.jsx      ← KPI cards + room status distribution chart
-            ├── Heatmap.jsx     ← 15×20 color-coded room grid
-            ├── RoomTable.jsx   ← Room list with filters + checkout + status change
-            ├── RoomModal.jsx   ← Full room control modal (staff + guest)
-            ├── PMSPanel.jsx    ← Reservation management + QR codes
-            ├── LogsPanel.jsx   ← Live audit log viewer
-            └── AlertToast.jsx  ← SOS/MUR toast notifications
+├── client/src/
+│   ├── App.jsx           Root router — staff, guest, platform routes
+│   ├── pages/
+│   │   ├── LoginPage.jsx          Staff + guest login (auto-detects mode from URL)
+│   │   ├── DashboardPage.jsx      Main staff dashboard with tab navigation
+│   │   ├── GuestPortal.jsx        In-room guest control page
+│   │   ├── PlatformLogin.jsx      Super-admin login
+│   │   └── PlatformDashboard.jsx  Super-admin management portal
+│   ├── components/
+│   │   ├── KPIRow.jsx        Occupancy / revenue / alert cards
+│   │   ├── Heatmap.jsx       Room grid (configurable columns, floor labels)
+│   │   ├── RoomTable.jsx     Room list with filters and inline controls
+│   │   ├── RoomModal.jsx     Full room control popup
+│   │   ├── PMSPanel.jsx      Reservation management
+│   │   ├── LogsPanel.jsx     Audit log viewer
+│   │   ├── FinancePanel.jsx  Revenue and night rates
+│   │   ├── UsersPanel.jsx    Hotel user management
+│   │   ├── ShiftsPanel.jsx   Shift accounting
+│   │   ├── SimulatorPanel.jsx Browser-based telemetry injector
+│   │   └── AlertToast.jsx    SOS / MUR notification banners
+│   └── store/
+│       ├── authStore.js      Login state, JWT, hotel info
+│       ├── hotelStore.js     Rooms, SSE, polling, alerts
+│       └── platformStore.js  Super-admin state (hotels, metrics)
+│
+├── Firmware/
+│   └── hilton_hardware.ino  ESP32 gateway firmware
+│
+├── SETUP_GUIDE.md    Step-by-step first-run guide
+└── README.md         This file
 ```
 
 ---
@@ -546,97 +426,91 @@ hilton-hotel-grms/
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/auth/login` | — | Staff login → `{ accessToken, refreshToken, user }` |
-| `POST` | `/api/auth/refresh` | — | Refresh access token |
-| `POST` | `/api/auth/logout` | JWT | Invalidate refresh token |
-| `GET`  | `/api/auth/me` | JWT | Current user info |
-| `POST` | `/api/guest/login` | — | Guest login → `{ accessToken, room }` |
+| POST | `/api/auth/login` | — | Hotel staff login (hotelSlug + username + password) |
+| POST | `/api/auth/refresh` | refresh token | Refresh access token |
+| GET | `/api/auth/me` | JWT | Current user info |
+| GET | `/api/public/hotel?slug=xxx` | — | Get hotel name by slug (for guest login page) |
 
-### Hotel
+### Rooms
 
-| Method | Endpoint | Roles | Description |
-|--------|----------|-------|-------------|
-| `GET`  | `/api/hotel/overview` | staff | All rooms + telemetry + reservations |
-| `GET`  | `/api/events` | any | SSE stream (`?token=JWT`) |
-| `POST` | `/api/devices/:id/rpc` | owner, admin | Send control command to device |
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/overview` | any | All room states snapshot |
+| GET | `/api/rooms/:room` | any | Single room detail |
+| POST | `/api/devices/:id/rpc` | owner/admin | Send control command |
+| POST | `/api/rooms/:room/reset` | owner/admin | Full room reset to defaults |
+| POST | `/api/rooms/reset-all` | owner/admin | Reset all rooms (async) |
+| POST | `/api/rooms/:room/checkout` | any | Checkout + set SERVICE |
 
 ### PMS
 
-| Method | Endpoint | Roles | Description |
-|--------|----------|-------|-------------|
-| `GET`  | `/api/pms/reservations` | staff | List all reservations |
-| `POST` | `/api/pms/reservations` | owner, admin, user | Create reservation |
-| `DELETE` | `/api/pms/reservations/:id` | staff | Cancel reservation |
-| `GET`  | `/api/pms/reservations/:id/link` | staff | Get guest URL + password |
-| `GET`  | `/api/pms/export` | staff | Download all reservations as CSV |
-| `DELETE` | `/api/pms/history` | owner, admin | Delete cancelled/expired records |
-
-### Room Operations
-
-| Method | Endpoint | Roles | Description |
-|--------|----------|-------|-------------|
-| `POST` | `/api/rooms/:room/checkout` | staff | Cancel reservation, set MUR, notify guest |
-| `POST` | `/api/rooms/:room/lockdown` | owner, admin | Cancel all reservations + SSE lockout |
-
-### Logs
-
-| Method | Endpoint | Roles | Description |
-|--------|----------|-------|-------------|
-| `GET`  | `/api/logs` | owner, admin | Recent audit log entries |
-| `GET`  | `/api/logs/export` | owner, admin | Download full log as CSV |
-| `DELETE` | `/api/logs` | owner, admin | Clear all audit log records |
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/pms/reservations` | any | List reservations |
+| POST | `/api/pms/reservations` | any | Create reservation (auto NOT_OCCUPIED) |
+| PUT | `/api/pms/reservations/:id` | any | Update reservation |
+| GET | `/api/pms/export` | any | Export CSV |
+| GET | `/api/pms/night-rates` | any | Get night rates |
+| PUT | `/api/pms/night-rates` | owner | Update night rates |
 
 ### Guest
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET`  | `/api/guest/room` | guest JWT | Active reservation + cached room data |
-| `GET`  | `/api/guest/room/data` | guest JWT | Live room telemetry (with TB fallback) |
-| `POST` | `/api/guest/rpc` | guest JWT | Send control command (limited methods) |
+| POST | `/api/guest/login` | — | Guest login (room + lastName + password) |
+| GET | `/api/guest/room` | guest JWT | Room state for guest |
+| POST | `/api/guest/rpc` | guest JWT | Guest room control |
 
-**Allowed guest RPC methods:** `setLines`, `setAC`, `setCurtainsBlinds`, `setService`, `resetServices`, `setDoorUnlock`, `setDoorLock`
+### Platform Admin
 
-### User Management
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/platform/auth/login` | Super-admin login |
+| GET | `/api/platform/auth/me` | Current super-admin info |
+| PUT | `/api/platform/auth/password` | Change own password |
+| GET/POST | `/api/platform/hotels` | List / create hotels |
+| GET/PUT/DELETE | `/api/platform/hotels/:id` | Hotel detail / update / suspend |
+| GET/POST | `/api/platform/hotels/:id/rooms` | List / import rooms |
+| POST | `/api/platform/hotels/:id/discover` | Auto-discover rooms from ThingsBoard |
+| GET/POST | `/api/platform/hotels/:id/users` | List / create hotel users |
+| PUT | `/api/platform/hotels/:id/users/:uid` | Update hotel user (incl. password reset) |
+| GET | `/api/platform/metrics` | Platform-wide stats |
 
-| Method | Endpoint | Roles | Description |
-|--------|----------|-------|-------------|
-| `GET`  | `/api/users` | owner | List all staff users |
-| `POST` | `/api/users` | owner | Create staff user |
+### Users
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/users` | any | List hotel users |
+| POST | `/api/users` | owner | Create hotel user |
+| PUT | `/api/users/:id` | owner | Update / deactivate user |
+| PUT | `/api/users/:id/password` | owner / self | Change password |
 
 ---
 
 ## Security
 
-| Mechanism | Implementation |
-|-----------|---------------|
-| **Password hashing** | bcrypt (10 rounds) |
-| **Authentication** | JWT — 8h access token + 7d refresh token |
-| **Role enforcement** | Server-side middleware on every protected route |
-| **Rate limiting** | 10 login attempts per 15 minutes (configurable) |
-| **Security headers** | Helmet.js — XSS protection, MIME sniffing prevention, frameguard |
-| **CORS** | Locked to `CORS_ORIGIN` env variable |
-| **Guest isolation** | JWT `room` claim — guests can only control their assigned room |
-| **PD enforcement** | Server-side `roomPDState` cache — guest RPC blocked immediately on PD activation |
-| **Secrets** | `server/.env` excluded from git via `.gitignore` |
+| Feature | Detail |
+|---------|--------|
+| Passwords | bcrypt hashed (cost 10) |
+| Sessions | 8-hour access token + 7-day refresh token (JWT) |
+| Tenant isolation | All routes validate `hotelId` from JWT — no cross-tenant data access |
+| Rate limiting | 10 login attempts per 15 min (staff); 5 per 15 min (guest) |
+| Security headers | Helmet.js (XSS, MIME sniffing, frameguard, etc.) |
+| CORS | Allowlist-only, configurable per deployment |
+| Audit log | Every control command, login, and PMS event is logged with user + timestamp |
 
 ---
 
 ## Troubleshooting
 
 | Problem | Solution |
-|---------|---------|
-| Server says `TB auth failed` | Check ThingsBoard is running at the URL in `.env` |
-| `Cannot find module 'better-sqlite3'` | Run `cd server && npm install` |
-| Dashboard shows 0 rooms | ThingsBoard needs devices named `gateway-room-XXXX` — run `setup.py` |
-| Guest login fails | Reservation must be active today; name must match (full, first, or last) |
-| Guest portal blank screen | Server cache cold — wait for first `/api/hotel/overview` poll or reload |
-| No audio alerts | Browser requires a user gesture before Web Audio API is allowed — click anything first |
-| `CORS error` in browser | Make sure `CORS_ORIGIN` in `.env` exactly matches your frontend URL including port |
-| SSE disconnects frequently | Add `proxy_buffering off; proxy_read_timeout 24h;` to your nginx config |
-| PD not blocking guest immediately | PD state syncs in-memory on `sendControl` — should be instant; check server logs |
-
----
-
-## License
-
-Private — Hilton Grand Hotel IoT Platform v2.0. All rights reserved.
+|---------|----------|
+| `npm install` fails | Ensure Node.js v18+: `node --version` |
+| "TB auth failed" | Check ThingsBoard URL and credentials in `.env` |
+| Login fails with correct credentials | Server terminal may show "Hotel not found" — check hotel slug |
+| QR code link doesn't open on mobile | Set `GUEST_URL_BASE` in `.env` to your server's LAN IP |
+| Can't connect from phone on same WiFi | Set `CORS_ORIGIN` to include your LAN IP, restart server |
+| Dashboard shows no rooms | ThingsBoard devices must exist and be linked to a hotel in Platform Admin |
+| UI updates slowly after control commands | Update to latest — optimistic SSE broadcast should make changes instant |
+| "Link Not Recognised" on guest page | The `hotel=` param in the URL doesn't match any active hotel slug |
+| Superadmin portal returns 401 | Platform token expired — log out and log back in at `/platform/login` |

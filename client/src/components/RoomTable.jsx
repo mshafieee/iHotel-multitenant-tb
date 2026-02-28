@@ -81,11 +81,11 @@ export default function RoomTable({ onSelectRoom, role }) {
       </div>
       {/* Table */}
       <div className="max-h-[380px] overflow-auto rounded-lg border border-gray-100">
-        <table className="w-full text-xs">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
               {['Room', 'Flr', 'Type', 'Status', 'Temp', 'Door', 'Lines', 'Flags', ...(canManage ? ['Actions'] : [])].map(h => (
-                <th key={h} className="px-3 py-2 text-left text-[9px] text-gray-400 uppercase tracking-wider font-semibold">{h}</th>
+                <th key={h} className="px-3 py-2.5 text-left text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{h}</th>
               ))}
             </tr>
           </thead>
@@ -103,39 +103,39 @@ export default function RoomTable({ onSelectRoom, role }) {
               return (
                 <tr key={r.room} onClick={() => onSelectRoom(r.room)}
                   className="hover:bg-gray-50 cursor-pointer transition">
-                  <td className="px-3 py-2 font-bold font-mono">{r.room}</td>
-                  <td className="px-3 py-2 text-gray-500">{r.floor}</td>
-                  <td className="px-3 py-2 text-gray-500">{r.roomType || r.type}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5 font-bold font-mono">{r.room}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{r.floor}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{r.roomType || r.type}</td>
+                  <td className="px-3 py-2.5">
                     <span className="inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: sc }} />
+                      <span className="w-2 h-2 rounded-full" style={{ background: sc }} />
                       <span className="font-semibold" style={{ color: sc }}>{STATUSES[statusIdx]}</span>
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-mono">{r.temperature != null ? `${r.temperature}°` : '—'}</td>
-                  <td className="px-3 py-2">{r.doorStatus ? '🚪 OPEN' : 'CLOSED'}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5 font-mono">{r.temperature != null ? `${r.temperature}°` : '—'}</td>
+                  <td className="px-3 py-2.5">{r.doorStatus ? '🚪 OPEN' : 'CLOSED'}</td>
+                  <td className="px-3 py-2.5">
                     {lines ? <span className="text-blue-600 font-semibold">L{lines}</span> : <span className="text-gray-300">off</span>}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     {flags.length ? flags.map(f => (
-                      <span key={f} className={`text-[9px] font-bold mr-1 ${f === 'SOS' ? 'text-red-500' : f === 'MUR' ? 'text-amber-500' : f === 'PD' ? 'text-red-600' : 'text-orange-500'}`}>{f}</span>
+                      <span key={f} className={`text-[10px] font-bold mr-1 ${f === 'SOS' ? 'text-red-500' : f === 'MUR' ? 'text-amber-500' : f === 'PD' ? 'text-red-600' : 'text-orange-500'}`}>{f}</span>
                     )) : <span className="text-gray-300">—</span>}
                   </td>
                   {canManage && (
-                    <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                    <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         {/* Checkout — only for occupied rooms with a reservation */}
                         {r.roomStatus === 1 && r.reservation && (
                           <button onClick={e => handleCheckout(e, r.room)}
-                            className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition">
+                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition">
                             Checkout
                           </button>
                         )}
                         {/* Status dropdown */}
                         <select value={r.roomStatus ?? 0}
                           onChange={e => rpc(r.room, 'setRoomStatus', { roomStatus: +e.target.value })}
-                          className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white">
+                          className="text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white">
                           {STATUSES.map((s, i) => <option key={i} value={i}>{s}</option>)}
                         </select>
                       </div>
@@ -147,7 +147,7 @@ export default function RoomTable({ onSelectRoom, role }) {
           </tbody>
         </table>
       </div>
-      <div className="text-[9px] text-gray-400 text-right mt-2">{filtered.length} rooms</div>
+      <div className="text-[10px] text-gray-400 text-right mt-2">{filtered.length} rooms</div>
     </div>
   );
 }

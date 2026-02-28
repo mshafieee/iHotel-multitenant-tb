@@ -49,6 +49,15 @@ export default function DashboardPage() {
   const isOwner = role === 'owner';
   const isAdmin = role === 'admin';
   const [resettingAll, setResettingAll] = useState(false);
+  const [heatmapCols, setHeatmapCols] = useState(() => {
+    const saved = localStorage.getItem('heatmapCols');
+    return saved ? Number(saved) : 0;
+  });
+  const updateHeatmapCols = (n) => {
+    setHeatmapCols(n);
+    if (n === 0) localStorage.removeItem('heatmapCols');
+    else localStorage.setItem('heatmapCols', String(n));
+  };
 
   const handleResetAll = async () => {
     if (!confirm('Reset ALL rooms to default? This will turn off all lights, AC, curtains and clear all service flags across every room.')) return;
@@ -63,7 +72,7 @@ export default function DashboardPage() {
   const canSeeRooms = true;
   const canSeePMS = isOwner || isAdmin || isFrontdesk;
   const canSeeLogs = isOwner || isAdmin;
-  const canSeeFinance = isOwner || isAdmin;
+  const canSeeFinance = isOwner;
   const canSeeUsers = isOwner;
   const canSeeShifts = isOwner || isAdmin || isFrontdesk;
 
@@ -106,8 +115,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <Building2 className="w-6 h-6 text-gold-400" />
             <div>
-              <h1 className="font-bold text-sm tracking-tight">{user?.hotelName}</h1>
-              <p className="text-[10px] text-white/50">iHotel</p>
+              <h1 className="font-bold text-xl tracking-tight leading-tight">{user?.hotelName}</h1>
+              <p className="text-[11px] text-white/50">iHotel</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -163,14 +172,24 @@ export default function DashboardPage() {
           <>
             <KPIRow role={role} />
             {(isOwner || isAdmin) && (
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between">
+                {/* Heatmap cols selector */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Heatmap cols:</span>
+                  {[0, 5, 8, 10, 12, 15, 20].map(n => (
+                    <button key={n} onClick={() => updateHeatmapCols(n)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${heatmapCols === n ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                      {n === 0 ? 'Auto' : n}
+                    </button>
+                  ))}
+                </div>
                 <button onClick={handleResetAll} disabled={resettingAll}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
                   {resettingAll ? '⏳ Resetting...' : '🔄 Reset All Rooms'}
                 </button>
               </div>
             )}
-            {!isFrontdesk && <Heatmap onSelectRoom={setSelectedRoom} />}
+            <Heatmap onSelectRoom={setSelectedRoom} cols={heatmapCols} />
             <RoomTable onSelectRoom={setSelectedRoom} role={role} />
           </>
         )}

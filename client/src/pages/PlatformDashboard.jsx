@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Building2, Users, BedDouble, Activity, DollarSign,
   Plus, RefreshCw, Upload, X, ChevronRight, Shield, LogOut,
-  Copy, Check, Search, Wifi
+  Copy, Check, Search, Wifi, KeyRound
 } from 'lucide-react';
 import usePlatformStore from '../store/platformStore';
 
@@ -38,6 +38,73 @@ function MetricCard({ icon: Icon, label, value, sub, color = 'text-brand-600' })
         <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">{label}</p>
         <p className="text-2xl font-bold text-gray-800 mt-0.5">{value}</p>
         {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── Change Password Modal ────────────────────────────────────────────────────
+function ChangePasswordModal({ title, requireCurrent, onSave, onClose }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext]       = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+  const [done, setDone]       = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (next.length < 6) return setError('Password must be at least 6 characters');
+    if (next !== confirm) return setError('Passwords do not match');
+    setLoading(true);
+    try {
+      await onSave(current, next);
+      setDone(true);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-bold text-gray-800">{title}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        {done ? (
+          <div className="text-center py-4">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+              <Check size={18} className="text-green-600" />
+            </div>
+            <p className="text-sm font-semibold text-gray-700">Password changed successfully</p>
+            <button onClick={onClose} className="btn btn-primary w-full mt-4">Done</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            {requireCurrent && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Current Password</label>
+                <input type="password" className="input" value={current} onChange={e => setCurrent(e.target.value)} required />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">New Password</label>
+              <input type="password" className="input" placeholder="Min 6 characters" value={next} onChange={e => setNext(e.target.value)} required />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Confirm New Password</label>
+              <input type="password" className="input" value={confirm} onChange={e => setConfirm(e.target.value)} required />
+            </div>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={onClose} className="btn flex-1 border border-gray-200 text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button type="submit" disabled={loading} className="btn btn-primary flex-1">
+                {loading ? 'Saving...' : 'Save Password'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -235,6 +302,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
   const [userMsg, setUserMsg] = useState('');
   const [editTB, setEditTB] = useState(false);
   const [tbForm, setTBForm] = useState({ tbHost: '', tbUser: '', tbPass: '' });
+  const [changePwdUser, setChangePwdUser] = useState(null); // { id, username }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -442,6 +510,14 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
         {/* Users Tab */}
         {tab === 'users' && (
           <div className="space-y-6">
+            {changePwdUser && (
+              <ChangePasswordModal
+                title={`Reset password — ${changePwdUser.username}`}
+                requireCurrent={false}
+                onSave={async (_, newPwd) => updateUser(hotelId, changePwdUser.id, { password: newPwd })}
+                onClose={() => setChangePwdUser(null)}
+              />
+            )}
             <div>
               <h3 className="text-sm font-semibold text-gray-600 mb-3">Staff Accounts</h3>
               <div className="space-y-2">
@@ -453,10 +529,16 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
                       </p>
                       <p className="text-xs text-gray-400 capitalize">{u.role}</p>
                     </div>
-                    <button onClick={() => toggleUser(u)}
-                      className={`text-xs px-2.5 py-1 rounded-full font-medium ${u.active ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-gray-200 text-gray-500 hover:bg-green-100 hover:text-green-700'}`}>
-                      {u.active ? 'Active' : 'Inactive'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setChangePwdUser({ id: u.id, username: u.username })}
+                        className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700" title="Change password">
+                        <KeyRound size={13} />
+                      </button>
+                      <button onClick={() => toggleUser(u)}
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium ${u.active ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-gray-200 text-gray-500 hover:bg-green-100 hover:text-green-700'}`}>
+                        {u.active ? 'Active' : 'Inactive'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -513,13 +595,14 @@ export default function PlatformDashboard() {
     hotels, metrics, hotelsLoading, metricsLoading,
     fetchHotels, fetchMetrics, createHotel, updateHotel,
     fetchHotelDetail, fetchUsers, createUser, updateUser,
-    importRooms, discoverRooms
+    importRooms, discoverRooms, changeAdminPassword
   } = usePlatformStore();
 
   const [showCreate, setShowCreate] = useState(false);
   const [selectedHotelId, setSelectedHotelId] = useState(null);
   const [importTarget, setImportTarget] = useState(null);
   const [search, setSearch] = useState('');
+  const [showAdminPwd, setShowAdminPwd] = useState(false);
 
   useEffect(() => { fetchHotels(); fetchMetrics(); }, []);
 
@@ -543,6 +626,9 @@ export default function PlatformDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{admin?.fullName || admin?.username}</span>
+            <button onClick={() => setShowAdminPwd(true)} className="text-gray-400 hover:text-gray-700 flex items-center gap-1 text-sm" title="Change my password">
+              <KeyRound size={15} />
+            </button>
             <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 flex items-center gap-1.5 text-sm">
               <LogOut size={15} /> Logout
             </button>
@@ -656,6 +742,15 @@ export default function PlatformDashboard() {
           )}
         </div>
       </main>
+
+      {showAdminPwd && (
+        <ChangePasswordModal
+          title="Change My Password"
+          requireCurrent={true}
+          onSave={changeAdminPassword}
+          onClose={() => setShowAdminPwd(false)}
+        />
+      )}
 
       {showCreate && (
         <CreateHotelModal onClose={() => { setShowCreate(false); fetchHotels(); }} onCreate={createHotel} />

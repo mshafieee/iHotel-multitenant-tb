@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Building2, Shield, Eye, EyeOff } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
@@ -24,6 +24,22 @@ export default function LoginPage() {
   const [guestPassword, setGuestPassword] = useState('');
   const [guestLoading, setGuestLoading] = useState(false);
   const [guestError, setGuestError] = useState('');
+  const [hotelDisplayName, setHotelDisplayName] = useState('');
+  const [hotelNotFound, setHotelNotFound] = useState(false);
+
+  // Fetch hotel display name from the slug in the URL
+  useEffect(() => {
+    if (!isGuestMode) return;
+    if (guestHotel) {
+      fetch(`/api/public/hotel?slug=${encodeURIComponent(guestHotel)}`)
+        .then(r => r.json())
+        .then(d => { if (d.name) setHotelDisplayName(d.name); else setHotelNotFound(true); })
+        .catch(() => setHotelNotFound(true));
+    } else if (!guestToken) {
+      // No hotel slug and no token — link is broken
+      setHotelNotFound(true);
+    }
+  }, [isGuestMode, guestHotel, guestToken]);
 
   const handleStaffSubmit = async (e) => {
     e.preventDefault();
@@ -64,6 +80,28 @@ export default function LoginPage() {
 
   // ═══ GUEST LOGIN PAGE ═══
   if (isGuestMode) {
+    // Invalid / incomplete link
+    if (hotelNotFound) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-blue-700 to-cyan-500 p-4">
+          <div className="w-full max-w-md text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 backdrop-blur mb-6">
+              <Building2 className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-3">Link Not Recognised</h1>
+            <p className="text-white/70 text-sm leading-relaxed mb-6">
+              This guest access link appears to be incomplete or may have expired.<br />
+              Please ask the reception desk for a new QR code or link.
+            </p>
+            <div className="bg-white/10 backdrop-blur rounded-xl px-6 py-4">
+              <p className="text-white/60 text-xs">Reception — Dial 0 from your room phone</p>
+            </div>
+            <p className="text-white/30 text-[10px] mt-6">iHotel · Smart Room Platform</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-blue-700 to-cyan-500 p-4">
         <div className="w-full max-w-md">
@@ -71,8 +109,17 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 backdrop-blur mb-4">
               <Building2 className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Welcome, Guest</h1>
-            <p className="text-white/50 text-sm mt-1">iHotel · Smart Room Control</p>
+            {hotelDisplayName ? (
+              <>
+                <h1 className="text-2xl font-bold text-white tracking-tight">{hotelDisplayName}</h1>
+                <p className="text-white/50 text-sm mt-1">iHotel · Guest Portal</p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold text-white tracking-tight">Welcome, Guest</h1>
+                <p className="text-white/50 text-sm mt-1">iHotel · Smart Room Control</p>
+              </>
+            )}
           </div>
 
           <div className="card p-8">

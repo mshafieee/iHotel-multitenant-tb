@@ -323,7 +323,8 @@ function seedHotelRates(db, hotelId) {
 }
 
 // ── Seed default staff users for a new hotel ────────────────────────────────
-function seedHotelUsers(db, hotelId, password = 'iHotel2026!') {
+function seedHotelUsers(db, hotelId, slug = '') {
+  const password = slug ? `iHotel-${slug}-2026` : 'iHotel2026!';
   const hash = bcrypt.hashSync(password, 10);
   const ins  = db.prepare(`INSERT OR IGNORE INTO hotel_users
     (hotel_id, username, password_hash, role, full_name) VALUES (?, ?, ?, ?, ?)`);

@@ -43,7 +43,7 @@ const TELEMETRY_KEYS = [
   'waterMeterBattery','line1','line2','line3','dimmer1','dimmer2','acTemperatureSet',
   'acMode','fanSpeed','curtainsPosition','blindsPosition','dndService','murService',
   'sosService','lastCleanedTime','lastTelemetryTime','firmwareVersion','gatewayVersion','deviceStatus',
-  'pdMode'
+  'pdMode','doorUnlock'
 ];
 const RELAY_KEYS = ['relay1','relay2','relay3','relay4','relay5','relay6','relay7','relay8','doorUnlock','defaultUnlockDuration'];
 const SHARED_CONTROL_KEYS = ['line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','roomStatus','dndService','murService','sosService','pdMode'];
@@ -53,7 +53,8 @@ const WATCHABLE_KEYS = ['roomStatus','pirMotionStatus','doorStatus','line1','lin
 const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }));
+const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(s => s.trim());
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 
 const authLimiter = rateLimit({
@@ -94,6 +95,7 @@ const _roomPDState        = {}; // { [hotelId]: { [roomNum]: bool } }
 const _doorOpenTimers     = {}; // { [hotelId]: { [roomNum]: timerHandle } }
 const _overviewFetchTs    = {}; // { [hotelId]: timestamp } — last full TB fetch time
 const _fetchingOverview   = new Set(); // hotelIds currently fetching TB (prevent concurrent fetches)
+const _tbWs               = {}; // { [hotelId]: WebSocket } — real-time TB telemetry subscriptions
 
 const OVERVIEW_CACHE_TTL  = 30_000; // ms — re-fetch from TB if data is older than this
 
@@ -102,6 +104,48 @@ function getLastOverviewRooms(hotelId) { return (_lastOverviewRooms[hotelId]  ??
 function getLastKnownTelemetry(hotelId){ return (_lastKnownTelemetry[hotelId] ??= {}); }
 function getRoomPDState(hotelId)       { return (_roomPDState[hotelId]        ??= {}); }
 function getDoorOpenTimers(hotelId)    { return (_doorOpenTimers[hotelId]     ??= {}); }
+
+// ── Real-time TB telemetry subscription ─────────────────────────────────────
+// Opens a persistent WebSocket to ThingsBoard that fires whenever an ESP32 /
+// gateway device publishes telemetry.  Results are immediately applied to the
+// in-memory room state and broadcast to connected browser clients via SSE.
+// Called once after the first fetchAndBroadcast for a hotel (or on reconnect).
+async function startTbSubscription(hotelId, deviceIdToRoom) {
+  if (!Object.keys(deviceIdToRoom).length) return;
+
+  // Close any stale subscription for this hotel
+  const existing = _tbWs[hotelId];
+  if (existing && existing.readyState <= WebSocket.OPEN) return; // already active
+  if (existing) { try { existing.terminate(); } catch {} }
+
+  try {
+    const tb = getHotelTB(hotelId);
+    const ws = await tb.openTelemetryWs(deviceIdToRoom, (roomNum, deviceId, data) => {
+      const lastOverview  = getLastOverviewRooms(hotelId);
+      detectAndLogChanges(hotelId, roomNum, data);
+      if (lastOverview[roomNum]) {
+        Object.assign(lastOverview[roomNum], data);
+        sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data });
+      }
+    });
+
+    ws.on('error', e => console.error(`[${hotelId}] TB sub WS error:`, e.message));
+    ws.on('close', () => {
+      delete _tbWs[hotelId];
+      // Reconnect after 15 s
+      setTimeout(() => {
+        if (_tbWs[hotelId]) return;
+        startTbSubscription(hotelId, deviceIdToRoom)
+          .catch(e => console.error(`[${hotelId}] TB sub reconnect failed:`, e.message));
+      }, 15000);
+    });
+
+    _tbWs[hotelId] = ws;
+    console.log(`✓ [${hotelId}] TB real-time subscription active (${Object.keys(deviceIdToRoom).length} devices)`);
+  } catch (e) {
+    console.error(`[${hotelId}] Failed to start TB subscription:`, e.message);
+  }
+}
 
 // ═══ SSE (hotel-scoped) ═══
 const sseClients = new Map(); // Map<res, {userId, role, hotelId}>
@@ -184,7 +228,7 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   addLog(hotel.id, 'auth', 'Login successful', { user: username });
   res.json({
     accessToken, refreshToken,
-    user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id }
+    user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id, hotelSlug: hotel.slug, hotelName: hotel.name }
   });
 });
 
@@ -213,9 +257,10 @@ app.post('/api/auth/logout', authenticate, (req, res) => {
 });
 
 app.get('/api/auth/me', authenticate, (req, res) => {
-  const user = db.prepare('SELECT id, username, role, full_name, last_login FROM hotel_users WHERE id = ?').get(req.user.id);
+  const user  = db.prepare('SELECT id, username, role, full_name, last_login FROM hotel_users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ id: user.id, username: user.username, role: user.role, fullName: user.full_name, lastLogin: user.last_login, hotelId: req.user.hotelId });
+  const hotel = db.prepare('SELECT slug, name FROM hotels WHERE id = ?').get(req.user.hotelId);
+  res.json({ id: user.id, username: user.username, role: user.role, fullName: user.full_name, lastLogin: user.last_login, hotelId: req.user.hotelId, hotelSlug: hotel?.slug || '', hotelName: hotel?.name || '' });
 });
 
 // ═══ SSE (authenticated via query token or header) ═══
@@ -405,7 +450,7 @@ function startNotOccupiedTimer(hotelId, roomNum) {
     const devId = deviceRoomMap[roomNum];
     if (!devId) return;
     try {
-      await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, 'auto');
+      await vacateRoom(hotelId, devId, roomNum, 4, 'auto');
       addLog(hotelId, 'system', 'Room auto → NOT_OCCUPIED (no motion 5 min)', { room: roomNum, source: 'gateway' });
       sseBroadcastRoles(hotelId, 'checkout_alert', { type: 'NOT_OCCUPIED', room: roomNum, ts: Date.now() }, ['owner', 'admin', 'frontdesk']);
     } catch (e) { console.error('NOT_OCCUPIED set failed:', e.message); }
@@ -429,6 +474,15 @@ async function restoreOccupied(hotelId, roomNum) {
   } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
 }
 
+// ── Vacate room: lights off, AC 26°C LOW fan, curtains/blinds closed ─────────
+// Called whenever a room transitions to VACANT (0) or NOT_OCCUPIED (4).
+async function vacateRoom(hotelId, devId, roomNum, targetStatus, username) {
+  await sendControl(hotelId, devId, 'setLines',          { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, username);
+  await sendControl(hotelId, devId, 'setAC',             { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, username);
+  await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, username);
+  await sendControl(hotelId, devId, 'setRoomStatus',     { roomStatus: targetStatus }, username);
+}
+
 function impliesActivity(method, params) {
   if (method === 'setDoorUnlock') return true;
   if (method === 'setService')    return true;
@@ -442,34 +496,36 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   const telemetry = controlToTelemetry(method, params);
   if (!Object.keys(telemetry).length) throw new Error('Unknown method: ' + method);
 
-  const tb = getHotelTB(hotelId);
-  await tb.saveTelemetry(deviceId, telemetry);
-
   const relayAttrs  = controlToRelayAttributes(telemetry);
   const sharedAttrs = { ...relayAttrs };
   const FORWARD = ['line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','roomStatus','doorUnlock'];
   for (const k of FORWARD) { if (k in telemetry) sharedAttrs[k] = telemetry[k]; }
-
-  if (Object.keys(sharedAttrs).length) {
-    try { await tb.saveAttributes(deviceId, sharedAttrs); } catch (e) { console.error('Attr write failed:', e.message); }
-  }
 
   const deviceRoomMap = getDeviceRoomMap(hotelId);
   const lastTelemetry = getLastKnownTelemetry(hotelId);
   const pdState       = getRoomPDState(hotelId);
   const roomNum       = Object.keys(deviceRoomMap).find(k => deviceRoomMap[k] === deviceId) || '?';
 
+  // Check activity against PREVIOUS status before we overwrite the cache
   if (impliesActivity(method, params) && lastTelemetry[roomNum]?.roomStatus === 4) {
     setImmediate(() => restoreOccupied(hotelId, roomNum));
   }
 
+  // ── Optimistic update: apply to local cache and push to UI immediately ──────
+  lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...telemetry };
   if ('pdMode' in telemetry) pdState[roomNum] = !!telemetry.pdMode;
   addLog(hotelId, 'control', method, { room: roomNum, source: 'dashboard', user: username, params: JSON.stringify(telemetry) });
-
   if (telemetry.murService) sseBroadcastAlert(hotelId, { type: 'MUR', room: roomNum, message: `Room ${roomNum}: Housekeeping`, ts: Date.now() });
   if (telemetry.sosService) sseBroadcastAlert(hotelId, { type: 'SOS', room: roomNum, message: `EMERGENCY Room ${roomNum}`, ts: Date.now() });
-
   sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: { ...telemetry, ...sharedAttrs } });
+
+  // ── Persist to ThingsBoard in background — does not block the UI update ─────
+  const tb = getHotelTB(hotelId);
+  tb.saveTelemetry(deviceId, telemetry).catch(e => console.error('TB telemetry write failed:', e.message));
+  if (Object.keys(sharedAttrs).length) {
+    tb.saveAttributes(deviceId, sharedAttrs).catch(e => console.error('TB attr write failed:', e.message));
+  }
+
   return { success: true, written: telemetry };
 }
 
@@ -478,8 +534,18 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
 // Room control (owner, admin)
 app.post('/api/devices/:id/rpc', authenticate, requireRole('owner', 'admin'), async (req, res) => {
   try {
-    const hotelId = req.user.hotelId;
+    const hotelId      = req.user.hotelId;
     const { method, params } = req.body;
+    const targetStatus = params?.roomStatus != null ? parseInt(params.roomStatus) : -1;
+
+    // Transitioning to VACANT or NOT_OCCUPIED → full room cleanup
+    if (method === 'setRoomStatus' && (targetStatus === 0 || targetStatus === 4)) {
+      const deviceRoomMap = getDeviceRoomMap(hotelId);
+      const roomNum = Object.keys(deviceRoomMap).find(k => deviceRoomMap[k] === req.params.id) || '?';
+      await vacateRoom(hotelId, req.params.id, roomNum, targetStatus, req.user.username);
+      return res.json({ success: true });
+    }
+
     res.json(await sendControl(hotelId, req.params.id, method, params || {}, req.user.username));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -554,20 +620,23 @@ async function fetchAndBroadcast(hotelId) {
       airQualityBattery: t.airQualityBattery ?? null,
       elecConsumption: t.elecConsumption ?? 0, waterConsumption: t.waterConsumption ?? 0,
       waterMeterBattery: t.waterMeterBattery ?? null,
-      line1: relays.line1 ?? t.line1 ?? false, line2: relays.line2 ?? t.line2 ?? false, line3: relays.line3 ?? t.line3 ?? false,
-      dimmer1: relays.dimmer1 ?? t.dimmer1 ?? 0, dimmer2: relays.dimmer2 ?? t.dimmer2 ?? 0,
-      acTemperatureSet: relays.acTemperatureSet ?? t.acTemperatureSet ?? 22, acMode: relays.acMode ?? t.acMode ?? 0, fanSpeed: relays.fanSpeed ?? t.fanSpeed ?? 3,
-      curtainsPosition: relays.curtainsPosition ?? t.curtainsPosition ?? 0, blindsPosition: relays.blindsPosition ?? t.blindsPosition ?? 0,
-      dndService: relays.dndService ?? t.dndService ?? false, murService: relays.murService ?? t.murService ?? false, sosService: relays.sosService ?? t.sosService ?? false,
-      roomStatus: relays.roomStatus ?? t.roomStatus ?? 0,
+      // Device telemetry is the source of truth; shared attributes are the fallback
+      // for keys the device hasn't reported yet (e.g. brand-new device, or keys not
+      // in the firmware's publishTelemetry).  relay1-8 are only ever in shared attrs.
+      line1: t.line1 ?? relays.line1 ?? false, line2: t.line2 ?? relays.line2 ?? false, line3: t.line3 ?? relays.line3 ?? false,
+      dimmer1: t.dimmer1 ?? relays.dimmer1 ?? 0, dimmer2: t.dimmer2 ?? relays.dimmer2 ?? 0,
+      acTemperatureSet: t.acTemperatureSet ?? relays.acTemperatureSet ?? 22, acMode: t.acMode ?? relays.acMode ?? 0, fanSpeed: t.fanSpeed ?? relays.fanSpeed ?? 3,
+      curtainsPosition: t.curtainsPosition ?? relays.curtainsPosition ?? 0, blindsPosition: t.blindsPosition ?? relays.blindsPosition ?? 0,
+      dndService: t.dndService ?? relays.dndService ?? false, murService: t.murService ?? relays.murService ?? false, sosService: t.sosService ?? relays.sosService ?? false,
+      roomStatus: t.roomStatus ?? relays.roomStatus ?? 0,
       lastCleanedTime: t.lastCleanedTime ?? null, firmwareVersion: t.firmwareVersion ?? null,
       gatewayVersion: t.gatewayVersion ?? null, deviceStatus: t.deviceStatus ?? 0,
-      pdMode: relays.pdMode ?? t.pdMode ?? false,
+      pdMode: t.pdMode ?? relays.pdMode ?? false,
       relay1: relays.relay1 ?? false, relay2: relays.relay2 ?? false,
       relay3: relays.relay3 ?? false, relay4: relays.relay4 ?? false,
       relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
       relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
-      doorUnlock: relays.doorUnlock ?? false,
+      doorUnlock: t.doorUnlock ?? relays.doorUnlock ?? false,
       reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
     };
   });
@@ -578,6 +647,17 @@ async function fetchAndBroadcast(hotelId) {
   const todayCheckouts = db.prepare('SELECT room, guest_name, check_out FROM reservations WHERE hotel_id=? AND check_out=? AND active=1').all(hotelId, today);
   if (todayCheckouts.length) {
     sseBroadcastRoles(hotelId, 'checkout_alert', { rooms: todayCheckouts, ts: Date.now() }, ['admin', 'frontdesk']);
+  }
+
+  // Start real-time TB subscription if not already active.
+  // deviceRoomMap was populated above: { roomNum → deviceId }.
+  // Invert it to { deviceId → roomNum } for the subscription.
+  if (!_tbWs[hotelId] || _tbWs[hotelId].readyState > WebSocket.OPEN) {
+    const deviceIdToRoom = Object.fromEntries(
+      Object.entries(deviceRoomMap).map(([rn, did]) => [did, rn])
+    );
+    startTbSubscription(hotelId, deviceIdToRoom)
+      .catch(e => console.error(`[${hotelId}] TB sub start error:`, e.message));
   }
 }
 
@@ -683,10 +763,22 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   }
 
   addLog(hotelId, 'pms', `Reservation created Rm${room} (${nights}n × ${resolvedRate} SAR = ${totalAmount} SAR)`, { room, user: req.user.username });
-  const guestUrl = `${req.protocol}://${req.get('host')}/guest?room=${encodeURIComponent(room)}&hotel=${encodeURIComponent(db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId)?.slug || '')}`;
+  const guestBase = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  const guestUrl = `${guestBase}/guest?room=${encodeURIComponent(room)}&hotel=${encodeURIComponent(db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId)?.slug || '')}`;
   res.json({
     reservation: { id, room, guestName, checkIn, checkOut, active: true, token, paymentMethod: paymentMethod || 'pending', ratePerNight: resolvedRate, nights, totalAmount },
     password, guestUrl
+  });
+
+  // Mark room NOT_OCCUPIED now that it has a reservation (non-blocking)
+  setImmediate(async () => {
+    const deviceRoomMap = getDeviceRoomMap(hotelId);
+    const devId = deviceRoomMap[room];
+    if (!devId) return;
+    try {
+      await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, req.user.username);
+      addLog(hotelId, 'system', `Room ${room} → NOT_OCCUPIED (reservation for ${guestName})`, { room, user: req.user.username });
+    } catch (e) { console.error(`Failed to set room ${room} NOT_OCCUPIED after reservation:`, e.message); }
   });
 });
 
@@ -809,7 +901,18 @@ app.get('/api/pms/reservations/:id/link', authenticate, (req, res) => {
   const r       = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!r) return res.status(404).json({ error: 'Not found' });
   const hotelSlug = db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId)?.slug || '';
-  res.json({ url: `${req.protocol}://${req.get('host')}/guest?room=${encodeURIComponent(r.room)}&hotel=${encodeURIComponent(hotelSlug)}`, password: r.password });
+  const guestBase2 = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  res.json({ url: `${guestBase2}/guest?room=${encodeURIComponent(r.room)}&hotel=${encodeURIComponent(hotelSlug)}`, password: r.password });
+});
+
+// ═══ PUBLIC API (no auth) ═══
+// Returns hotel display name for the guest login page — exposes only the name, nothing sensitive
+app.get('/api/public/hotel', (req, res) => {
+  const { slug } = req.query;
+  if (!slug) return res.status(400).json({ error: 'slug required' });
+  const hotel = db.prepare('SELECT name FROM hotels WHERE slug = ? AND active = 1').get(slug.toLowerCase());
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+  res.json({ name: hotel.name });
 });
 
 // ═══ GUEST API ═══
@@ -892,7 +995,8 @@ app.get('/api/guest/room', authenticate, (req, res) => {
     });
   }
   const lastOverview = getLastOverviewRooms(hotelId);
-  res.json({ room: r.room, telemetry: lastOverview[r.room] || {} });
+  const hotel = db.prepare('SELECT name FROM hotels WHERE id=?').get(hotelId);
+  res.json({ room: r.room, telemetry: lastOverview[r.room] || {}, hotelName: hotel?.name || '' });
 });
 
 app.get('/api/guest/room/data', authenticate, async (req, res) => {

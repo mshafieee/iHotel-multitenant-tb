@@ -130,6 +130,13 @@ const usePlatformStore = create((set, get) => ({
     });
   },
 
+  changeAdminPassword: async (currentPassword, newPassword) => {
+    return await platformApi('/api/platform/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+  },
+
   // ── Hotel Detail ────────────────────────────────────────────────────────────
   fetchHotelDetail: async (id) => {
     return await platformApi(`/api/platform/hotels/${id}`);

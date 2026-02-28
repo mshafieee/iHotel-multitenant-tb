@@ -5,7 +5,7 @@ import useHotelStore from '../store/hotelStore';
 const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const STATUS_FULL   = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Not Occupied'];
 
-export default function Heatmap({ onSelectRoom }) {
+export default function Heatmap({ onSelectRoom, cols = 0 }) {
   const rooms = useHotelStore(s => s.rooms);
   const [hoveredRoom, setHoveredRoom] = useState(null);
 
@@ -78,7 +78,10 @@ export default function Heatmap({ onSelectRoom }) {
               </div>
 
               {/* Room cells */}
-              <div className="flex gap-1 flex-wrap">
+              <div
+                style={cols > 0 ? { display: 'grid', gridTemplateColumns: `repeat(${cols}, 5.5rem)`, gap: '4px' } : {}}
+                className={cols > 0 ? '' : 'flex gap-1 flex-wrap'}
+              >
                 {floorRooms.map(rn => {
                   const r = rooms[rn];
                   const status   = r ? (r.roomStatus ?? 0) : 0;
@@ -106,9 +109,9 @@ export default function Heatmap({ onSelectRoom }) {
                       onMouseLeave={() => setHoveredRoom(null)}
                       style={{
                         background: bgColor,
-                        width: '5rem',
-                        height: '3.5rem',
-                        minWidth: '5rem',
+                        width: '5.5rem',
+                        height: '4rem',
+                        minWidth: '5.5rem',
                         opacity: isOnline ? 1 : 0.45,
                       }}
                       className={`relative flex flex-col items-center justify-center rounded-xl border-2 transition-all duration-150 select-none
@@ -116,21 +119,21 @@ export default function Heatmap({ onSelectRoom }) {
                         ${isSOS || isPD ? 'animate-pulse' : ''}`}
                     >
                       {/* Room number */}
-                      <span className="text-[13px] font-extrabold text-white leading-none tracking-tight drop-shadow">
+                      <span className="text-[15px] font-extrabold text-white leading-none tracking-tight drop-shadow">
                         {rn}
                       </span>
 
                       {/* Temperature / flag row */}
                       <div className="flex items-center gap-0.5 mt-0.5">
                         {!isPD && temp !== null && (
-                          <span className="text-[10px] text-white/90 font-semibold font-mono">
+                          <span className="text-[11px] text-white/90 font-semibold font-mono">
                             {Math.round(temp)}°
                           </span>
                         )}
-                        {isPD  && <span className="text-[11px]">⚡</span>}
-                        {isSOS && <span className="text-[10px]">🚨</span>}
-                        {!isSOS && !isPD && isMUR && <span className="text-[10px]">🧹</span>}
-                        {!isSOS && !isPD && !isMUR && isDND && <span className="text-[10px]">🔕</span>}
+                        {isPD  && <span className="text-[12px]">⚡</span>}
+                        {isSOS && <span className="text-[11px]">🚨</span>}
+                        {!isSOS && !isPD && isMUR && <span className="text-[11px]">🧹</span>}
+                        {!isSOS && !isPD && !isMUR && isDND && <span className="text-[11px]">🔕</span>}
                       </div>
 
                       {/* Door open dot — top-right */}

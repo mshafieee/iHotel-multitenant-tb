@@ -27,6 +27,7 @@ function LockoutScreen() {
 
 export default function GuestPortal() {
   const [room, setRoom] = useState(null);
+  const [hotelName, setHotelName] = useState('');
   const [loading, setLoading] = useState(true);
   const [lockout, setLockout] = useState(false);
   const [error, setError] = useState('');
@@ -41,6 +42,7 @@ export default function GuestPortal() {
         const g = await api('/api/guest/room');
         if (!mounted) return;
         setRoom(g.room);
+        if (g.hotelName) setHotelName(g.hotelName);
 
         const roomData = await api('/api/guest/room/data');
         if (!mounted) return;
@@ -123,6 +125,19 @@ export default function GuestPortal() {
 
   return (
     <div>
+      {/* Hotel header */}
+      <header className="bg-blue-700 text-white shadow-lg px-4 py-3 flex items-center gap-3">
+        <Building2 className="w-5 h-5 text-blue-200 shrink-0" />
+        <div>
+          <div className="text-lg font-bold leading-tight">{hotelName}</div>
+          <div className="text-[11px] text-blue-200">iHotel · Guest Portal</div>
+        </div>
+        <div className="ml-auto text-right">
+          <div className="text-xs text-blue-200">Room</div>
+          <div className="text-base font-bold">{room}</div>
+        </div>
+      </header>
+
       {room && rooms[room] ? (
         <RoomModal
           roomId={room}
