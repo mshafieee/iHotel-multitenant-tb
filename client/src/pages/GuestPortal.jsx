@@ -123,7 +123,9 @@ export default function GuestPortal() {
             clearTokens();
             localStorage.removeItem('guestRoom');
             localStorage.removeItem('guestName');
-            window.location.href = `/guest?room=${encodeURIComponent(room)}`;
+            const resToken = localStorage.getItem('guestReservationToken');
+            localStorage.removeItem('guestReservationToken');
+            window.location.href = resToken ? `/guest?token=${encodeURIComponent(resToken)}` : '/guest';
           }}
           onLockout={() => setLockout(true)}
           role="guest"

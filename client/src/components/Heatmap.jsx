@@ -5,6 +5,8 @@ import useHotelStore from '../store/hotelStore';
 const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const STATUS_FULL   = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Not Occupied'];
 
+const TYPE_ABBR = { STANDARD: 'STDR', DELUXE: 'DLXE', SUITE: 'SUITE', VIP: 'VIP' };
+
 export default function Heatmap({ onSelectRoom, cols = 0 }) {
   const rooms = useHotelStore(s => s.rooms);
   const [hoveredRoom, setHoveredRoom] = useState(null);
@@ -110,7 +112,7 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                       style={{
                         background: bgColor,
                         width: '5.5rem',
-                        height: '4rem',
+                        height: '4.5rem',
                         minWidth: '5.5rem',
                         opacity: isOnline ? 1 : 0.45,
                       }}
@@ -122,6 +124,13 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                       <span className="text-[15px] font-extrabold text-white leading-none tracking-tight drop-shadow">
                         {rn}
                       </span>
+
+                      {/* Room type abbreviation */}
+                      {r?.type && (
+                        <span className="text-[7px] font-bold text-white/55 leading-none tracking-widest uppercase">
+                          {TYPE_ABBR[r.type] ?? r.type}
+                        </span>
+                      )}
 
                       {/* Temperature / flag row */}
                       <div className="flex items-center gap-0.5 mt-0.5">

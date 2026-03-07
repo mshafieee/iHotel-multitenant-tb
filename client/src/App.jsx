@@ -3,10 +3,12 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './store/authStore';
 import usePlatformStore from './store/platformStore';
 import LoginPage from './pages/LoginPage';
+import LandingPage from './pages/LandingPage';
 import GuestPortal from './pages/GuestPortal';
 import DashboardPage from './pages/DashboardPage';
 import PlatformLogin from './pages/PlatformLogin';
 import PlatformDashboard from './pages/PlatformDashboard';
+import PlatformResetPassword from './pages/PlatformResetPassword';
 
 // Guard for platform admin routes
 function PlatformRoute({ children }) {
@@ -42,6 +44,7 @@ export default function App() {
       <Route path="/platform/login" element={
         isPlatformAuth ? <Navigate to="/platform" /> : <PlatformLogin />
       } />
+      <Route path="/platform/reset-password" element={<PlatformResetPassword />} />
       <Route path="/platform" element={
         <PlatformRoute><PlatformDashboard /></PlatformRoute>
       } />
@@ -54,9 +57,10 @@ export default function App() {
       } />
       <Route path="/guest-portal" element={<GuestPortal />} />
 
-      {/* Staff routes */}
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />} />
-      <Route path="/*" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/login" />} />
+      {/* Landing / hotel staff login */}
+      <Route path="/" element={isAuthenticated ? <DashboardPage /> : <LandingPage />} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <LandingPage />} />
+      <Route path="/*" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" />} />
     </Routes>
   );
 }

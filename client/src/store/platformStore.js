@@ -11,7 +11,7 @@ async function platformApi(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }

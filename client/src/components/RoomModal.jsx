@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { X, Zap } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Zap, Play, BookOpen, Monitor, Moon } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
 
@@ -16,6 +16,11 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut] = useState(false);
   const [doorCountdown, setDoorCountdown] = useState(0);
+  const [sleepFireAt, setSleepFireAt] = useState(null);
+  const [activePreset, setActivePreset] = useState(null);
+  const applyingPresetRef  = useRef(false);
+  const activePresetRef    = useRef(null);
+  const prevDoorStatusRef  = useRef(undefined);
 
   const r = rooms[roomId];
   if (!r) return null;
@@ -27,6 +32,17 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
   const sc = SCOL[statusIdx] ?? SCOL[0];
 
   const send = useCallback((method, params) => {
+    // Any manual control cancels the active preset (unless the preset itself is sending)
+    if (!applyingPresetRef.current && activePresetRef.current) {
+      const prev = activePresetRef.current;
+      activePresetRef.current = null;
+      setActivePreset(null);
+      setSleepFireAt(null);
+      if (prev === 'sleep') {
+        const timerUrl = role === 'guest' ? '/api/guest/sleep-timer' : `/api/rooms/${roomId}/sleep-timer`;
+        api(timerUrl, { method: 'DELETE' }).catch(() => {});
+      }
+    }
     if (role === 'guest') {
       // Optimistic update — UI responds instantly, same as staff rpc()
       useHotelStore.setState(s => {
@@ -54,6 +70,24 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
     }
     return rpc(roomId, method, params);
   }, [roomId, rpc, role, onLockout]);
+
+  // Cancel preset when door physically opens or closes (telemetry-driven change)
+  useEffect(() => {
+    const current = r?.doorStatus;
+    if (current !== prevDoorStatusRef.current) {
+      prevDoorStatusRef.current = current;
+      if (activePresetRef.current) {
+        const prev = activePresetRef.current;
+        activePresetRef.current = null;
+        setActivePreset(null);
+        setSleepFireAt(null);
+        if (prev === 'sleep') {
+          const timerUrl = role === 'guest' ? '/api/guest/sleep-timer' : `/api/rooms/${roomId}/sleep-timer`;
+          api(timerUrl, { method: 'DELETE' }).catch(() => {});
+        }
+      }
+    }
+  }, [r?.doorStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const adjTemp = (delta) => {
     // Snap current value to nearest 0.5 before applying delta
@@ -99,6 +133,61 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
     }
   };
 
+  const cancelSleepTimer = () => {
+    const timerUrl = role === 'guest' ? '/api/guest/sleep-timer' : `/api/rooms/${r.room}/sleep-timer`;
+    api(timerUrl, { method: 'DELETE' }).catch(() => {});
+  };
+
+  const handlePreset = async (mode) => {
+    // Pressing the active preset again toggles it off
+    if (activePreset === mode) {
+      activePresetRef.current = null;
+      setActivePreset(null);
+      setSleepFireAt(null);
+      if (mode === 'sleep') cancelSleepTimer();
+      return;
+    }
+
+    // Cancel previous sleep timer if switching away from sleep
+    if (activePresetRef.current === 'sleep') {
+      cancelSleepTimer();
+      setSleepFireAt(null);
+    }
+
+    // Mark preset active BEFORE sending so send() doesn't clear it
+    activePresetRef.current = mode;
+    setActivePreset(mode);
+    applyingPresetRef.current = true;
+
+    if (mode === 'reading') {
+      send('setLines', { line1: false, line2: false, line3: false, dimmer1: 50, dimmer2: 75 });
+    } else if (mode === 'tv') {
+      send('setLines', { line1: false, line2: false, line3: false, dimmer1: 10, dimmer2: 10 });
+      send('setCurtainsBlinds', { curtainsPosition: 0 });
+    } else if (mode === 'sleep') {
+      send('setLines', { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 });
+      send('setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 });
+      send('setAC', { acMode: 1, acTemperatureSet: 23 });
+      try {
+        const timerUrl = role === 'guest' ? '/api/guest/sleep-timer' : `/api/rooms/${r.room}/sleep-timer`;
+        const result = await api(timerUrl, { method: 'POST' });
+        if (result.fireAt) {
+          setSleepFireAt(new Date(result.fireAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          // Auto-clear UI when the timer fires 2 hrs later
+          setTimeout(() => {
+            if (activePresetRef.current === 'sleep') {
+              activePresetRef.current = null;
+              setActivePreset(null);
+              setSleepFireAt(null);
+            }
+          }, 2 * 60 * 60 * 1000);
+        }
+      } catch {}
+    }
+
+    applyingPresetRef.current = false;
+  };
+
   const togglePD = () => {
     const newPD = !r.pdMode;
     if (newPD && !confirm(`Activate Power Down for Room ${r.room}? All power will be cut.`)) return;
@@ -116,11 +205,11 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
           <div>
             <h2 className="text-xl font-bold">Room {r.room}</h2>
             <div className="flex gap-1.5 mt-1">
-              <span className="badge" style={{ background: sc + '18', color: sc }}>{STATUSES[statusIdx]}</span>
+              {!isGuest && <span className="badge" style={{ background: sc + '18', color: sc }}>{STATUSES[statusIdx]}</span>}
               {r.pdMode && <span className="badge bg-red-50 text-red-600">⚡ PD</span>}
-              <span className="badge bg-gray-100 text-gray-500">{r.type}</span>
-              <span className="badge bg-gray-100 text-gray-500">F{r.floor}</span>
-              {r.reservation && (
+              {!isGuest && <span className="badge bg-gray-100 text-gray-500">{r.type}</span>}
+              {!isGuest && <span className="badge bg-gray-100 text-gray-500">F{r.floor}</span>}
+              {!isGuest && r.reservation && (
                 <span className="badge bg-blue-50 text-blue-600">👤 {r.reservation.guestName}</span>
               )}
             </div>
@@ -209,6 +298,39 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
               </button>
             )}
           </Section>
+
+          {/* Quick Presets */}
+          {(can || isGuest) && !r.pdMode && (
+            <Section title="Quick Presets">
+              <div className="flex gap-2">
+                {[
+                  { mode: 'reading', label: 'Reading', Icon: BookOpen, desc: 'Soft dimmed light' },
+                  { mode: 'tv',      label: 'TV',      Icon: Monitor,  desc: 'Low dimmer, curtains closed' },
+                  { mode: 'sleep',   label: 'Sleep',   Icon: Moon,     desc: 'Lights off, AC 23°C' },
+                ].map(({ mode, label, Icon, desc }) => {
+                  const active = activePreset === mode;
+                  return (
+                    <button key={mode} onClick={() => handlePreset(mode)}
+                      className={`flex-1 py-2.5 px-1 rounded-xl border transition text-center ${
+                        active
+                          ? 'bg-brand-500 border-brand-500'
+                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                      }`}>
+                      <Icon size={14} className={`mx-auto mb-0.5 ${active ? 'text-white' : 'text-gray-500'}`} />
+                      <div className={`text-xs font-bold ${active ? 'text-white' : 'text-gray-700'}`}>{label}</div>
+                      <div className={`text-[9px] mt-0.5 ${active ? 'text-white/70' : 'text-gray-400'}`}>{desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {sleepFireAt && (
+                <p className="text-[10px] text-purple-500 mt-2 text-center">
+                  <Moon size={9} className="inline mr-1" />
+                  AC adjusts to 25°C at {sleepFireAt}
+                </p>
+              )}
+            </Section>
+          )}
 
           {/* Lines & Dimmers */}
           {(can || isGuest) && !r.pdMode && (
@@ -360,9 +482,98 @@ export default function RoomModal({ roomId, onClose, role, onLockout }) {
               </div>
             </Section>
           )}
+
+          {/* Room Automation — default scenes, owner/admin only */}
+          {can && <RoomAutomation room={r.room} />}
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Room Automation ──────────────────────────────────────────────────────────
+const DEFAULT_STATUS_LABELS = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Not Occupied'];
+
+function summarizeTrigger(scene) {
+  const cfg = typeof scene.trigger_config === 'string'
+    ? JSON.parse(scene.trigger_config) : (scene.trigger_config || {});
+  if (scene.trigger_type === 'time') {
+    const d = cfg.days || [];
+    const dayStr = d.length === 7 ? 'Every day' : d.join(', ') || 'Every day';
+    return `${dayStr} at ${cfg.time || '00:00'}`;
+  }
+  const eventName = {
+    roomStatus: 'Room Status', pirMotionStatus: 'Motion',
+    doorStatus: 'Door', checkIn: 'Check-In', checkOut: 'Check-Out'
+  }[cfg.event] || cfg.event;
+  let s = cfg.operator === 'change'
+    ? `When ${eventName} changes`
+    : `When ${eventName} ${cfg.operator === 'neq' ? '≠' : '='} ${
+        cfg.event === 'roomStatus' ? (DEFAULT_STATUS_LABELS[cfg.value] ?? cfg.value) : cfg.value
+      }`;
+  if (cfg.fromValues?.length > 0) {
+    const labels = cfg.fromValues.map(v =>
+      cfg.event === 'roomStatus' ? (DEFAULT_STATUS_LABELS[v] ?? v) : v
+    );
+    s += ` from ${labels.join('/')}`;
+  }
+  return s;
+}
+
+function RoomAutomation({ room }) {
+  const [scenes, setScenes]   = useState([]);
+  const [running, setRunning] = useState(null);
+
+  useEffect(() => {
+    api(`/api/scenes?room=${encodeURIComponent(room)}&isDefault=1`)
+      .then(data => setScenes(data))
+      .catch(() => {});
+  }, [room]);
+
+  const handleToggle = async (scene) => {
+    const newEnabled = !scene.enabled;
+    setScenes(s => s.map(x => x.id === scene.id ? { ...x, enabled: newEnabled } : x));
+    try {
+      await api(`/api/scenes/${scene.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ enabled: newEnabled })
+      });
+    } catch {
+      setScenes(s => s.map(x => x.id === scene.id ? { ...x, enabled: scene.enabled } : x));
+    }
+  };
+
+  const handleRun = async (id) => {
+    setRunning(id);
+    try { await api(`/api/scenes/${id}/run`, { method: 'POST' }); } catch {}
+    setTimeout(() => setRunning(null), 1500);
+  };
+
+  if (!scenes.length) return null;
+
+  return (
+    <Section title="⚡ Room Automation">
+      <div className="space-y-2">
+        {scenes.map(scene => (
+          <div key={scene.id}
+            className={`flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0 ${!scene.enabled ? 'opacity-50' : ''}`}>
+            <button onClick={() => handleToggle(scene)}
+              className={`toggle flex-shrink-0 ${scene.enabled ? 'bg-emerald-400' : 'bg-gray-200'}`}>
+              <div className={`toggle-knob ${scene.enabled ? 'translate-x-5' : ''}`} />
+            </button>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-gray-700">{scene.name}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{summarizeTrigger(scene)}</div>
+            </div>
+            <button onClick={() => handleRun(scene.id)} disabled={running === scene.id}
+              title="Run now"
+              className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50 flex-shrink-0">
+              <Play size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </Section>
   );
 }
 

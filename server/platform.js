@@ -24,7 +24,7 @@ const crypto   = require('crypto');
 const rateLimit = require('express-rate-limit');
 
 const { authenticatePlatformAdmin, generatePlatformAdminToken } = require('./auth');
-const { seedHotelRates, seedHotelUsers } = require('./db');
+const { seedHotelRates, seedHotelUsers, seedRoomDefaultScenes } = require('./db');
 const { ThingsBoardClient, ThingsBoardClientPool } = require('./thingsboard');
 
 const router = express.Router();
@@ -46,19 +46,24 @@ const platformAuthLimiter = rateLimit({
 
 // ── Platform admin login ───────────────────────────────────────────────────────
 router.post('/auth/login', platformAuthLimiter, (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
-  const admin = _db.prepare('SELECT * FROM platform_admins WHERE username = ? AND active = 1').get(username);
-  if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+    const admin = _db.prepare('SELECT * FROM platform_admins WHERE username = ? AND active = 1').get(username);
+    if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = generatePlatformAdminToken(admin);
+    res.json({
+      accessToken: token,
+      admin: { id: admin.id, username: admin.username, fullName: admin.full_name }
+    });
+  } catch (e) {
+    console.error('Platform login error:', e.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const token = generatePlatformAdminToken(admin);
-  res.json({
-    accessToken: token,
-    admin: { id: admin.id, username: admin.username, fullName: admin.full_name }
-  });
 });
 
 router.get('/auth/me', authenticatePlatformAdmin, (req, res) => {
@@ -198,6 +203,7 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
       VALUES (?, ?, ?, ?, ?)`);
 
     let discovered = 0;
+    const newRooms = [];
     const runAll = _db.transaction(() => {
       for (const dev of devices) {
         // Device name format: gateway-room-{room_number}
@@ -214,10 +220,14 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
         ).get(hotel.id, roomNumber);
 
         ins.run(hotel.id, roomNumber, floor, existing?.room_type || 'STANDARD', dev.id.id);
+        if (!existing) newRooms.push(roomNumber);
         discovered++;
       }
     });
     runAll();
+
+    // Seed default scenes for brand-new rooms
+    for (const roomNumber of newRooms) seedRoomDefaultScenes(_db, hotel.id, roomNumber);
 
     // Refresh pool since we just validated credentials
     _pool?.invalidate(hotel.id);
@@ -266,6 +276,7 @@ router.post('/hotels/:id/rooms', authenticatePlatformAdmin, (req, res) => {
     (hotel_id, room_number, floor, room_type, tb_device_id) VALUES (?, ?, ?, ?, ?)`);
 
   let inserted = 0, errors = 0;
+  const newRooms = [];
   const runAll = _db.transaction(() => {
     for (const row of rows) {
       const rn = String(row.room_number || '').trim();
@@ -273,11 +284,16 @@ router.post('/hotels/:id/rooms', authenticatePlatformAdmin, (req, res) => {
       const rt = String(row.room_type || 'STANDARD').toUpperCase();
       const td = row.tb_device_id || null;
       if (!rn || isNaN(fl)) { errors++; continue; }
+      const existing = _db.prepare('SELECT 1 FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotel.id, rn);
       ins.run(hotel.id, rn, fl, VALID_TYPES.includes(rt) ? rt : 'STANDARD', td);
+      if (!existing) newRooms.push(rn);
       inserted++;
     }
   });
   runAll();
+
+  // Seed default scenes for brand-new rooms
+  for (const rn of newRooms) seedRoomDefaultScenes(_db, hotel.id, rn);
 
   res.json({ success: true, inserted, errors, total: rows.length });
 });

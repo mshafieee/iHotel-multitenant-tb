@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical } from 'lucide-react';
+import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
@@ -14,6 +14,7 @@ import FinancePanel from '../components/FinancePanel';
 import UsersPanel from '../components/UsersPanel';
 import ShiftsPanel from '../components/ShiftsPanel';
 import SimulatorPanel from '../components/SimulatorPanel';
+import ScenesPanel from '../components/ScenesPanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
 function beep(freq, duration, volume = 0.6) {
@@ -83,6 +84,7 @@ export default function DashboardPage() {
     { id: 'finance',   label: 'Finance',    icon: DollarSign,    visible: canSeeFinance },
     { id: 'users',     label: 'Users',      icon: Users,         visible: canSeeUsers },
     { id: 'shifts',    label: 'Shifts',     icon: Clock,         visible: canSeeShifts },
+    { id: 'scenes',    label: 'Scenes',     icon: Zap,           visible: isOwner || isAdmin },
     { id: 'simulator', label: 'Simulator',  icon: FlaskConical,  visible: isOwner || isAdmin },
   ].filter(t => t.visible);
 
@@ -198,6 +200,7 @@ export default function DashboardPage() {
         {tab === 'finance'   && <FinancePanel />}
         {tab === 'users'     && <UsersPanel />}
         {tab === 'shifts'    && <ShiftsPanel />}
+        {tab === 'scenes'    && <ScenesPanel />}
         {tab === 'simulator' && <SimulatorPanel />}
       </main>
 

@@ -9,6 +9,7 @@ const useHotelStore = create((set, get) => ({
   logs: [],
   alerts: [],
   todayCheckouts: [],
+  scenes: [],
   sse: null,
   pollTimer: null,
 
@@ -175,7 +176,63 @@ const useHotelStore = create((set, get) => ({
     const alerts = [...get().alerts];
     alerts.splice(idx, 1);
     set({ alerts });
-  }
+  },
+
+  fetchScenes: async (roomNumber) => {
+    try {
+      const qs = roomNumber ? `?room=${encodeURIComponent(roomNumber)}` : '';
+      const data = await api(`/api/scenes${qs}`);
+      set({ scenes: data });
+    } catch {}
+  },
+
+  createScene: async (sceneData) => {
+    const result = await api('/api/scenes', {
+      method: 'POST',
+      body: JSON.stringify(sceneData)
+    });
+    set({ scenes: [...get().scenes, result] });
+    return result;
+  },
+
+  updateScene: async (id, updates) => {
+    set({ scenes: get().scenes.map(s => s.id === id ? { ...s, ...updates } : s) });
+    try {
+      await api(`/api/scenes/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      await get().fetchScenes();
+      throw e;
+    }
+  },
+
+  deleteScene: async (id) => {
+    await api(`/api/scenes/${id}`, { method: 'DELETE' });
+    set({ scenes: get().scenes.filter(s => s.id !== id) });
+  },
+
+  runScene: async (id) => {
+    await api(`/api/scenes/${id}/run`, { method: 'POST' });
+  },
+
+  pushScene: async (id) => {
+    return api(`/api/scenes/${id}/push`, { method: 'POST' });
+  },
+
+  updateRoomType: async (room, roomType) => {
+    // Optimistic local update
+    const rooms = { ...get().rooms };
+    if (rooms[room]) {
+      rooms[room] = { ...rooms[room], type: roomType };
+      set({ rooms });
+    }
+    await api(`/api/rooms/${room}/type`, {
+      method: 'PATCH',
+      body: JSON.stringify({ roomType }),
+    });
+  },
 }));
 
 // Local state application for optimistic updates

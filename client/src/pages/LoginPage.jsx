@@ -27,16 +27,23 @@ export default function LoginPage() {
   const [hotelDisplayName, setHotelDisplayName] = useState('');
   const [hotelNotFound, setHotelNotFound] = useState(false);
 
-  // Fetch hotel display name from the slug in the URL
+  // Fetch hotel display name for the login page header
   useEffect(() => {
     if (!isGuestMode) return;
-    if (guestHotel) {
+    if (guestToken) {
+      // Preferred: resolve hotel name from opaque reservation token (no room/hotel in URL)
+      fetch(`/api/public/guest/resolve?t=${encodeURIComponent(guestToken)}`)
+        .then(r => r.json())
+        .then(d => { if (d.hotelName) setHotelDisplayName(d.hotelName); else setHotelNotFound(true); })
+        .catch(() => setHotelNotFound(true));
+    } else if (guestHotel) {
+      // Legacy: room+hotel slug URL (backward compat)
       fetch(`/api/public/hotel?slug=${encodeURIComponent(guestHotel)}`)
         .then(r => r.json())
         .then(d => { if (d.name) setHotelDisplayName(d.name); else setHotelNotFound(true); })
         .catch(() => setHotelNotFound(true));
-    } else if (!guestToken) {
-      // No hotel slug and no token — link is broken
+    } else {
+      // No valid params — link is broken
       setHotelNotFound(true);
     }
   }, [isGuestMode, guestHotel, guestToken]);
@@ -70,6 +77,7 @@ export default function LoginPage() {
       setTokens(data.accessToken, null);
       localStorage.setItem('guestRoom', data.room);
       localStorage.setItem('guestName', data.guestName);
+      if (data.reservationToken) localStorage.setItem('guestReservationToken', data.reservationToken);
       window.location.href = '/guest-portal';
     } catch {
       setGuestError('Connection failed. Please try again.');

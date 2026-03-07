@@ -18,10 +18,30 @@ const WebSocket = require('ws');
 const { initDB }                  = require('./db');
 const { ThingsBoardClientPool }   = require('./thingsboard');
 const { authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
+const nodemailer                  = require('nodemailer');
 
 // ═══ INIT ═══
 const db     = initDB();
 const tbPool = new ThingsBoardClientPool();
+
+// ── Email transporter (optional — only used for password reset) ──────────────
+// Configure SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS in server/.env
+// Works with Outlook, Gmail (app password), or any SMTP relay.
+let _mailer = null;
+function getMailer() {
+  if (_mailer) return _mailer;
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) return null;
+  _mailer = nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user, pass },
+  });
+  return _mailer;
+}
 
 // ═══ PLATFORM ROUTER ═══
 const platformModule = require('./platform');
@@ -93,6 +113,8 @@ const _lastOverviewRooms  = {}; // { [hotelId]: { [roomNum]: roomData } }
 const _lastKnownTelemetry = {}; // { [hotelId]: { [roomNum]: telemetryObj } }
 const _roomPDState        = {}; // { [hotelId]: { [roomNum]: bool } }
 const _doorOpenTimers     = {}; // { [hotelId]: { [roomNum]: timerHandle } }
+const _sleepTimers        = {}; // { [hotelId]: { [roomNum]: timerHandle } } — 2-hr AC adjust
+const _roomStateSnapshots = {}; // { [hotelId]: { [roomNum]: stateSnapshot } } — pre-NOT_OCCUPIED snapshot
 const _overviewFetchTs    = {}; // { [hotelId]: timestamp } — last full TB fetch time
 const _fetchingOverview   = new Set(); // hotelIds currently fetching TB (prevent concurrent fetches)
 const _tbWs               = {}; // { [hotelId]: WebSocket } — real-time TB telemetry subscriptions
@@ -104,6 +126,8 @@ function getLastOverviewRooms(hotelId) { return (_lastOverviewRooms[hotelId]  ??
 function getLastKnownTelemetry(hotelId){ return (_lastKnownTelemetry[hotelId] ??= {}); }
 function getRoomPDState(hotelId)       { return (_roomPDState[hotelId]        ??= {}); }
 function getDoorOpenTimers(hotelId)    { return (_doorOpenTimers[hotelId]     ??= {}); }
+function getSleepTimers(hotelId)       { return (_sleepTimers[hotelId]       ??= {}); }
+function getRoomStateSnapshots(hotelId){ return (_roomStateSnapshots[hotelId] ??= {}); }
 
 // ── Real-time TB telemetry subscription ─────────────────────────────────────
 // Opens a persistent WebSocket to ThingsBoard that fires whenever an ESP32 /
@@ -121,12 +145,26 @@ async function startTbSubscription(hotelId, deviceIdToRoom) {
   try {
     const tb = getHotelTB(hotelId);
     const ws = await tb.openTelemetryWs(deviceIdToRoom, (roomNum, deviceId, data) => {
-      const lastOverview  = getLastOverviewRooms(hotelId);
+      const lastOverview = getLastOverviewRooms(hotelId);
       detectAndLogChanges(hotelId, roomNum, data);
+      // Capture previous values for the updated keys BEFORE applying the update,
+      // so event scenes can match "from → to" state transitions.
+      const prevState = {};
       if (lastOverview[roomNum]) {
-        Object.assign(lastOverview[roomNum], data);
-        sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data });
+        for (const key of Object.keys(data)) prevState[key] = lastOverview[roomNum][key];
+        // Apply the same NOT_OCCUPIED guard used in detectAndLogChanges: while
+        // a restore snapshot exists the server owns roomStatus=4, so don't let
+        // raw device telemetry (roomStatus=1) overwrite it in the overview cache
+        // or in the SSE broadcast that drives the client UI.
+        let broadcastData = data;
+        if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in data && data.roomStatus !== 4) {
+          broadcastData = { ...data };
+          delete broadcastData.roomStatus;
+        }
+        Object.assign(lastOverview[roomNum], broadcastData);
+        sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: broadcastData });
       }
+      checkEventScenes(hotelId, roomNum, data, prevState);
     });
 
     ws.on('error', e => console.error(`[${hotelId}] TB sub WS error:`, e.message));
@@ -297,6 +335,16 @@ function detectAndLogChanges(hotelId, roomNum, t) {
   const prev          = lastTelemetry[roomNum];
   if (!prev) { lastTelemetry[roomNum] = { ...t }; return; }
 
+  // Guard: while the server has set NOT_OCCUPIED (snapshot exists), ignore the
+  // device's reported roomStatus unless it confirms 4.  The ESP32 keeps sending
+  // its own local roomStatus (=1 OCCUPIED) until it reads and applies our shared
+  // attribute command.  Without this, the first device packet after the timer fires
+  // overwrites roomStatus back to 1, deletes the snapshot, and breaks restore.
+  if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in t && t.roomStatus !== 4) {
+    t = { ...t };
+    delete t.roomStatus;
+  }
+
   const pdState        = getRoomPDState(hotelId);
   const deviceRoomMap  = getDeviceRoomMap(hotelId);
 
@@ -305,7 +353,11 @@ function detectAndLogChanges(hotelId, roomNum, t) {
     const to = t[key];
     let msg, cat = 'telemetry';
 
-    if (key === 'roomStatus') { msg = `Room status → ${ROOM_STATUS[to] ?? to}`; cat = 'system'; }
+    if (key === 'roomStatus') {
+      msg = `Room status → ${ROOM_STATUS[to] ?? to}`; cat = 'system';
+      // Discard restore snapshot when the room reaches a definitive state (not returning from NOT_OCCUPIED)
+      if (to !== 4) delete getRoomStateSnapshots(hotelId)[roomNum];
+    }
     else if (key === 'doorStatus') {
       msg = to ? 'Door OPENED' : 'Door CLOSED'; cat = 'sensor';
       const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
@@ -450,7 +502,24 @@ function startNotOccupiedTimer(hotelId, roomNum) {
     const devId = deviceRoomMap[roomNum];
     if (!devId) return;
     try {
-      await vacateRoom(hotelId, devId, roomNum, 4, 'auto');
+      // Snapshot current device state so we can restore it when the guest returns.
+      // Save BEFORE changing status so we capture the live room state.
+      const snapshots = getRoomStateSnapshots(hotelId);
+      snapshots[roomNum] = {
+        line1:            t.line1            ?? false,
+        line2:            t.line2            ?? false,
+        line3:            t.line3            ?? false,
+        dimmer1:          t.dimmer1          ?? 0,
+        dimmer2:          t.dimmer2          ?? 0,
+        acMode:           t.acMode           ?? 0,
+        acTemperatureSet: t.acTemperatureSet ?? 22,
+        fanSpeed:         t.fanSpeed         ?? 0,
+        curtainsPosition: t.curtainsPosition ?? 0,
+        blindsPosition:   t.blindsPosition   ?? 0,
+      };
+      // Only set status to NOT_OCCUPIED — the Departure Routine scene handles
+      // lights off, AC 26°C, curtains closed automatically when status leaves 1.
+      await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, 'auto');
       addLog(hotelId, 'system', 'Room auto → NOT_OCCUPIED (no motion 5 min)', { room: roomNum, source: 'gateway' });
       sseBroadcastRoles(hotelId, 'checkout_alert', { type: 'NOT_OCCUPIED', room: roomNum, ts: Date.now() }, ['owner', 'admin', 'frontdesk']);
     } catch (e) { console.error('NOT_OCCUPIED set failed:', e.message); }
@@ -469,8 +538,29 @@ async function restoreOccupied(hotelId, roomNum) {
   const curStatus = lastTelemetry[roomNum]?.roomStatus;
   if (curStatus !== 4) return;
   try {
+    // Read and remove the snapshot BEFORE sendControl(setRoomStatus) deletes it.
+    // sendControl clears any snapshot whose roomStatus !== 4, so if we read after
+    // the call we always get undefined and the restore commands are never sent.
+    const snapshots = getRoomStateSnapshots(hotelId);
+    const snap      = snapshots[roomNum];
+    if (snap) delete snapshots[roomNum];
+
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto');
-    addLog(hotelId, 'system', 'Room auto → OCCUPIED (activity detected)', { room: roomNum, source: 'gateway' });
+
+    // Restore device state from before the NOT_OCCUPIED transition
+    if (snap) {
+      await sendControl(hotelId, devId, 'setLines',
+        { line1: snap.line1, line2: snap.line2, line3: snap.line3,
+          dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
+      await sendControl(hotelId, devId, 'setAC',
+        { acMode: snap.acMode, acTemperatureSet: snap.acTemperatureSet,
+          fanSpeed: snap.fanSpeed }, 'auto');
+      await sendControl(hotelId, devId, 'setCurtainsBlinds',
+        { curtainsPosition: snap.curtainsPosition,
+          blindsPosition: snap.blindsPosition }, 'auto');
+    }
+
+    addLog(hotelId, 'system', 'Room auto → OCCUPIED (activity detected, state restored)', { room: roomNum, source: 'gateway' });
   } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
 }
 
@@ -506,14 +596,25 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   const pdState       = getRoomPDState(hotelId);
   const roomNum       = Object.keys(deviceRoomMap).find(k => deviceRoomMap[k] === deviceId) || '?';
 
-  // Check activity against PREVIOUS status before we overwrite the cache
-  if (impliesActivity(method, params) && lastTelemetry[roomNum]?.roomStatus === 4) {
+  // Check activity against PREVIOUS status before we overwrite the cache.
+  // Only trigger restore for explicit user/dashboard actions — NOT for system automation
+  // (scenes, departure routine, restoreOccupied's own restore commands).  If we allowed
+  // system commands here the Departure Routine's setAC(acMode=1) call would prematurely
+  // trigger restoreOccupied, consume the snapshot, and leave real-motion restore with
+  // nothing to restore from.
+  const isSystemCmd = username === 'auto' || username === 'system'
+    || username.startsWith('scene:') || username.startsWith('event:');
+  if (!isSystemCmd && impliesActivity(method, params) && lastTelemetry[roomNum]?.roomStatus === 4) {
     setImmediate(() => restoreOccupied(hotelId, roomNum));
   }
 
   // ── Optimistic update: apply to local cache and push to UI immediately ──────
   lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...telemetry };
   if ('pdMode' in telemetry) pdState[roomNum] = !!telemetry.pdMode;
+  // Explicit status change to anything other than NOT_OCCUPIED clears the restore snapshot
+  if ('roomStatus' in telemetry && telemetry.roomStatus !== 4) {
+    delete getRoomStateSnapshots(hotelId)[roomNum];
+  }
   addLog(hotelId, 'control', method, { room: roomNum, source: 'dashboard', user: username, params: JSON.stringify(telemetry) });
   if (telemetry.murService) sseBroadcastAlert(hotelId, { type: 'MUR', room: roomNum, message: `Room ${roomNum}: Housekeeping`, ts: Date.now() });
   if (telemetry.sosService) sseBroadcastAlert(hotelId, { type: 'SOS', room: roomNum, message: `EMERGENCY Room ${roomNum}`, ts: Date.now() });
@@ -528,6 +629,101 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
 
   return { success: true, written: telemetry };
 }
+
+// ═══ SCENES / AUTOMATION ENGINE ═══
+
+// Execute all actions of a scene sequentially, respecting per-action delays.
+async function executeScene(hotelId, scene, triggeredBy = 'auto') {
+  const deviceRoomMap = getDeviceRoomMap(hotelId);
+  const devId = deviceRoomMap[scene.room_number];
+  if (!devId) {
+    console.warn(`[scene] "${scene.name}": no device for room ${scene.room_number}`);
+    return;
+  }
+  try {
+    db.prepare("UPDATE scenes SET last_run = datetime('now') WHERE id = ?").run(scene.id);
+    addLog(hotelId, 'scene', `Scene "${scene.name}" triggered`, { room: scene.room_number, source: triggeredBy });
+
+    for (const action of scene.actions) {
+      if ((action.delay || 0) > 0) {
+        await new Promise(r => setTimeout(r, action.delay * 1000));
+      }
+      if (action.type === 'delay') continue; // standalone delay step
+      await sendControl(hotelId, devId, action.type, action.params || {}, `scene:${scene.name}`);
+    }
+  } catch (e) {
+    console.error(`[scene] "${scene.name}" exec error:`, e.message);
+  }
+}
+
+// Normalize a sensor value so booleans and numeric strings compare consistently.
+// true/"true" → 1, false/"false" → 0, numeric string → Number, else String.
+function normalizeSensorVal(v) {
+  if (v === true  || v === 'true'  || v === 'True')  return 1;
+  if (v === false || v === 'false' || v === 'False') return 0;
+  const n = Number(v);
+  return isNaN(n) ? String(v) : n;
+}
+
+// Check and fire any event-based scenes matching updated telemetry keys.
+// prevState: values BEFORE this update (for "from → to" state-transition matching).
+function checkEventScenes(hotelId, roomNum, updates, prevState = {}) {
+  try {
+    const sceneRows = db.prepare(
+      "SELECT * FROM scenes WHERE hotel_id=? AND room_number=? AND enabled=1 AND trigger_type='event'"
+    ).all(hotelId, roomNum);
+
+    for (const sceneRow of sceneRows) {
+      try {
+        const cfg = JSON.parse(sceneRow.trigger_config);
+        const { event: eventKey, operator = 'eq', value: eventValue, fromValues } = cfg;
+        if (!eventKey || !(eventKey in updates)) continue;
+
+        const actual   = normalizeSensorVal(updates[eventKey]);
+        const expected = normalizeSensorVal(eventValue);
+        let matches = false;
+        if      (operator === 'eq')     matches = actual === expected;
+        else if (operator === 'neq')    matches = actual !== expected;
+        else if (operator === 'change') matches = true;
+
+        // If fromValues is set, also verify the previous state matches one of them.
+        if (matches && Array.isArray(fromValues) && fromValues.length > 0) {
+          if (eventKey in prevState) {
+            const prev = normalizeSensorVal(prevState[eventKey]);
+            matches = fromValues.some(fv => normalizeSensorVal(fv) === prev);
+          } else {
+            matches = false; // previous state unknown — skip to avoid false triggers
+          }
+        }
+
+        if (matches) {
+          const scene = { ...sceneRow, actions: JSON.parse(sceneRow.actions) };
+          executeScene(hotelId, scene, `event:${eventKey}=${updates[eventKey]}`).catch(() => {});
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+// Time-based trigger: runs every minute, checks all enabled time scenes.
+setInterval(() => {
+  const now     = new Date();
+  const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const DAY     = ['sun','mon','tue','wed','thu','fri','sat'][now.getDay()];
+
+  try {
+    const rows = db.prepare("SELECT * FROM scenes WHERE enabled=1 AND trigger_type='time'").all();
+    for (const row of rows) {
+      try {
+        const cfg = JSON.parse(row.trigger_config);
+        if (cfg.time !== timeStr) continue;
+        if (cfg.days && cfg.days.length && !cfg.days.includes(DAY)) continue;
+        const scene = { ...row, actions: JSON.parse(row.actions) };
+        executeScene(row.hotel_id, scene, `time:${timeStr}`).catch(() => {});
+      } catch {}
+    }
+  } catch {}
+}, 60_000);
 
 // ═══ PROTECTED API ROUTES ═══
 
@@ -628,7 +824,10 @@ async function fetchAndBroadcast(hotelId) {
       acTemperatureSet: t.acTemperatureSet ?? relays.acTemperatureSet ?? 22, acMode: t.acMode ?? relays.acMode ?? 0, fanSpeed: t.fanSpeed ?? relays.fanSpeed ?? 3,
       curtainsPosition: t.curtainsPosition ?? relays.curtainsPosition ?? 0, blindsPosition: t.blindsPosition ?? relays.blindsPosition ?? 0,
       dndService: t.dndService ?? relays.dndService ?? false, murService: t.murService ?? relays.murService ?? false, sosService: t.sosService ?? relays.sosService ?? false,
-      roomStatus: t.roomStatus ?? relays.roomStatus ?? 0,
+      // If a NOT_OCCUPIED restore snapshot exists the server owns roomStatus=4;
+      // don't let a fresh TB telemetry fetch (which always has the device's own
+      // value, typically 1=OCCUPIED) overwrite it and mislead the client.
+      roomStatus: getRoomStateSnapshots(hotelId)[rn] ? 4 : (t.roomStatus ?? relays.roomStatus ?? 0),
       lastCleanedTime: t.lastCleanedTime ?? null, firmwareVersion: t.firmwareVersion ?? null,
       gatewayVersion: t.gatewayVersion ?? null, deviceStatus: t.deviceStatus ?? 0,
       pdMode: t.pdMode ?? relays.pdMode ?? false,
@@ -765,7 +964,7 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
 
   addLog(hotelId, 'pms', `Reservation created Rm${room} (${nights}n × ${resolvedRate} SAR = ${totalAmount} SAR)`, { room, user: req.user.username });
   const guestBase = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
-  const guestUrl = `${guestBase}/guest?room=${encodeURIComponent(room)}&hotel=${encodeURIComponent(db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId)?.slug || '')}`;
+  const guestUrl = `${guestBase}/guest?token=${encodeURIComponent(token)}`;
   res.json({
     reservation: { id, room, guestName, checkIn, checkOut, active: true, token, paymentMethod: paymentMethod || 'pending', ratePerNight: resolvedRate, nights, totalAmount },
     password: plainPassword, guestUrl
@@ -780,6 +979,8 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
       await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, req.user.username);
       addLog(hotelId, 'system', `Room ${room} → NOT_OCCUPIED (reservation for ${guestName})`, { room, user: req.user.username });
     } catch (e) { console.error(`Failed to set room ${room} NOT_OCCUPIED after reservation:`, e.message); }
+    // Fire checkIn event scenes
+    checkEventScenes(hotelId, room, { checkIn: 1 });
   });
 });
 
@@ -888,6 +1089,8 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
   }
   sseBroadcast(hotelId, 'lockout', { room });
   addLog(hotelId, 'pms', `Room ${room} checked out → SERVICE`, { room, user: req.user.username });
+  // Fire checkOut event scenes
+  setImmediate(() => checkEventScenes(hotelId, room, { checkOut: 1 }));
   res.json({ success: true });
 });
 
@@ -901,9 +1104,82 @@ app.get('/api/pms/reservations/:id/link', authenticate, (req, res) => {
   const hotelId = req.user.hotelId;
   const r       = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!r) return res.status(404).json({ error: 'Not found' });
-  const hotelSlug = db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId)?.slug || '';
   const guestBase2 = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
-  res.json({ url: `${guestBase2}/guest?room=${encodeURIComponent(r.room)}&hotel=${encodeURIComponent(hotelSlug)}`, password: r.password });
+  res.json({ url: `${guestBase2}/guest?token=${encodeURIComponent(r.token)}`, password: r.password });
+});
+
+// ═══ PASSWORD RESET (public, no auth) ═══
+
+// Platform admin forgot password — sends reset link to SUPERADMIN_EMAIL env var
+app.post('/api/public/forgot-password/platform', async (req, res) => {
+  // Always respond 200 to prevent username enumeration
+  res.json({ ok: true });
+
+  try {
+    const adminEmail = process.env.SUPERADMIN_EMAIL || 'm.shafiee.osama@outlook.com';
+    const token      = crypto.randomBytes(32).toString('hex');
+    const expiresAt  = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
+
+    // Invalidate any previous platform tokens
+    db.prepare("DELETE FROM password_reset_tokens WHERE type='platform'").run();
+    db.prepare(
+      "INSERT INTO password_reset_tokens (token, type, identifier, expires_at) VALUES (?, 'platform', 'superadmin', ?)"
+    ).run(token, expiresAt);
+
+    const mailer = getMailer();
+    if (!mailer) {
+      console.warn('[reset] SMTP not configured — reset token generated but email not sent:', token);
+      return;
+    }
+
+    const appBase = process.env.GUEST_URL_BASE || 'http://localhost:5173';
+    const resetUrl = `${appBase}/platform/reset-password?token=${token}`;
+
+    await mailer.sendMail({
+      from:    `"iHotel Platform" <${process.env.SMTP_USER}>`,
+      to:      adminEmail,
+      subject: 'iHotel Platform — Password Reset',
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2 style="color:#1e293b">Password Reset Request</h2>
+          <p>A password reset was requested for the iHotel Platform super admin account.</p>
+          <p>Click the button below to set a new password. This link expires in 30 minutes.</p>
+          <a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0">
+            Reset Password
+          </a>
+          <p style="color:#94a3b8;font-size:12px">If you did not request this, ignore this email. The link will expire automatically.</p>
+          <p style="color:#cbd5e1;font-size:11px">iHotel Smart Hotel Platform</p>
+        </div>
+      `,
+    });
+
+    console.log('[reset] Platform reset email sent to', adminEmail);
+  } catch (e) {
+    console.error('[reset] Failed to send platform reset email:', e.message);
+  }
+});
+
+// Platform admin reset password — validates token and sets new password
+app.post('/api/public/reset-password/platform', (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'Token and new password (min 8 chars) required' });
+  }
+
+  const row = db.prepare(
+    "SELECT * FROM password_reset_tokens WHERE token=? AND type='platform' AND used=0"
+  ).get(token);
+
+  if (!row) return res.status(400).json({ error: 'Invalid or expired reset link' });
+  if (new Date(row.expires_at) < new Date()) {
+    return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+  }
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  db.prepare('UPDATE platform_admins SET password_hash=? WHERE username=?').run(hash, row.identifier);
+  db.prepare('UPDATE password_reset_tokens SET used=1 WHERE id=?').run(row.id);
+
+  res.json({ ok: true });
 });
 
 // ═══ PUBLIC API (no auth) ═══
@@ -914,6 +1190,17 @@ app.get('/api/public/hotel', (req, res) => {
   const hotel = db.prepare('SELECT name FROM hotels WHERE slug = ? AND active = 1').get(slug.toLowerCase());
   if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
   res.json({ name: hotel.name });
+});
+
+// Resolves an opaque reservation token → hotel display name (no room, no PII)
+// Used by the guest login page to show the hotel name without exposing room/hotel in URL
+app.get('/api/public/guest/resolve', (req, res) => {
+  const { t } = req.query;
+  if (!t) return res.status(400).json({ error: 'Token required' });
+  const r = db.prepare('SELECT hotel_id FROM reservations WHERE token=? AND active=1').get(t);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const hotel = db.prepare('SELECT name FROM hotels WHERE id=?').get(r.hotel_id);
+  res.json({ hotelName: hotel?.name || '' });
 });
 
 // ═══ GUEST API ═══
@@ -966,7 +1253,7 @@ app.post('/api/guest/login', guestLimiter, (req, res) => {
 
   const guestToken = generateAccessToken({ id: 0, username: `guest:${r.guest_name}`, role: 'guest', room: r.room, hotelId });
   addLog(hotelId, 'auth', 'Guest login', { source: `guest:${r.guest_name}`, room: r.room });
-  res.json({ accessToken: guestToken, room: r.room, guestName: r.guest_name });
+  res.json({ accessToken: guestToken, room: r.room, guestName: r.guest_name, reservationToken: r.token });
 });
 
 app.get('/api/guest/room', authenticate, (req, res) => {
@@ -1101,6 +1388,79 @@ app.post('/api/guest/rpc', authenticate, async (req, res) => {
     .catch(e => res.status(400).json({ error: e.message }));
 });
 
+// ═══ SLEEP TIMER ═══
+// Shared helper — schedules a 2-hr AC warm-up; cancels any prior timer for the room.
+function scheduleSleepTimer(hotelId, room, devId) {
+  const timers = getSleepTimers(hotelId);
+  if (timers[room]) clearTimeout(timers[room]);
+  const fireAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  timers[room] = setTimeout(async () => {
+    delete timers[room];
+    try { await sendControl(hotelId, devId, 'setAC', { acTemperatureSet: 25 }, 'sleep-timer'); } catch {}
+  }, 2 * 60 * 60 * 1000);
+  return fireAt;
+}
+
+// Guest: POST /api/guest/sleep-timer
+app.post('/api/guest/sleep-timer', authenticate, async (req, res) => {
+  if (req.user.role !== 'guest') return res.status(403).json({ error: 'Guest access only' });
+  const hotelId = req.user.hotelId;
+  const today   = new Date().toISOString().split('T')[0];
+  let r = null;
+  if (req.user.room) {
+    r = db.prepare('SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1 AND check_in<=? AND check_out>=?')
+         .get(hotelId, req.user.room, today, today);
+  } else {
+    const name = req.user.username.replace('guest:', '');
+    r = db.prepare('SELECT * FROM reservations WHERE hotel_id=? AND guest_name=? AND active=1').get(hotelId, name);
+  }
+  if (!r) return res.status(403).json({ error: 'session_expired' });
+  const devId = getDeviceRoomMap(hotelId)[r.room];
+  if (!devId) return res.status(404).json({ error: 'Device not found' });
+  if (getRoomPDState(hotelId)[r.room]) return res.status(403).json({ error: 'room_pd' });
+  const fireAt = scheduleSleepTimer(hotelId, r.room, devId);
+  res.json({ success: true, fireAt });
+});
+
+// Staff: POST /api/rooms/:room/sleep-timer
+app.post('/api/rooms/:room/sleep-timer', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const room    = req.params.room;
+  const devId   = getDeviceRoomMap(hotelId)[room];
+  if (!devId) return res.status(404).json({ error: 'Device not found' });
+  const fireAt = scheduleSleepTimer(hotelId, room, devId);
+  res.json({ success: true, fireAt });
+});
+
+// Guest: DELETE /api/guest/sleep-timer  — cancel pending sleep timer
+app.delete('/api/guest/sleep-timer', authenticate, async (req, res) => {
+  if (req.user.role !== 'guest') return res.status(403).json({ error: 'Guest access only' });
+  const hotelId = req.user.hotelId;
+  const today   = new Date().toISOString().split('T')[0];
+  let r = null;
+  if (req.user.room) {
+    r = db.prepare('SELECT room FROM reservations WHERE hotel_id=? AND room=? AND active=1 AND check_in<=? AND check_out>=?')
+         .get(hotelId, req.user.room, today, today);
+  } else {
+    const name = req.user.username.replace('guest:', '');
+    r = db.prepare('SELECT room FROM reservations WHERE hotel_id=? AND guest_name=? AND active=1').get(hotelId, name);
+  }
+  if (r) {
+    const timers = getSleepTimers(hotelId);
+    if (timers[r.room]) { clearTimeout(timers[r.room]); delete timers[r.room]; }
+  }
+  res.json({ success: true });
+});
+
+// Staff: DELETE /api/rooms/:room/sleep-timer  — cancel pending sleep timer
+app.delete('/api/rooms/:room/sleep-timer', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const timers  = getSleepTimers(hotelId);
+  const room    = req.params.room;
+  if (timers[room]) { clearTimeout(timers[room]); delete timers[room]; }
+  res.json({ success: true });
+});
+
 // ═══ RESET ROOM ═══
 app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (req, res) => {
   const hotelId       = req.user.hotelId;
@@ -1130,6 +1490,29 @@ app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (r
     }
     addLog(hotelId, 'system', `All rooms reset complete`, { user: username });
   })();
+});
+
+// Update room type — stored in hotel_rooms table, applied immediately to next broadcast
+app.patch('/api/rooms/:room/type', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId      = req.user.hotelId;
+  const { room }     = req.params;
+  const { roomType } = req.body;
+  if (!ROOM_TYPES.includes(roomType)) return res.status(400).json({ error: 'Invalid room type' });
+
+  const changed = db.prepare(
+    'UPDATE hotel_rooms SET room_type=? WHERE hotel_id=? AND room_number=?'
+  ).run(roomType, hotelId, room);
+
+  if (changed.changes === 0) {
+    // Row missing — insert with auto-detected floor
+    const floor = parseInt(room.length <= 3 ? room[0] : room.slice(0, -2)) || 1;
+    db.prepare('INSERT OR IGNORE INTO hotel_rooms (hotel_id, room_number, floor, room_type) VALUES (?,?,?,?)')
+      .run(hotelId, room, floor, roomType);
+  }
+
+  // Refresh cached broadcast so SSE clients see the new type immediately
+  fetchAndBroadcast(hotelId).catch(() => {});
+  res.json({ ok: true });
 });
 
 app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), async (req, res) => {
@@ -1348,6 +1731,111 @@ app.delete('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   db.prepare('UPDATE hotel_users SET active=0 WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
   addLog(hotelId, 'system', `User deactivated: ${user.username}`, { user: req.user.username });
   res.json({ success: true });
+});
+
+// ═══ SCENES CRUD ═══
+
+app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { room, isDefault } = req.query;
+  // isDefault=1 → system scenes (shown in RoomModal); default → custom scenes (isDefault=0)
+  const defFilter = isDefault === '1' ? 1 : 0;
+  const rows = room
+    ? db.prepare('SELECT * FROM scenes WHERE hotel_id=? AND room_number=? AND is_default=? ORDER BY created_at').all(hotelId, room, defFilter)
+    : db.prepare('SELECT * FROM scenes WHERE hotel_id=? AND is_default=? ORDER BY room_number, created_at').all(hotelId, defFilter);
+  res.json(rows.map(s => ({
+    ...s, enabled: !!s.enabled,
+    trigger_config: JSON.parse(s.trigger_config),
+    actions: JSON.parse(s.actions)
+  })));
+});
+
+app.post('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { roomNumber, name, triggerType, triggerConfig, actions } = req.body;
+  if (!roomNumber || !name || !triggerType)
+    return res.status(400).json({ error: 'roomNumber, name, triggerType required' });
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions) VALUES (?,?,?,?,?,?,?)')
+    .run(id, hotelId, roomNumber, name, triggerType,
+      JSON.stringify(triggerConfig || {}), JSON.stringify(actions || []));
+  addLog(hotelId, 'scene', `Scene "${name}" created for room ${roomNumber}`, { room: roomNumber, user: req.user.username });
+  res.json({ id });
+});
+
+app.put('/api/scenes/:id', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const scene = db.prepare('SELECT id FROM scenes WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!scene) return res.status(404).json({ error: 'Scene not found' });
+  const { name, triggerType, triggerConfig, actions, enabled } = req.body;
+  db.prepare(`UPDATE scenes SET
+    name           = COALESCE(?, name),
+    trigger_type   = COALESCE(?, trigger_type),
+    trigger_config = COALESCE(?, trigger_config),
+    actions        = COALESCE(?, actions),
+    enabled        = COALESCE(?, enabled)
+    WHERE id = ?`)
+    .run(
+      name         ?? null,
+      triggerType  ?? null,
+      triggerConfig !== undefined ? JSON.stringify(triggerConfig) : null,
+      actions       !== undefined ? JSON.stringify(actions)       : null,
+      enabled       !== undefined ? (enabled ? 1 : 0)            : null,
+      scene.id
+    );
+  res.json({ success: true });
+});
+
+app.delete('/api/scenes/:id', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const scene = db.prepare('SELECT id, name FROM scenes WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!scene) return res.status(404).json({ error: 'Scene not found' });
+  db.prepare('DELETE FROM scenes WHERE id=?').run(scene.id);
+  res.json({ success: true });
+});
+
+// Manual run — respond immediately, execute async
+app.post('/api/scenes/:id/run', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const row = db.prepare('SELECT * FROM scenes WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!row) return res.status(404).json({ error: 'Scene not found' });
+  res.json({ success: true });
+  const scene = { ...row, actions: JSON.parse(row.actions) };
+  executeScene(hotelId, scene, `manual:${req.user.username}`).catch(() => {});
+});
+
+// Push all scenes for a room to the gateway device as a shared attribute.
+// The ESP32 firmware can read 'ihotel_offline_scenes' and execute them locally when offline.
+app.post('/api/scenes/:id/push', authenticate, requireRole('owner', 'admin'), async (req, res) => {
+  const hotelId = req.user.hotelId;
+  const row = db.prepare('SELECT * FROM scenes WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!row) return res.status(404).json({ error: 'Scene not found' });
+
+  const deviceRoomMap = getDeviceRoomMap(hotelId);
+  const devId = deviceRoomMap[row.room_number];
+  if (!devId) return res.status(404).json({ error: `No device mapped to room ${row.room_number}` });
+
+  // Collect ALL scenes for this room (not just this one) so the gateway has a complete picture
+  const allRows = db.prepare('SELECT * FROM scenes WHERE hotel_id=? AND room_number=?').all(hotelId, row.room_number);
+  const payload = allRows.map(s => ({
+    id:             s.id,
+    name:           s.name,
+    trigger_type:   s.trigger_type,
+    trigger_config: JSON.parse(s.trigger_config),
+    actions:        JSON.parse(s.actions),
+    enabled:        !!s.enabled
+  }));
+
+  try {
+    const tb = getHotelTB(hotelId);
+    await tb.saveAttributes(devId, { ihotel_offline_scenes: JSON.stringify(payload) });
+    addLog(hotelId, 'scene', `Offline scenes pushed to gateway for room ${row.room_number}`,
+      { room: row.room_number, user: req.user.username });
+    res.json({ success: true, scenes: payload.length });
+  } catch (e) {
+    console.error('[scene push]', e.message);
+    res.status(502).json({ error: `Gateway push failed: ${e.message}` });
+  }
 });
 
 // ═══ CATCH-ALL for SPA ═══

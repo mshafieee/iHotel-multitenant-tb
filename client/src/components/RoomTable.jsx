@@ -3,7 +3,8 @@ import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
 
 // 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
-const STATUSES = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
+const STATUSES   = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
+const ROOM_TYPES = ['STANDARD', 'DELUXE', 'SUITE', 'VIP'];
 const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const FILTERS = [
   ['all', 'All'],
@@ -20,8 +21,9 @@ const FILTERS = [
 
 export default function RoomTable({ onSelectRoom, role }) {
   const rooms = useHotelStore(s => s.rooms);
-  const rpc = useHotelStore(s => s.rpc);
-  const checkout = useHotelStore(s => s.checkout);
+  const rpc            = useHotelStore(s => s.rpc);
+  const checkout       = useHotelStore(s => s.checkout);
+  const updateRoomType = useHotelStore(s => s.updateRoomType);
   const [floor, setFloor] = useState(0);
   const [filter, setFilter] = useState('all');
 
@@ -53,7 +55,8 @@ export default function RoomTable({ onSelectRoom, role }) {
     try { await checkout(room); } catch {}
   };
 
-  const canManage = role === 'owner' || role === 'admin' || role === 'frontdesk';
+  const canManage   = role === 'owner' || role === 'admin' || role === 'frontdesk';
+  const canEditType = role === 'owner' || role === 'admin';
 
   return (
     <div className="card p-4">
@@ -105,7 +108,19 @@ export default function RoomTable({ onSelectRoom, role }) {
                   className="hover:bg-gray-50 cursor-pointer transition">
                   <td className="px-3 py-2.5 font-bold font-mono">{r.room}</td>
                   <td className="px-3 py-2.5 text-gray-500">{r.floor}</td>
-                  <td className="px-3 py-2.5 text-gray-500">{r.roomType || r.type}</td>
+                  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                    {canEditType ? (
+                      <select
+                        value={r.type || r.roomType || 'STANDARD'}
+                        onChange={e => updateRoomType(r.room, e.target.value)}
+                        className="text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:border-brand-400"
+                      >
+                        {ROOM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-gray-500">{r.roomType || r.type || '—'}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5">
                     <span className="inline-flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full" style={{ background: sc }} />

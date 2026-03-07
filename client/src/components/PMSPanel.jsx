@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import useHotelStore from '../store/hotelStore';
-import useAuthStore from '../store/authStore';
 import { api, getAccessToken } from '../utils/api';
 
 // Derive guest portal base URL from current browser location (works on any host/port)
@@ -35,7 +34,6 @@ function CopyBtn({ text }) {
 
 export default function PMSPanel() {
   const { reservations, fetchReservations } = useHotelStore();
-  const hotelSlug = useAuthStore(s => s.user?.hotelSlug || s.user?.hotelId || '');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ room: '', guestName: '', checkIn: '', checkOut: '', paymentMethod: 'pending', ratePerNight: '' });
   const [result, setResult] = useState(null);
@@ -51,8 +49,8 @@ export default function PMSPanel() {
   const today = new Date().toISOString().split('T')[0];
   const defaultCo = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
 
-  // Room-based stable guest URL — includes hotel slug for multi-tenant routing
-  const getGuestUrl = (room) => `${GUEST_HOST}/guest?room=${encodeURIComponent(room)}&hotel=${encodeURIComponent(hotelSlug)}`;
+  // Opaque token-based guest URL — hides room number and hotel from the URL
+  const getGuestUrl = (reservationToken) => `${GUEST_HOST}/guest?token=${encodeURIComponent(reservationToken)}`;
 
   const create = async () => {
     setError('');
@@ -172,8 +170,8 @@ export default function PMSPanel() {
             </div>
             <div className="shrink-0">
               <div className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold mb-2 text-center">Guest QR Code</div>
-              <QRCode data={getGuestUrl(result.reservation.room)} size={160} />
-              <button onClick={() => navigator.clipboard?.writeText(getGuestUrl(result.reservation.room))}
+              <QRCode data={getGuestUrl(result.reservation.token)} size={160} />
+              <button onClick={() => navigator.clipboard?.writeText(getGuestUrl(result.reservation.token))}
                 className="w-full mt-2 text-[10px] text-brand-500 hover:text-brand-700 font-semibold">📋 Copy Link</button>
             </div>
           </div>
@@ -245,8 +243,8 @@ export default function PMSPanel() {
                 </div>
               </div>
               <div className="shrink-0">
-                <QRCode data={getGuestUrl(res.room)} size={160} />
-                <button onClick={() => navigator.clipboard?.writeText(getGuestUrl(res.room))}
+                <QRCode data={getGuestUrl(res.token)} size={160} />
+                <button onClick={() => navigator.clipboard?.writeText(getGuestUrl(res.token))}
                   className="w-full mt-2 text-[10px] text-brand-500 hover:text-brand-700 font-semibold">📋 Copy Link</button>
               </div>
             </div>

@@ -90,6 +90,28 @@ function initDB() {
     )
   `);
 
+  // ── Scenes / Automation (per room, per hotel) ──────────────────────────────
+  // trigger_type: 'time' | 'event'
+  // trigger_config: JSON — e.g. {"time":"06:00","days":["mon","fri"]} or {"event":"roomStatus","operator":"eq","value":0}
+  // actions: JSON array — [{type,params,delay},...] where delay = seconds before action
+  // is_default: 1 = system-seeded scene (Welcome/Departure); 0 = user-created custom scene
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scenes (
+      id TEXT PRIMARY KEY,
+      hotel_id TEXT NOT NULL,
+      room_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      trigger_type TEXT NOT NULL DEFAULT 'time',
+      trigger_config TEXT NOT NULL DEFAULT '{}',
+      actions TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER DEFAULT 1,
+      is_default INTEGER DEFAULT 0,
+      last_run TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
   // ── Reservations (hotel-scoped) ────────────────────────────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS reservations (
@@ -127,6 +149,19 @@ function initDB() {
       details TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
+  // ── Password reset tokens ─────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT UNIQUE NOT NULL,
+      type TEXT NOT NULL DEFAULT 'platform',
+      identifier TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
@@ -199,6 +234,45 @@ function initDB() {
       FOREIGN KEY (hotel_id) REFERENCES hotels(id)
     )
   `);
+
+  // ── Migration 012: seed default scenes for existing rooms ────────────────
+  if (!hasMigration('012_default_room_scenes')) {
+    const rooms = db.prepare('SELECT hotel_id, room_number FROM hotel_rooms').all();
+    let seeded = 0;
+    for (const room of rooms) {
+      const existing = db.prepare('SELECT COUNT(*) as c FROM scenes WHERE hotel_id=? AND room_number=?')
+        .get(room.hotel_id, room.room_number).c;
+      if (existing === 0) {
+        seedRoomDefaultScenes(db, room.hotel_id, room.room_number);
+        seeded++;
+      }
+    }
+    if (seeded > 0) console.log(`✓ Migration 012: seeded default scenes for ${seeded} room(s)`);
+    markMigration('012_default_room_scenes');
+  }
+
+  // ── Migration 014: enable existing default scenes (seeded as disabled) ───
+  if (!hasMigration('014_enable_default_scenes')) {
+    const updated = db.prepare(
+      "UPDATE scenes SET enabled=1 WHERE is_default=1 AND enabled=0"
+    ).run();
+    if (updated.changes > 0) console.log(`✓ Migration 014: enabled ${updated.changes} default scenes`);
+    markMigration('014_enable_default_scenes');
+  }
+
+  // ── Migration 013: add is_default column to scenes ───────────────────────
+  if (!hasMigration('013_scenes_is_default')) {
+    const cols = db.pragma('table_info(scenes)').map(c => c.name);
+    if (!cols.includes('is_default')) {
+      db.exec('ALTER TABLE scenes ADD COLUMN is_default INTEGER DEFAULT 0');
+      // Mark the two system-seeded scenes per room as default
+      const updated = db.prepare(
+        "UPDATE scenes SET is_default=1 WHERE name IN ('Welcome to Room','Departure Routine')"
+      ).run();
+      if (updated.changes > 0) console.log(`✓ Migration 013: marked ${updated.changes} system scenes as default`);
+    }
+    markMigration('013_scenes_is_default');
+  }
 
   // ── Migration 011: add password_hash column to reservations ──────────────
   if (!hasMigration('011_guest_password_hash')) {
@@ -317,16 +391,58 @@ function initDB() {
   }
 
   // ── Seed platform admin from env ───────────────────────────────────────────
-  const adminCount = db.prepare('SELECT COUNT(*) as cnt FROM platform_admins').get().cnt;
-  if (adminCount === 0) {
-    const adminUser = process.env.PLATFORM_ADMIN_USER || 'superadmin';
-    const adminPass = process.env.PLATFORM_ADMIN_PASS || 'iHotel2026!';
+  const adminUser = process.env.PLATFORM_ADMIN_USER || 'superadmin';
+  const adminPass = process.env.PLATFORM_ADMIN_PASS || 'iHotel2026!';
+  const existingAdmin = db.prepare('SELECT id, password_hash FROM platform_admins WHERE username = ?').get(adminUser);
+  if (!existingAdmin) {
     db.prepare('INSERT INTO platform_admins (username, password_hash, full_name) VALUES (?, ?, ?)')
       .run(adminUser, bcrypt.hashSync(adminPass, 10), 'Platform Administrator');
     console.log(`✓ Platform admin seeded: ${adminUser}`);
+  } else if (!bcrypt.compareSync(adminPass, existingAdmin.password_hash)) {
+    // .env PLATFORM_ADMIN_PASS changed — sync it to the DB
+    db.prepare('UPDATE platform_admins SET password_hash = ? WHERE id = ?')
+      .run(bcrypt.hashSync(adminPass, 10), existingAdmin.id);
+    console.log(`✓ Platform admin password updated from env: ${adminUser}`);
   }
 
   return db;
+}
+
+// ── Seed 2 default automation scenes for a new room ─────────────────────────
+// Called on room creation; scenes are disabled by default so they don't fire
+// until the admin explicitly enables them.
+function seedRoomDefaultScenes(db, hotelId, roomNumber) {
+  const crypto = require('crypto');
+  const ins = db.prepare(
+    'INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions,enabled,is_default) VALUES (?,?,?,?,?,?,?,?,?)'
+  );
+
+  // Scene 1 — Welcome to Room
+  // Fires when roomStatus becomes Occupied (1), coming FROM Vacant (0) or Not Occupied (4)
+  ins.run(
+    crypto.randomUUID(), hotelId, roomNumber,
+    'Welcome to Room', 'event',
+    JSON.stringify({ event: 'roomStatus', operator: 'eq', value: 1, fromValues: [0, 4] }),
+    JSON.stringify([
+      { type: 'setLines',          params: { line1: true, line2: true, line3: true, dimmer1: 100, dimmer2: 100 }, delay: 0 },
+      { type: 'setCurtainsBlinds', params: { curtainsPosition: 100, blindsPosition: 100 },                        delay: 2 }
+    ]),
+    1, 1  // enabled=1, is_default=1
+  );
+
+  // Scene 2 — Departure Routine
+  // Fires when roomStatus leaves Occupied (1) → Service (2) or Not Occupied (4)
+  ins.run(
+    crypto.randomUUID(), hotelId, roomNumber,
+    'Departure Routine', 'event',
+    JSON.stringify({ event: 'roomStatus', operator: 'neq', value: 1, fromValues: [1] }),
+    JSON.stringify([
+      { type: 'setAC',             params: { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, delay: 0 },
+      { type: 'setLines',          params: { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, delay: 1 },
+      { type: 'setCurtainsBlinds', params: { curtainsPosition: 0, blindsPosition: 0 },                           delay: 2 }
+    ]),
+    1, 1  // enabled=1, is_default=1
+  );
 }
 
 // ── Seed night rates for a new hotel ────────────────────────────────────────
@@ -349,4 +465,4 @@ function seedHotelUsers(db, hotelId, slug = '') {
   ins.run(hotelId, 'frontdesk', hash, 'frontdesk', 'Front Desk Agent');
 }
 
-module.exports = { initDB, seedHotelRates, seedHotelUsers };
+module.exports = { initDB, seedHotelRates, seedHotelUsers, seedRoomDefaultScenes };
