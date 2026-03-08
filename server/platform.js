@@ -23,7 +23,10 @@ const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const rateLimit = require('express-rate-limit');
 
-const { authenticatePlatformAdmin, generatePlatformAdminToken } = require('./auth');
+const {
+  authenticatePlatformAdmin, generatePlatformAdminToken,
+  authenticatePlatformAny, authenticateGroupUser, generateGroupUserToken
+} = require('./auth');
 const { seedHotelRates, seedHotelUsers, seedRoomDefaultScenes } = require('./db');
 const { ThingsBoardClient, ThingsBoardClientPool } = require('./thingsboard');
 
@@ -44,44 +47,81 @@ const platformAuthLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false
 });
 
-// ── Platform admin login ───────────────────────────────────────────────────────
+// ── Platform login (superadmin OR group user) ──────────────────────────────────
 router.post('/auth/login', platformAuthLimiter, (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
+    // Check superadmin first
     const admin = _db.prepare('SELECT * FROM platform_admins WHERE username = ? AND active = 1').get(username);
-    if (!admin || !bcrypt.compareSync(password, admin.password_hash)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    if (admin && bcrypt.compareSync(password, admin.password_hash)) {
+      const token = generatePlatformAdminToken(admin);
+      return res.json({
+        accessToken: token,
+        admin: { id: admin.id, username: admin.username, fullName: admin.full_name, role: 'superadmin' }
+      });
     }
 
-    const token = generatePlatformAdminToken(admin);
-    res.json({
-      accessToken: token,
-      admin: { id: admin.id, username: admin.username, fullName: admin.full_name }
-    });
+    // Check group users
+    const groupUser = _db.prepare('SELECT * FROM group_users WHERE username = ? AND active = 1').get(username);
+    if (groupUser && bcrypt.compareSync(password, groupUser.password_hash)) {
+      const token = generateGroupUserToken(groupUser);
+      return res.json({
+        accessToken: token,
+        admin: { id: groupUser.id, username: groupUser.username, fullName: groupUser.full_name, role: 'group_user' }
+      });
+    }
+
+    return res.status(401).json({ error: 'Invalid credentials' });
   } catch (e) {
     console.error('Platform login error:', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.get('/auth/me', authenticatePlatformAdmin, (req, res) => {
-  const admin = _db.prepare('SELECT id, username, full_name FROM platform_admins WHERE id = ?').get(req.admin.id);
-  if (!admin) return res.status(404).json({ error: 'Not found' });
-  res.json({ id: admin.id, username: admin.username, fullName: admin.full_name });
+// ── /auth/me — works for both superadmin and group_user ───────────────────────
+router.get('/auth/me', authenticatePlatformAny, (req, res) => {
+  const { id, role } = req.platformUser;
+  if (role === 'superadmin') {
+    const admin = _db.prepare('SELECT id, username, full_name FROM platform_admins WHERE id = ?').get(id);
+    if (!admin) return res.status(404).json({ error: 'Not found' });
+    return res.json({ id: admin.id, username: admin.username, fullName: admin.full_name, role: 'superadmin' });
+  }
+  if (role === 'group_user') {
+    const gu = _db.prepare('SELECT id, username, full_name FROM group_users WHERE id = ? AND active = 1').get(id);
+    if (!gu) return res.status(404).json({ error: 'Not found' });
+    return res.json({ id: gu.id, username: gu.username, fullName: gu.full_name, role: 'group_user' });
+  }
+  return res.status(403).json({ error: 'Forbidden' });
 });
 
-router.put('/auth/password', authenticatePlatformAdmin, (req, res) => {
+router.put('/auth/password', authenticatePlatformAny, (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
-  const admin = _db.prepare('SELECT * FROM platform_admins WHERE id = ?').get(req.admin.id);
-  if (!admin || !bcrypt.compareSync(currentPassword || '', admin.password_hash)) {
-    return res.status(401).json({ error: 'Current password is incorrect' });
+  const { id, role } = req.platformUser;
+
+  if (role === 'superadmin') {
+    const admin = _db.prepare('SELECT * FROM platform_admins WHERE id = ?').get(id);
+    if (!admin || !bcrypt.compareSync(currentPassword || '', admin.password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    _db.prepare('UPDATE platform_admins SET password_hash = ? WHERE id = ?')
+      .run(bcrypt.hashSync(newPassword, 10), admin.id);
+    return res.json({ success: true });
   }
-  _db.prepare('UPDATE platform_admins SET password_hash = ? WHERE id = ?')
-    .run(bcrypt.hashSync(newPassword, 10), admin.id);
-  res.json({ success: true });
+
+  if (role === 'group_user') {
+    const gu = _db.prepare('SELECT * FROM group_users WHERE id = ?').get(id);
+    if (!gu || !bcrypt.compareSync(currentPassword || '', gu.password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    _db.prepare('UPDATE group_users SET password_hash = ? WHERE id = ?')
+      .run(bcrypt.hashSync(newPassword, 10), gu.id);
+    return res.json({ success: true });
+  }
+
+  return res.status(403).json({ error: 'Forbidden' });
 });
 
 // ── Hotel management ───────────────────────────────────────────────────────────
@@ -382,6 +422,181 @@ router.get('/metrics', authenticatePlatformAdmin, (req, res) => {
     totalRevenue, totalUsers,
     revenueByHotel: byHotel
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── GROUP USER MANAGEMENT (superadmin only) ───────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// List all group users
+router.get('/group-users', authenticatePlatformAdmin, (req, res) => {
+  const gus = _db.prepare('SELECT id, username, full_name, active, created_at FROM group_users ORDER BY created_at DESC').all();
+  const result = gus.map(gu => {
+    const hotels = _db.prepare(
+      'SELECT h.id, h.name, h.slug FROM group_user_hotels guh JOIN hotels h ON h.id = guh.hotel_id WHERE guh.group_user_id = ?'
+    ).all(gu.id);
+    return { id: gu.id, username: gu.username, fullName: gu.full_name, active: !!gu.active, createdAt: gu.created_at, hotels };
+  });
+  res.json(result);
+});
+
+// Create group user
+router.post('/group-users', authenticatePlatformAdmin, (req, res) => {
+  const { username, password, fullName } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'username and password are required' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  try {
+    const info = _db.prepare('INSERT INTO group_users (username, password_hash, full_name) VALUES (?, ?, ?)')
+      .run(username, bcrypt.hashSync(password, 10), fullName || null);
+    res.json({ success: true, id: info.lastInsertRowid });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Username already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update group user (name, password, active)
+router.put('/group-users/:id', authenticatePlatformAdmin, (req, res) => {
+  const { fullName, password, active } = req.body;
+  const gu = _db.prepare('SELECT id FROM group_users WHERE id = ?').get(req.params.id);
+  if (!gu) return res.status(404).json({ error: 'Group user not found' });
+
+  _db.prepare('UPDATE group_users SET full_name = COALESCE(?, full_name), active = COALESCE(?, active) WHERE id = ?')
+    .run(fullName ?? null, active != null ? (active ? 1 : 0) : null, gu.id);
+
+  if (password && password.length >= 6) {
+    _db.prepare('UPDATE group_users SET password_hash = ? WHERE id = ?')
+      .run(bcrypt.hashSync(password, 10), gu.id);
+  }
+  res.json({ success: true });
+});
+
+// Assign hotels to a group user (replaces all existing assignments)
+router.put('/group-users/:id/hotels', authenticatePlatformAdmin, (req, res) => {
+  const { hotelIds } = req.body; // array of hotel id strings
+  if (!Array.isArray(hotelIds)) return res.status(400).json({ error: 'hotelIds must be an array' });
+  const gu = _db.prepare('SELECT id FROM group_users WHERE id = ?').get(req.params.id);
+  if (!gu) return res.status(404).json({ error: 'Group user not found' });
+
+  _db.transaction(() => {
+    _db.prepare('DELETE FROM group_user_hotels WHERE group_user_id = ?').run(gu.id);
+    const ins = _db.prepare('INSERT OR IGNORE INTO group_user_hotels (group_user_id, hotel_id) VALUES (?, ?)');
+    for (const hid of hotelIds) ins.run(gu.id, hid);
+  })();
+
+  res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── GROUP USER SELF-SERVICE ROUTES ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Helper: verify caller is a group user and has access to the given hotelId
+function groupUserHasHotel(groupUserId, hotelId) {
+  return !!_db.prepare(
+    'SELECT 1 FROM group_user_hotels WHERE group_user_id = ? AND hotel_id = ?'
+  ).get(groupUserId, hotelId);
+}
+
+// List assigned hotels (with financial summary)
+router.get('/group/hotels', authenticateGroupUser, (req, res) => {
+  const rows = _db.prepare(
+    `SELECT h.id, h.name, h.slug, h.plan, h.active, h.contact_email
+     FROM group_user_hotels guh
+     JOIN hotels h ON h.id = guh.hotel_id
+     WHERE guh.group_user_id = ?
+     ORDER BY h.name`
+  ).all(req.groupUser.id);
+
+  const result = rows.map(h => {
+    const revenue     = _db.prepare('SELECT SUM(total_amount) as t FROM income_log WHERE hotel_id = ?').get(h.id).t || 0;
+    const activeRes   = _db.prepare('SELECT COUNT(*) as c FROM reservations WHERE hotel_id = ? AND active = 1').get(h.id).c;
+    const userCount   = _db.prepare('SELECT COUNT(*) as c FROM hotel_users WHERE hotel_id = ? AND active = 1').get(h.id).c;
+    const roomCount   = _db.prepare('SELECT COUNT(*) as c FROM hotel_rooms WHERE hotel_id = ?').get(h.id).c;
+    return {
+      id: h.id, name: h.name, slug: h.slug, plan: h.plan,
+      active: !!h.active, contactEmail: h.contact_email,
+      totalRevenue: revenue, activeReservations: activeRes, userCount, roomCount
+    };
+  });
+  res.json(result);
+});
+
+// Financial detail for one hotel (income log + summary)
+router.get('/group/hotels/:id/finance', authenticateGroupUser, (req, res) => {
+  if (!groupUserHasHotel(req.groupUser.id, req.params.id)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  const income = _db.prepare(
+    `SELECT id, room, guest_name, check_in, check_out, nights, room_type,
+            rate_per_night, total_amount, payment_method, created_at, created_by
+     FROM income_log WHERE hotel_id = ? ORDER BY created_at DESC LIMIT 200`
+  ).all(req.params.id);
+
+  const summary = _db.prepare(
+    `SELECT
+       SUM(total_amount)                                           AS totalRevenue,
+       SUM(CASE WHEN payment_method='cash' THEN total_amount END) AS cashRevenue,
+       SUM(CASE WHEN payment_method='visa' THEN total_amount END) AS visaRevenue,
+       COUNT(*)                                                    AS totalStays
+     FROM income_log WHERE hotel_id = ?`
+  ).get(req.params.id);
+
+  res.json({ income, summary });
+});
+
+// List users of an assigned hotel
+router.get('/group/hotels/:id/users', authenticateGroupUser, (req, res) => {
+  if (!groupUserHasHotel(req.groupUser.id, req.params.id)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  const users = _db.prepare(
+    'SELECT id, username, role, full_name, active, last_login, created_at FROM hotel_users WHERE hotel_id = ? ORDER BY created_at'
+  ).all(req.params.id);
+  res.json(users);
+});
+
+// Add a user to an assigned hotel
+router.post('/group/hotels/:id/users', authenticateGroupUser, (req, res) => {
+  if (!groupUserHasHotel(req.groupUser.id, req.params.id)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  const { username, password, role, fullName } = req.body;
+  if (!username || !password || !role) return res.status(400).json({ error: 'username, password, role required' });
+  const VALID_ROLES = ['owner', 'admin', 'frontdesk'];
+  if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+  try {
+    _db.prepare('INSERT INTO hotel_users (hotel_id, username, password_hash, role, full_name) VALUES (?, ?, ?, ?, ?)')
+      .run(req.params.id, username, bcrypt.hashSync(password, 10), role, fullName || null);
+    res.json({ success: true });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Username already exists in this hotel' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update a user in an assigned hotel (role, name, active, password)
+router.put('/group/hotels/:id/users/:uid', authenticateGroupUser, (req, res) => {
+  if (!groupUserHasHotel(req.groupUser.id, req.params.id)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  const { role, fullName, active, password } = req.body;
+  const user = _db.prepare('SELECT * FROM hotel_users WHERE id = ? AND hotel_id = ?').get(req.params.uid, req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (role && !['owner', 'admin', 'frontdesk'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+  _db.prepare('UPDATE hotel_users SET full_name = COALESCE(?, full_name), role = COALESCE(?, role), active = COALESCE(?, active) WHERE id = ?')
+    .run(fullName ?? null, role ?? null, active != null ? (active ? 1 : 0) : null, user.id);
+
+  if (password && password.length >= 6) {
+    _db.prepare('UPDATE hotel_users SET password_hash = ? WHERE id = ?')
+      .run(bcrypt.hashSync(password, 10), user.id);
+  }
+  res.json({ success: true });
 });
 
 module.exports = { router, init };

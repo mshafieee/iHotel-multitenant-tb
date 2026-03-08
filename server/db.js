@@ -235,6 +235,30 @@ function initDB() {
     )
   `);
 
+  // ── Group users (between superadmin and hotel-level) ──────────────────────
+  // A group user can monitor financials and manage staff for assigned hotels.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      full_name TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // ── Group user ↔ hotel assignments (many-to-many) ─────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_user_hotels (
+      group_user_id INTEGER NOT NULL,
+      hotel_id TEXT NOT NULL,
+      PRIMARY KEY (group_user_id, hotel_id),
+      FOREIGN KEY (group_user_id) REFERENCES group_users(id),
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
   // ── Migration 012: seed default scenes for existing rooms ────────────────
   if (!hasMigration('012_default_room_scenes')) {
     const rooms = db.prepare('SELECT hotel_id, room_number FROM hotel_rooms').all();

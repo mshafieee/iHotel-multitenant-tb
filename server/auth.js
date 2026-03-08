@@ -85,12 +85,68 @@ function generateRefreshToken(user) {
   );
 }
 
+// ── Generate group user access token ──────────────────────────────────────────
+function generateGroupUserToken(user) {
+  return jwt.sign(
+    { id: user.id, username: user.username, role: 'group_user', fullName: user.full_name || null },
+    JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRY || '8h' }
+  );
+}
+
+// ── Authenticate any platform-level user (superadmin OR group_user) ───────────
+function authenticatePlatformAny(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const token   = header.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'superadmin' && decoded.role !== 'group_user') {
+      return res.status(403).json({ error: 'Platform access required' });
+    }
+    req.platformUser = decoded;
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// ── Authenticate group user only ──────────────────────────────────────────────
+function authenticateGroupUser(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  try {
+    const token   = header.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'group_user') {
+      return res.status(403).json({ error: 'Group user access required' });
+    }
+    req.groupUser = decoded;
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
 module.exports = {
   authenticate,
   authenticatePlatformAdmin,
+  authenticatePlatformAny,
+  authenticateGroupUser,
   requireRole,
   generateAccessToken,
   generatePlatformAdminToken,
+  generateGroupUserToken,
   generateRefreshToken,
   JWT_SECRET
 };

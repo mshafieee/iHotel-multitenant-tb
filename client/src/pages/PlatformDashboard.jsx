@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Building2, Users, BedDouble, Activity, DollarSign,
   Plus, RefreshCw, Upload, X, ChevronRight, Shield, LogOut,
-  Copy, Check, Search, Wifi, KeyRound
+  Copy, Check, Search, Wifi, KeyRound, UserCog, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import usePlatformStore from '../store/platformStore';
 
@@ -587,8 +587,502 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
   );
 }
 
+// ── Group Users Panel (superadmin tab) ───────────────────────────────────────
+function GroupUsersPanel({ allHotels }) {
+  const { fetchGroupUsers, createGroupUser, updateGroupUser, setGroupUserHotels } = usePlatformStore();
+  const [groupUsers, setGroupUsers]     = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [showCreate, setShowCreate]     = useState(false);
+  const [editingId, setEditingId]       = useState(null); // group user being edited
+  const [form, setForm]                 = useState({ username: '', password: '', fullName: '' });
+  const [msg, setMsg]                   = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await fetchGroupUsers();
+    setGroupUsers(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setMsg('');
+    try {
+      await createGroupUser(form);
+      setForm({ username: '', password: '', fullName: '' });
+      setShowCreate(false);
+      setMsg('Group user created.');
+      load();
+    } catch (e) { setMsg(e.message); }
+  };
+
+  const toggleActive = async (gu) => {
+    await updateGroupUser(gu.id, { active: !gu.active });
+    load();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{groupUsers.length} group user(s)</p>
+        <button onClick={() => setShowCreate(v => !v)}
+          className="btn btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5">
+          <Plus size={14} /> New Group User
+        </button>
+      </div>
+
+      {showCreate && (
+        <form onSubmit={handleCreate} className="bg-gray-50 rounded-xl p-4 space-y-3 border border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 uppercase">Create Group User</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Username</label>
+              <input className="input text-sm" value={form.username}
+                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                placeholder="groupmanager" required />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Password</label>
+              <input className="input text-sm" type="password" value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                placeholder="min 6 chars" required minLength={6} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Full Name</label>
+              <input className="input text-sm" value={form.fullName}
+                onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+                placeholder="Optional" />
+            </div>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setShowCreate(false)}
+              className="btn border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">Cancel</button>
+            <button type="submit" className="btn btn-primary text-sm">Create</button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Loading...</div>
+      ) : groupUsers.length === 0 ? (
+        <div className="text-center py-12 text-gray-400 text-sm">No group users yet.</div>
+      ) : (
+        <div className="space-y-2">
+          {groupUsers.map(gu => (
+            <div key={gu.id} className={`rounded-xl border p-4 ${gu.active ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-semibold text-gray-800 text-sm">{gu.username}</p>
+                    {gu.fullName && <span className="text-gray-400 text-sm">— {gu.fullName}</span>}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${gu.active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
+                      {gu.active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-2">
+                    {gu.hotels.length === 0 ? 'No hotels assigned' : `${gu.hotels.length} hotel(s): ${gu.hotels.map(h => h.name).join(', ')}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setEditingId(editingId === gu.id ? null : gu.id)}
+                    className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-brand-600" title="Manage hotels">
+                    <UserCog size={15} />
+                  </button>
+                  <button onClick={() => toggleActive(gu)}
+                    className={`p-1.5 rounded ${gu.active ? 'text-green-500 hover:text-red-500' : 'text-gray-400 hover:text-green-500'}`}
+                    title={gu.active ? 'Deactivate' : 'Activate'}>
+                    {gu.active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              {editingId === gu.id && (
+                <GroupUserHotelAssigner
+                  gu={gu}
+                  allHotels={allHotels}
+                  onSave={async (hotelIds) => {
+                    await setGroupUserHotels(gu.id, hotelIds);
+                    load();
+                    setEditingId(null);
+                  }}
+                  onClose={() => setEditingId(null)}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Hotel assignment picker for a group user
+function GroupUserHotelAssigner({ gu, allHotels, onSave, onClose }) {
+  const [selected, setSelected] = useState(new Set(gu.hotels.map(h => h.id)));
+  const [saving, setSaving]     = useState(false);
+
+  const toggle = (id) => {
+    setSelected(prev => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave([...selected]);
+    setSaving(false);
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Assign Hotels</p>
+      <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto mb-3">
+        {allHotels.map(h => (
+          <label key={h.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition-colors text-sm
+            ${selected.has(h.id) ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+            <input type="checkbox" className="sr-only" checked={selected.has(h.id)} onChange={() => toggle(h.id)} />
+            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0
+              ${selected.has(h.id) ? 'bg-brand-500 border-brand-500' : 'border-gray-300'}`}>
+              {selected.has(h.id) && <Check size={9} className="text-white" />}
+            </div>
+            <span className="truncate">{h.name}</span>
+            <span className="text-xs text-gray-400 font-mono ml-auto shrink-0">{h.slug}</span>
+          </label>
+        ))}
+        {allHotels.length === 0 && <p className="text-xs text-gray-400 col-span-2">No hotels available.</p>}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onClose} className="btn border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">Cancel</button>
+        <button onClick={handleSave} disabled={saving} className="btn btn-primary text-sm">
+          {saving ? 'Saving…' : 'Save Assignment'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Group User Dashboard (shown when logged in as group_user) ────────────────
+function GroupUserDashboard() {
+  const navigate = useNavigate();
+  const {
+    admin, logout,
+    groupHotels, groupHotelsLoading,
+    fetchGroupHotels,
+    fetchGroupHotelFinance, fetchGroupHotelUsers,
+    createGroupHotelUser, updateGroupHotelUser,
+    changeAdminPassword
+  } = usePlatformStore();
+
+  const [selectedHotel, setSelectedHotel] = useState(null);
+  const [hotelTab, setHotelTab]           = useState('finance');
+  const [finance, setFinance]             = useState(null);
+  const [users, setUsers]                 = useState([]);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [showAdminPwd, setShowAdminPwd]   = useState(false);
+  const [newUser, setNewUser]             = useState({ username: '', password: '', role: 'frontdesk', fullName: '' });
+  const [userMsg, setUserMsg]             = useState('');
+
+  useEffect(() => { fetchGroupHotels(); }, []);
+
+  const openHotel = useCallback(async (hotel) => {
+    setSelectedHotel(hotel);
+    setHotelTab('finance');
+    setDrawerLoading(true);
+    const [fin, usr] = await Promise.all([
+      fetchGroupHotelFinance(hotel.id),
+      fetchGroupHotelUsers(hotel.id)
+    ]);
+    setFinance(fin);
+    setUsers(usr);
+    setDrawerLoading(false);
+  }, []);
+
+  const switchTab = async (tab) => {
+    setHotelTab(tab);
+    if (!selectedHotel) return;
+    setDrawerLoading(true);
+    if (tab === 'finance') {
+      const fin = await fetchGroupHotelFinance(selectedHotel.id);
+      setFinance(fin);
+    } else {
+      const usr = await fetchGroupHotelUsers(selectedHotel.id);
+      setUsers(usr);
+    }
+    setDrawerLoading(false);
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setUserMsg('');
+    try {
+      await createGroupHotelUser(selectedHotel.id, newUser);
+      setUserMsg('User created.');
+      setNewUser({ username: '', password: '', role: 'frontdesk', fullName: '' });
+      const usr = await fetchGroupHotelUsers(selectedHotel.id);
+      setUsers(usr);
+    } catch (e) { setUserMsg(e.message); }
+  };
+
+  const toggleUser = async (u) => {
+    await updateGroupHotelUser(selectedHotel.id, u.id, { active: !u.active });
+    const usr = await fetchGroupHotelUsers(selectedHotel.id);
+    setUsers(usr);
+  };
+
+  const handleLogout = () => { logout(); navigate('/platform/login'); };
+
+  const totalRevenue = groupHotels.reduce((s, h) => s + (h.totalRevenue || 0), 0);
+  const totalRes     = groupHotels.reduce((s, h) => s + (h.activeReservations || 0), 0);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-100 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 bg-indigo-700 rounded-lg"><UserCog size={16} className="text-white" /></div>
+            <div>
+              <span className="font-bold text-gray-800 text-sm">iHotel Platform</span>
+              <span className="text-xs text-indigo-600 ml-2 font-medium">Group Manager</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">{admin?.fullName || admin?.username}</span>
+            <button onClick={() => setShowAdminPwd(true)} className="text-gray-400 hover:text-gray-700 flex items-center gap-1 text-sm" title="Change my password">
+              <KeyRound size={15} />
+            </button>
+            <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 flex items-center gap-1.5 text-sm">
+              <LogOut size={15} /> Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Summary KPIs */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <MetricCard icon={Building2}  label="My Hotels"    value={groupHotels.length}  color="text-indigo-600" />
+          <MetricCard icon={BedDouble}  label="Active Res."  value={totalRes}             color="text-amber-500" />
+          <MetricCard icon={DollarSign} label="Total Revenue" value={fmt(totalRevenue)}   color="text-emerald-600" />
+        </div>
+
+        {/* Hotels table */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-bold text-gray-800">My Hotels</h2>
+            <button onClick={fetchGroupHotels}
+              className="p-2 rounded-lg hover:bg-gray-50 text-gray-400 hover:text-gray-600">
+              <RefreshCw size={15} className={groupHotelsLoading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-400 uppercase">Hotel</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Rooms</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Staff</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active Res.</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Revenue</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {groupHotelsLoading && (
+                  <tr><td colSpan={6} className="text-center py-10 text-gray-400">Loading…</td></tr>
+                )}
+                {!groupHotelsLoading && groupHotels.length === 0 && (
+                  <tr><td colSpan={6} className="text-center py-10 text-gray-400">No hotels assigned to your account yet.</td></tr>
+                )}
+                {groupHotels.map(h => (
+                  <tr key={h.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-3">
+                      <p className="font-medium text-gray-800">{h.name}</p>
+                      <p className="text-xs text-gray-400 font-mono">{h.slug}</p>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600">{h.roomCount}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{h.userCount}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{h.activeReservations}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-800">{fmt(h.totalRevenue)}</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => openHotel(h)}
+                        className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                        <ChevronRight size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+
+      {/* Hotel detail drawer */}
+      {selectedHotel && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-30" onClick={() => setSelectedHotel(null)} />
+          <div className="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-2xl z-40 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">{selectedHotel.name}</h2>
+                <p className="text-xs text-gray-400 font-mono">{selectedHotel.slug}</p>
+              </div>
+              <button onClick={() => setSelectedHotel(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+
+            <div className="flex border-b border-gray-100 px-6">
+              {['finance', 'users'].map(t => (
+                <button key={t} onClick={() => switchTab(t)}
+                  className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors capitalize
+                    ${hotelTab === t ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+                  {t === 'finance' ? 'Finance' : 'Users'}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {drawerLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : hotelTab === 'finance' && finance ? (
+                <div className="space-y-5">
+                  {/* Summary */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-emerald-50 rounded-xl p-4">
+                      <p className="text-xs text-emerald-400 uppercase font-semibold">Total Revenue</p>
+                      <p className="text-2xl font-bold text-emerald-700">{fmt(finance.summary?.totalRevenue)}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-400 uppercase font-semibold">Total Stays</p>
+                      <p className="text-2xl font-bold text-gray-800">{finance.summary?.totalStays ?? 0}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-400 uppercase font-semibold">Cash</p>
+                      <p className="text-xl font-bold text-gray-800">{fmt(finance.summary?.cashRevenue)}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-400 uppercase font-semibold">Card / Visa</p>
+                      <p className="text-xl font-bold text-gray-800">{fmt(finance.summary?.visaRevenue)}</p>
+                    </div>
+                  </div>
+                  {/* Income log */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Income Log</p>
+                    {finance.income.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-6">No income records yet.</p>
+                    ) : (
+                      <div className="space-y-1 max-h-80 overflow-y-auto">
+                        {finance.income.map(r => (
+                          <div key={r.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-800 truncate">{r.guest_name} — Rm {r.room}</p>
+                              <p className="text-xs text-gray-400">{r.check_in} → {r.check_out} · {r.nights}n · {r.room_type}</p>
+                            </div>
+                            <div className="text-right shrink-0 ml-3">
+                              <p className="font-semibold text-gray-800">{fmt(r.total_amount)}</p>
+                              <p className="text-xs text-gray-400 capitalize">{r.payment_method}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : hotelTab === 'users' ? (
+                <div className="space-y-6">
+                  {/* Existing users */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600 mb-3">Staff Accounts</p>
+                    <div className="space-y-2">
+                      {users.map(u => (
+                        <div key={u.id} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{u.username}
+                              {u.full_name && <span className="text-gray-400 font-normal ml-1">— {u.full_name}</span>}
+                            </p>
+                            <p className="text-xs text-gray-400 capitalize">{u.role}</p>
+                          </div>
+                          <button onClick={() => toggleUser(u)}
+                            className={`text-xs px-2.5 py-1 rounded-full font-medium
+                              ${u.active ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-gray-200 text-gray-500 hover:bg-green-100 hover:text-green-700'}`}>
+                            {u.active ? 'Active' : 'Inactive'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Add user */}
+                  <div className="border-t border-gray-100 pt-5">
+                    <p className="text-sm font-semibold text-gray-600 mb-3">Add Staff User</p>
+                    <form onSubmit={handleCreateUser} className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Username</label>
+                          <input className="input text-sm" value={newUser.username}
+                            onChange={e => setNewUser(u => ({ ...u, username: e.target.value }))}
+                            placeholder="username" required />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Password</label>
+                          <input className="input text-sm" type="password" value={newUser.password}
+                            onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
+                            placeholder="min 6 chars" required minLength={6} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Role</label>
+                          <select className="input text-sm" value={newUser.role}
+                            onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}>
+                            <option value="frontdesk">Front Desk</option>
+                            <option value="admin">Admin</option>
+                            <option value="owner">Owner</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Full Name</label>
+                          <input className="input text-sm" value={newUser.fullName}
+                            onChange={e => setNewUser(u => ({ ...u, fullName: e.target.value }))}
+                            placeholder="Optional" />
+                        </div>
+                      </div>
+                      {userMsg && <p className="text-xs text-green-600">{userMsg}</p>}
+                      <button type="submit" className="btn btn-primary w-full text-sm">Add User</button>
+                    </form>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </>
+      )}
+
+      {showAdminPwd && (
+        <ChangePasswordModal
+          title="Change My Password"
+          requireCurrent={true}
+          onSave={changeAdminPassword}
+          onClose={() => setShowAdminPwd(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main Dashboard ───────────────────────────────────────────────────────────
 export default function PlatformDashboard() {
+  const { admin } = usePlatformStore();
+
+  // Route to the right dashboard based on role
+  if (admin?.role === 'group_user') return <GroupUserDashboard />;
+  return <SuperAdminDashboard />;
+}
+
+function SuperAdminDashboard() {
   const navigate = useNavigate();
   const {
     admin, logout,
@@ -598,6 +1092,7 @@ export default function PlatformDashboard() {
     importRooms, discoverRooms, changeAdminPassword
   } = usePlatformStore();
 
+  const [tab, setTab] = useState('hotels'); // 'hotels' | 'group-users'
   const [showCreate, setShowCreate] = useState(false);
   const [selectedHotelId, setSelectedHotelId] = useState(null);
   const [importTarget, setImportTarget] = useState(null);
@@ -646,7 +1141,24 @@ export default function PlatformDashboard() {
           <MetricCard icon={DollarSign} label="Revenue"    value={fmt(metrics?.totalRevenue)}        color="text-emerald-600" />
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        {/* Tab navigation */}
+        <div className="flex gap-1 mb-4">
+          {[['hotels', Building2, 'Hotels'], ['group-users', UserCog, 'Group Users']].map(([key, Icon, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                ${tab === key ? 'bg-white shadow-sm border border-gray-200 text-gray-800' : 'text-gray-400 hover:text-gray-600 hover:bg-white/60'}`}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'group-users' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <GroupUsersPanel allHotels={hotels} />
+          </div>
+        )}
+
+        {tab === 'hotels' && <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <h2 className="font-bold text-gray-800">Hotels</h2>
             <div className="flex items-center gap-3">
@@ -740,7 +1252,7 @@ export default function PlatformDashboard() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
       </main>
 
       {showAdminPwd && (

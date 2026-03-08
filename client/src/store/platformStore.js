@@ -17,7 +17,7 @@ async function platformApi(path, options = {}) {
 }
 
 const usePlatformStore = create((set, get) => ({
-  admin: null,
+  admin: null,         // { id, username, fullName, role: 'superadmin' | 'group_user' }
   isAuthenticated: !!localStorage.getItem('platformToken'),
   authLoading: true,
   error: null,
@@ -26,6 +26,10 @@ const usePlatformStore = create((set, get) => ({
   metrics: null,
   hotelsLoading: false,
   metricsLoading: false,
+
+  // Group user state
+  groupHotels: [],
+  groupHotelsLoading: false,
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   checkAuth: async () => {
@@ -48,6 +52,7 @@ const usePlatformStore = create((set, get) => ({
         body: JSON.stringify({ username, password })
       });
       localStorage.setItem('platformToken', data.accessToken);
+      // data.admin includes role field
       set({ admin: data.admin, isAuthenticated: true, authLoading: false, error: null });
       return true;
     } catch (e) {
@@ -58,10 +63,10 @@ const usePlatformStore = create((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('platformToken');
-    set({ admin: null, isAuthenticated: false, hotels: [], metrics: null });
+    set({ admin: null, isAuthenticated: false, hotels: [], metrics: null, groupHotels: [] });
   },
 
-  // ── Hotels ──────────────────────────────────────────────────────────────────
+  // ── Hotels (superadmin) ─────────────────────────────────────────────────────
   fetchHotels: async () => {
     set({ hotelsLoading: true });
     try {
@@ -94,7 +99,7 @@ const usePlatformStore = create((set, get) => ({
     await get().fetchHotels();
   },
 
-  // ── Rooms ───────────────────────────────────────────────────────────────────
+  // ── Rooms (superadmin) ──────────────────────────────────────────────────────
   importRooms: async (hotelId, payload) => {
     return await platformApi(`/api/platform/hotels/${hotelId}/rooms`, {
       method: 'POST',
@@ -106,12 +111,11 @@ const usePlatformStore = create((set, get) => ({
     return await platformApi(`/api/platform/hotels/${hotelId}/rooms`);
   },
 
-  // Auto-discover rooms from ThingsBoard
   discoverRooms: async (hotelId) => {
     return await platformApi(`/api/platform/hotels/${hotelId}/discover`, { method: 'POST' });
   },
 
-  // ── Hotel Users ─────────────────────────────────────────────────────────────
+  // ── Hotel Users (superadmin) ────────────────────────────────────────────────
   fetchUsers: async (hotelId) => {
     return await platformApi(`/api/platform/hotels/${hotelId}/users`);
   },
@@ -137,12 +141,11 @@ const usePlatformStore = create((set, get) => ({
     });
   },
 
-  // ── Hotel Detail ────────────────────────────────────────────────────────────
   fetchHotelDetail: async (id) => {
     return await platformApi(`/api/platform/hotels/${id}`);
   },
 
-  // ── Metrics ─────────────────────────────────────────────────────────────────
+  // ── Metrics (superadmin) ────────────────────────────────────────────────────
   fetchMetrics: async () => {
     set({ metricsLoading: true });
     try {
@@ -151,7 +154,66 @@ const usePlatformStore = create((set, get) => ({
     } catch (e) {
       set({ metricsLoading: false, error: e.message });
     }
-  }
+  },
+
+  // ── Group User Management (superadmin) ──────────────────────────────────────
+  fetchGroupUsers: async () => {
+    return await platformApi('/api/platform/group-users');
+  },
+
+  createGroupUser: async ({ username, password, fullName }) => {
+    return await platformApi('/api/platform/group-users', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, fullName })
+    });
+  },
+
+  updateGroupUser: async (id, updates) => {
+    return await platformApi(`/api/platform/group-users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  },
+
+  setGroupUserHotels: async (id, hotelIds) => {
+    return await platformApi(`/api/platform/group-users/${id}/hotels`, {
+      method: 'PUT',
+      body: JSON.stringify({ hotelIds })
+    });
+  },
+
+  // ── Group User Self-Service ─────────────────────────────────────────────────
+  fetchGroupHotels: async () => {
+    set({ groupHotelsLoading: true });
+    try {
+      const groupHotels = await platformApi('/api/platform/group/hotels');
+      set({ groupHotels, groupHotelsLoading: false });
+    } catch (e) {
+      set({ groupHotelsLoading: false });
+    }
+  },
+
+  fetchGroupHotelFinance: async (hotelId) => {
+    return await platformApi(`/api/platform/group/hotels/${hotelId}/finance`);
+  },
+
+  fetchGroupHotelUsers: async (hotelId) => {
+    return await platformApi(`/api/platform/group/hotels/${hotelId}/users`);
+  },
+
+  createGroupHotelUser: async (hotelId, { username, password, role, fullName }) => {
+    return await platformApi(`/api/platform/group/hotels/${hotelId}/users`, {
+      method: 'POST',
+      body: JSON.stringify({ username, password, role, fullName })
+    });
+  },
+
+  updateGroupHotelUser: async (hotelId, userId, updates) => {
+    return await platformApi(`/api/platform/group/hotels/${hotelId}/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  },
 }));
 
 export default usePlatformStore;
