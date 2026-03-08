@@ -34,7 +34,7 @@ const T = {
       { title: 'Energy Intelligence',      desc: 'Auto-vacate on departure, motion-triggered AC and lights off — 30–40% energy reduction.' },
       { title: 'Smart Automation Scenes',  desc: 'Welcome routines, departure cleanup, sleep presets, DND — all triggered automatically.' },
       { title: 'Instant Staff Alerts',     desc: 'SOS, housekeeping requests, checkout reminders — instant notification to the right person.' },
-      { title: 'ESP32 Hardware Ready',     desc: 'Works with any MQTT-capable ESP32 device over ThingsBoard CE. Zero vendor lock-in.' },
+      { title: 'IoT Hardware Ready',        desc: 'Works with any smart room controller. Zero vendor lock-in.' },
     ],
     platformTag: 'One Platform',
     platformTitle: 'Every workflow covered',
@@ -58,7 +58,7 @@ const T = {
     ctaBtn: 'Sign In to Your Hotel',
     sysAdmin: 'System administrator?',
     platformLogin: 'Platform login',
-    footer: 'Powered by ThingsBoard CE & ESP32 · Built for hospitality',
+    footer: 'Built for hospitality',
     loginTitle: 'Hotel Staff Login',
     loginSub: 'Sign in to manage your property',
     codeLabel: 'Hotel Code',
@@ -96,7 +96,7 @@ const T = {
       { title: 'ذكاء الطاقة',               desc: 'إيقاف تلقائي عند المغادرة، وإطفاء عند انعدام الحركة — وفّر من 30 إلى 40% من الطاقة.' },
       { title: 'سيناريوهات الأتمتة الذكية', desc: 'روتين الاستقبال، تنظيف المغادرة، وضع النوم، عدم الإزعاج — كل شيء يعمل تلقائياً.' },
       { title: 'تنبيهات فورية للموظفين',    desc: 'نداء الطوارئ، طلبات التدبير، تذكيرات المغادرة — إشعار فوري للشخص المناسب.' },
-      { title: 'جاهز لأجهزة ESP32',         desc: 'يعمل مع أي جهاز ESP32 يدعم MQTT عبر ThingsBoard CE. لا قيود على الموردين.' },
+      { title: 'جاهز للأجهزة الذكية',        desc: 'يعمل مع أي وحدة تحكم ذكية للغرف. لا قيود على الموردين.' },
     ],
     platformTag: 'منصة واحدة',
     platformTitle: 'يغطي كل متطلباتك',
@@ -120,7 +120,7 @@ const T = {
     ctaBtn: 'دخول لوحة تحكم فندقك',
     sysAdmin: 'مدير النظام؟',
     platformLogin: 'دخول المنصة',
-    footer: 'مدعوم بـ ThingsBoard CE و ESP32 · صُنع لقطاع الضيافة',
+    footer: 'صُنع لقطاع الضيافة',
     loginTitle: 'دخول موظفي الفندق',
     loginSub: 'سجّل دخولك لإدارة فندقك',
     codeLabel: 'رمز الفندق',
@@ -551,8 +551,8 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-wrap justify-center gap-2 mt-12">
             {(isRTL
-              ? ['تحديث فوري', 'تسجيل دخول QR', 'تقارير الإيرادات', 'إدارة المناوبات', 'أتمتة الطاقة', 'سيناريوهات ذكية', 'عدم الإزعاج / SOS', 'فنادق متعددة', 'ESP32 MQTT', 'ThingsBoard CE', 'صلاحيات بالأدوار', 'بوابة الضيف']
-              : ['Real-time telemetry', 'QR check-in', 'Revenue reports', 'Shift management', 'Energy automation', 'Scene presets', 'DND / SOS', 'Multi-property', 'ESP32 MQTT', 'ThingsBoard CE', 'Role-based access', 'Guest portal']
+              ? ['تحديث فوري', 'تسجيل دخول QR', 'تقارير الإيرادات', 'إدارة المناوبات', 'أتمتة الطاقة', 'سيناريوهات ذكية', 'عدم الإزعاج / SOS', 'فنادق متعددة', 'تحكم ذكي بالغرف', 'صلاحيات بالأدوار', 'بوابة الضيف']
+              : ['Real-time telemetry', 'QR check-in', 'Revenue reports', 'Shift management', 'Energy automation', 'Scene presets', 'DND / SOS', 'Multi-property', 'Smart room control', 'Role-based access', 'Guest portal']
             ).map(pill => (
               <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full">{pill}</span>
             ))}

@@ -298,6 +298,16 @@ function initDB() {
     markMigration('013_scenes_is_default');
   }
 
+  // ── Migration 015: add logo_url column to hotels ─────────────────────────
+  if (!hasMigration('015_hotel_logo')) {
+    const cols = db.pragma('table_info(hotels)').map(c => c.name);
+    if (!cols.includes('logo_url')) {
+      db.exec('ALTER TABLE hotels ADD COLUMN logo_url TEXT');
+      console.log('✓ Migration 015: added logo_url to hotels');
+    }
+    markMigration('015_hotel_logo');
+  }
+
   // ── Migration 011: add password_hash column to reservations ──────────────
   if (!hasMigration('011_guest_password_hash')) {
     const cols = db.pragma('table_info(reservations)').map(c => c.name);

@@ -21,7 +21,27 @@
 const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
+const path     = require('path');
+const fs       = require('fs');
+const multer   = require('multer');
 const rateLimit = require('express-rate-limit');
+
+// ── Logo upload storage ────────────────────────────────────────────────────────
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, _file, cb) => cb(null, `hotel-${req.params.id}-logo.${_file.originalname.split('.').pop()}`)
+});
+const uploadLogo = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB max
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) return cb(new Error('Images only'));
+    cb(null, true);
+  }
+});
 
 const {
   authenticatePlatformAdmin, generatePlatformAdminToken,
@@ -165,6 +185,7 @@ router.get('/hotels', authenticatePlatformAdmin, (req, res) => {
       id: h.id, name: h.name, slug: h.slug, contactEmail: h.contact_email,
       plan: h.plan, active: !!h.active, createdAt: h.created_at,
       tbConfigured: hasTB, tbHost: h.tb_host || null,
+      logoUrl: h.logo_url || null,
       roomCount, userCount, activeReservations: activeRes
     };
   });
@@ -185,6 +206,7 @@ router.get('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
     tbHost: hotel.tb_host || null,
     tbUser: hotel.tb_user || null,
     tbConfigured: !!(hotel.tb_host && hotel.tb_user && hotel.tb_pass),
+    logoUrl: hotel.logo_url || null,
     rooms, users, totalRevenue: revenue.total || 0
   });
 });
@@ -222,6 +244,18 @@ router.delete('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
   _db.prepare('UPDATE hotels SET active = 0 WHERE id = ?').run(hotel.id);
   _pool?.invalidate(hotel.id);
   res.json({ success: true });
+});
+
+// ── Hotel logo upload ──────────────────────────────────────────────────────────
+router.post('/hotels/:id/logo', authenticatePlatformAdmin, uploadLogo.single('logo'), (req, res) => {
+  const hotel = _db.prepare('SELECT id FROM hotels WHERE id = ?').get(req.params.id);
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+
+  // Delete old logo file if it was a different extension
+  const logoUrl = `/uploads/${req.file.filename}`;
+  _db.prepare('UPDATE hotels SET logo_url = ? WHERE id = ?').run(logoUrl, hotel.id);
+  res.json({ success: true, logoUrl });
 });
 
 // ── ThingsBoard: auto-discover rooms ──────────────────────────────────────────

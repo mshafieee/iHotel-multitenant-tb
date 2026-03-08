@@ -93,6 +93,7 @@ const guestLimiter = rateLimit({
 
 const clientBuild = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientBuild));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const server = http.createServer(app);
 
@@ -266,7 +267,7 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   addLog(hotel.id, 'auth', 'Login successful', { user: username });
   res.json({
     accessToken, refreshToken,
-    user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id, hotelSlug: hotel.slug, hotelName: hotel.name }
+    user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id, hotelSlug: hotel.slug, hotelName: hotel.name, logoUrl: hotel.logo_url || null }
   });
 });
 
@@ -297,8 +298,8 @@ app.post('/api/auth/logout', authenticate, (req, res) => {
 app.get('/api/auth/me', authenticate, (req, res) => {
   const user  = db.prepare('SELECT id, username, role, full_name, last_login FROM hotel_users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const hotel = db.prepare('SELECT slug, name FROM hotels WHERE id = ?').get(req.user.hotelId);
-  res.json({ id: user.id, username: user.username, role: user.role, fullName: user.full_name, lastLogin: user.last_login, hotelId: req.user.hotelId, hotelSlug: hotel?.slug || '', hotelName: hotel?.name || '' });
+  const hotel = db.prepare('SELECT slug, name, logo_url FROM hotels WHERE id = ?').get(req.user.hotelId);
+  res.json({ id: user.id, username: user.username, role: user.role, fullName: user.full_name, lastLogin: user.last_login, hotelId: req.user.hotelId, hotelSlug: hotel?.slug || '', hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null });
 });
 
 // ═══ SSE (authenticated via query token or header) ═══
@@ -1199,8 +1200,8 @@ app.get('/api/public/guest/resolve', (req, res) => {
   if (!t) return res.status(400).json({ error: 'Token required' });
   const r = db.prepare('SELECT hotel_id FROM reservations WHERE token=? AND active=1').get(t);
   if (!r) return res.status(404).json({ error: 'Not found' });
-  const hotel = db.prepare('SELECT name FROM hotels WHERE id=?').get(r.hotel_id);
-  res.json({ hotelName: hotel?.name || '' });
+  const hotel = db.prepare('SELECT name, logo_url FROM hotels WHERE id=?').get(r.hotel_id);
+  res.json({ hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null });
 });
 
 // ═══ GUEST API ═══
@@ -1275,8 +1276,8 @@ app.get('/api/guest/room', authenticate, (req, res) => {
     });
   }
   const lastOverview = getLastOverviewRooms(hotelId);
-  const hotel = db.prepare('SELECT name FROM hotels WHERE id=?').get(hotelId);
-  res.json({ room: r.room, telemetry: lastOverview[r.room] || {}, hotelName: hotel?.name || '' });
+  const hotel = db.prepare('SELECT name, logo_url FROM hotels WHERE id=?').get(hotelId);
+  res.json({ room: r.room, telemetry: lastOverview[r.room] || {}, hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null });
 });
 
 app.get('/api/guest/room/data', authenticate, async (req, res) => {

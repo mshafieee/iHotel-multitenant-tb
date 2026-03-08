@@ -7,7 +7,7 @@ const axios = require('axios');
 
 class ThingsBoardClient {
   constructor(host, username, password) {
-    this.host     = host;
+    this.host     = host.replace(/\/+$/, ''); // strip trailing slashes
     this.username = username;
     this.password = password;
     this.token    = null;

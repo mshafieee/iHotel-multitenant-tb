@@ -303,6 +303,8 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
   const [editTB, setEditTB] = useState(false);
   const [tbForm, setTBForm] = useState({ tbHost: '', tbUser: '', tbPass: '' });
   const [changePwdUser, setChangePwdUser] = useState(null); // { id, username }
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoMsg, setLogoMsg] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -353,6 +355,33 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
     setEditTB(false);
     const h = await fetchHotelDetail(hotelId);
     setHotel(h);
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    setLogoMsg('');
+    try {
+      const token = localStorage.getItem('platformToken');
+      const fd = new FormData();
+      fd.append('logo', file);
+      const res = await fetch(`/api/platform/hotels/${hotelId}/logo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setLogoMsg('Logo updated.');
+      const h = await fetchHotelDetail(hotelId);
+      setHotel(h);
+    } catch (err) {
+      setLogoMsg(`Error: ${err.message}`);
+    } finally {
+      setLogoUploading(false);
+      e.target.value = '';
+    }
   };
 
   if (loading) return (
@@ -445,6 +474,24 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Hotel Logo */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Hotel Logo</p>
+              <div className="flex items-center gap-4">
+                {hotel.logoUrl
+                  ? <img src={hotel.logoUrl} alt="logo" className="h-16 w-16 rounded-xl object-contain bg-white border border-gray-200 p-1" />
+                  : <div className="h-16 w-16 rounded-xl bg-gray-200 flex items-center justify-center text-gray-400 text-xs">No logo</div>}
+                <div>
+                  <label className="btn btn-primary text-sm cursor-pointer">
+                    {logoUploading ? 'Uploading…' : hotel.logoUrl ? 'Replace Logo' : 'Upload Logo'}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={logoUploading} />
+                  </label>
+                  <p className="text-[10px] text-gray-400 mt-1">PNG, JPG, SVG · max 2 MB</p>
+                  {logoMsg && <p className={`text-xs mt-1 ${logoMsg.startsWith('Error') ? 'text-red-500' : 'text-green-600'}`}>{logoMsg}</p>}
+                </div>
+              </div>
             </div>
 
             {/* Discover rooms from TB */}

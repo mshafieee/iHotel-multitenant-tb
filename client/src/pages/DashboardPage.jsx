@@ -115,7 +115,9 @@ export default function DashboardPage() {
       <header className="bg-brand-500 text-white shadow-lg">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-gold-400" />
+            {user?.logoUrl
+              ? <img src={user.logoUrl} alt="logo" className="h-10 w-10 rounded-lg object-contain bg-white/10 p-0.5" />
+              : <Building2 className="w-6 h-6 text-gold-400" />}
             <div>
               <h1 className="font-bold text-xl tracking-tight leading-tight">{user?.hotelName}</h1>
               <p className="text-[11px] text-white/50">iHotel</p>
