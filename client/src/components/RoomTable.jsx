@@ -1,26 +1,31 @@
 import React, { useState, useMemo } from 'react';
 import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
+import useLangStore from '../store/langStore';
+import { t } from '../i18n';
 
-// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
-const STATUSES   = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
 const ROOM_TYPES = ['STANDARD', 'DELUXE', 'SUITE', 'VIP'];
 const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
-const FILTERS = [
-  ['all', 'All'],
-  ['vacant', '🟢 Vacant'],
-  ['occupied', '🔵 Occ'],
-  ['service', '🧹 Service'],
-  ['not_occupied', '🟣 N/Occ'],
-  ['maintenance', '🔧 Maint'],
-  ['mur', '🧹 MUR'],
-  ['dnd', '🔕 DND'],
-  ['sos', '🚨 SOS'],
-  ['pd', '⚡ PD'],
-];
 
 export default function RoomTable({ onSelectRoom, role }) {
   const rooms = useHotelStore(s => s.rooms);
+  const lang = useLangStore(s => s.lang);
+  const T = (key) => t(key, lang);
+
+  const STATUSES = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
+  const STATUS_KEYS = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
+  const FILTERS = [
+    ['all', T('all')],
+    ['vacant',       T('rt_vacant')],
+    ['occupied',     T('rt_occupied')],
+    ['service',      T('rt_service')],
+    ['not_occupied', T('rt_not_occ')],
+    ['maintenance',  T('rt_maint')],
+    ['mur',          T('rt_mur')],
+    ['dnd',          T('rt_dnd')],
+    ['sos',          T('rt_sos')],
+    ['pd',           T('rt_pd')],
+  ];
   const rpc            = useHotelStore(s => s.rpc);
   const checkout       = useHotelStore(s => s.checkout);
   const updateRoomType = useHotelStore(s => s.updateRoomType);
@@ -84,11 +89,22 @@ export default function RoomTable({ onSelectRoom, role }) {
       </div>
       {/* Table */}
       <div className="max-h-[380px] overflow-auto rounded-lg border border-gray-100">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: 640 }}>
+          <colgroup>
+            <col style={{ width: 60 }} />
+            <col style={{ width: 44 }} />
+            <col style={{ width: 96 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 56 }} />
+            <col style={{ width: 74 }} />
+            <col style={{ width: 54 }} />
+            <col style={{ width: 80 }} />
+            {canManage && <col style={{ width: 140 }} />}
+          </colgroup>
           <thead className="bg-gray-50 sticky top-0">
             <tr>
-              {['Room', 'Flr', 'Type', 'Status', 'Temp', 'Door', 'Lines', 'Flags', ...(canManage ? ['Actions'] : [])].map(h => (
-                <th key={h} className="px-3 py-2.5 text-left text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{h}</th>
+              {[T('rt_room'), T('rt_floor'), T('rt_type'), T('rt_status'), T('rt_temp'), T('rt_door'), T('rt_lines'), T('rt_flags'), ...(canManage ? [T('rt_actions')] : [])].map(h => (
+                <th key={h} className="px-2 py-2.5 text-left text-[10px] text-gray-400 uppercase tracking-wider font-semibold truncate">{h}</th>
               ))}
             </tr>
           </thead>
@@ -106,9 +122,9 @@ export default function RoomTable({ onSelectRoom, role }) {
               return (
                 <tr key={r.room} onClick={() => onSelectRoom(r.room)}
                   className="hover:bg-gray-50 cursor-pointer transition">
-                  <td className="px-3 py-2.5 font-bold font-mono">{r.room}</td>
-                  <td className="px-3 py-2.5 text-gray-500">{r.floor}</td>
-                  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-2.5 font-bold font-mono">{r.room}</td>
+                  <td className="px-2 py-2.5 text-gray-500">{r.floor}</td>
+                  <td className="px-2 py-2.5" onClick={e => e.stopPropagation()}>
                     {canEditType ? (
                       <select
                         value={r.type || r.roomType || 'STANDARD'}
@@ -121,37 +137,37 @@ export default function RoomTable({ onSelectRoom, role }) {
                       <span className="text-gray-500">{r.roomType || r.type || '—'}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-2.5">
                     <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full" style={{ background: sc }} />
-                      <span className="font-semibold" style={{ color: sc }}>{STATUSES[statusIdx]}</span>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sc }} />
+                      <span className="font-semibold text-[11px] truncate" style={{ color: sc }}>{STATUSES[statusIdx]}</span>
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 font-mono">{r.temperature != null ? `${r.temperature}°` : '—'}</td>
-                  <td className="px-3 py-2.5">{r.doorStatus ? '🚪 OPEN' : 'CLOSED'}</td>
-                  <td className="px-3 py-2.5">
-                    {lines ? <span className="text-blue-600 font-semibold">L{lines}</span> : <span className="text-gray-300">off</span>}
+                  <td className="px-2 py-2.5 font-mono text-[11px]">{r.temperature != null ? `${r.temperature}°` : '—'}</td>
+                  <td className="px-2 py-2.5 text-[11px]">{r.doorStatus ? T('rt_door_open') : T('rt_door_closed')}</td>
+                  <td className="px-2 py-2.5">
+                    {lines ? <span className="text-blue-600 font-semibold text-[11px]">L{lines}</span> : <span className="text-gray-300 text-[11px]">—</span>}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-2.5">
                     {flags.length ? flags.map(f => (
-                      <span key={f} className={`text-[10px] font-bold mr-1 ${f === 'SOS' ? 'text-red-500' : f === 'MUR' ? 'text-amber-500' : f === 'PD' ? 'text-red-600' : 'text-orange-500'}`}>{f}</span>
+                      <span key={f} className={`text-[10px] font-bold mr-0.5 ${f === 'SOS' ? 'text-red-500' : f === 'MUR' ? 'text-amber-500' : f === 'PD' ? 'text-red-600' : 'text-orange-500'}`}>{f}</span>
                     )) : <span className="text-gray-300">—</span>}
                   </td>
                   {canManage && (
-                    <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
-                        {/* Checkout — only for occupied rooms with a reservation */}
-                        {r.roomStatus === 1 && r.reservation && (
+                    <td className="px-2 py-2.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {/* Checkout — any active/flagged status */}
+                        {(r.roomStatus === 1 || r.roomStatus === 4 || r.murService || r.sosService || r.dndService || r.pdMode) && (
                           <button onClick={e => handleCheckout(e, r.room)}
                             className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition">
-                            Checkout
+                            {T('rt_checkout')}
                           </button>
                         )}
                         {/* Status dropdown */}
                         <select value={r.roomStatus ?? 0}
                           onChange={e => rpc(r.room, 'setRoomStatus', { roomStatus: +e.target.value })}
-                          className="text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white">
-                          {STATUSES.map((s, i) => <option key={i} value={i}>{s}</option>)}
+                          className="text-[10px] border border-gray-200 rounded px-0.5 py-0.5 bg-white max-w-[80px]">
+                          {STATUSES.map((s, i) => <option key={i} value={i}>{STATUS_KEYS[i]}</option>)}
                         </select>
                       </div>
                     </td>
@@ -162,7 +178,7 @@ export default function RoomTable({ onSelectRoom, role }) {
           </tbody>
         </table>
       </div>
-      <div className="text-[10px] text-gray-400 text-right mt-2">{filtered.length} rooms</div>
+      <div className="text-[10px] text-gray-400 text-right mt-2">{filtered.length} {T('rt_count')}</div>
     </div>
   );
 }

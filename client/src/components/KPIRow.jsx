@@ -1,14 +1,17 @@
 import React, { useMemo } from 'react';
 import useHotelStore from '../store/hotelStore';
+import useLangStore from '../store/langStore';
+import { t } from '../i18n';
 
 const RATES = { STANDARD: 600, DELUXE: 950, SUITE: 1500, VIP: 2500 };
-// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
-const STATUS_LABELS = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Not Occupied'];
 const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const STATUS_BG     = ['#DCFCE7', '#DBEAFE', '#FEF3C7', '#FEE2E2', '#EDE9FE'];
 
 export default function KPIRow({ role }) {
   const rooms = useHotelStore(s => Object.values(s.rooms));
+  const lang = useLangStore(s => s.lang);
+  const T = (key) => t(key, lang);
+  const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
 
   const stats = useMemo(() => {
     const n = rooms.length || 1;
@@ -38,13 +41,13 @@ export default function KPIRow({ role }) {
   }, [rooms]);
 
   const kpis = [
-    { icon: '🏨', label: 'Occupancy', value: `${stats.or}%`, sub: `${stats.occ}/${stats.n}`, color: stats.or >= 70 ? 'text-emerald-600' : stats.or >= 40 ? 'text-amber-500' : 'text-red-500' },
-    ...(role === 'owner' ? [{ icon: '💰', label: 'Revenue', value: `SAR ${stats.rev.toLocaleString()}`, color: 'text-brand-500' }] : []),
-    { icon: '🚨', label: 'SOS', value: stats.alerts, color: stats.alerts > 0 ? 'text-red-500' : 'text-emerald-500' },
-    { icon: '📡', label: 'Offline', value: stats.offline, color: stats.offline > 0 ? 'text-amber-500' : 'text-emerald-500' },
-    { icon: '🌡', label: 'Avg Temp', value: `${stats.avgTemp}°`, color: 'text-blue-500' },
-    { icon: '🧹', label: 'MUR', value: stats.mur, color: stats.mur > 0 ? 'text-amber-500' : 'text-gray-400' },
-    { icon: '🔕', label: 'DND', value: stats.dnd, color: stats.dnd > 0 ? 'text-orange-500' : 'text-gray-400' },
+    { icon: '🏨', label: T('kpi_occupancy'), value: `${stats.or}%`, sub: `${stats.occ}/${stats.n}`, color: stats.or >= 70 ? 'text-emerald-600' : stats.or >= 40 ? 'text-amber-500' : 'text-red-500' },
+    ...(role === 'owner' ? [{ icon: '💰', label: T('kpi_revenue'), value: `${stats.rev.toLocaleString()} ${T('sar')}`, color: 'text-brand-500' }] : []),
+    { icon: '🚨', label: T('kpi_sos'), value: stats.alerts, color: stats.alerts > 0 ? 'text-red-500' : 'text-emerald-500' },
+    { icon: '📡', label: T('kpi_offline'), value: stats.offline, color: stats.offline > 0 ? 'text-amber-500' : 'text-emerald-500' },
+    { icon: '🌡', label: T('kpi_avg_temp'), value: `${stats.avgTemp}°`, color: 'text-blue-500' },
+    { icon: '🧹', label: T('kpi_mur'), value: stats.mur, color: stats.mur > 0 ? 'text-amber-500' : 'text-gray-400' },
+    { icon: '🔕', label: T('kpi_dnd'), value: stats.dnd, color: stats.dnd > 0 ? 'text-orange-500' : 'text-gray-400' },
   ];
 
   // Build conic gradient for donut chart
@@ -76,7 +79,7 @@ export default function KPIRow({ role }) {
       {/* Room Status Distribution Chart */}
       <div className="card p-4">
         <div className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold mb-3">
-          Room Status Distribution
+          {T('kpi_dist_title')}
         </div>
         <div className="flex items-center gap-6">
           {/* Donut Chart */}
@@ -84,7 +87,7 @@ export default function KPIRow({ role }) {
             <div className="w-full h-full rounded-full" style={{ background: conicGrad }} />
             <div className="absolute inset-3 bg-white rounded-full flex flex-col items-center justify-center">
               <div className="text-lg font-bold text-gray-800">{stats.n}</div>
-              <div className="text-[8px] text-gray-400 uppercase">Rooms</div>
+              <div className="text-[8px] text-gray-400 uppercase">{T('kpi_rooms_label')}</div>
             </div>
           </div>
 
@@ -106,7 +109,7 @@ export default function KPIRow({ role }) {
             {/* Service flags sub-section */}
             {stats.flags.length > 0 && (
               <div className="border-t border-gray-100 pt-1.5 mt-1.5">
-                <div className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold mb-1">Service Flags</div>
+                <div className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold mb-1">{T('kpi_service_flags')}</div>
                 {stats.flags.map(f => (
                   <div key={f.label} className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: f.color }} />

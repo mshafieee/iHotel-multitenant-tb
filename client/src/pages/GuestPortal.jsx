@@ -123,6 +123,7 @@ export default function GuestPortal() {
       {room && rooms[room] ? (
         <RoomModal
           roomId={room}
+          logoUrl={logoUrl}
           onClose={() => {
             clearTokens();
             localStorage.removeItem('guestRoom');

@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
+import useLangStore from '../store/langStore';
+import { t } from '../i18n';
 
 export default function AlertToast({ alert, onDismiss }) {
+  const lang = useLangStore(s => s.lang);
+  const T = (key) => t(key, lang);
   const isSOS = alert.type === 'SOS';
 
   useEffect(() => {
@@ -29,7 +33,7 @@ export default function AlertToast({ alert, onDismiss }) {
         <span className="text-lg">{isSOS ? '🚨' : '🧹'}</span>
         <div className="flex-1">
           <div className={`text-xs font-bold ${isSOS ? 'text-red-600' : 'text-amber-600'}`}>
-            {isSOS ? 'SOS EMERGENCY' : 'Housekeeping'}
+            {isSOS ? T('alert_sos') : T('alert_mur')}
           </div>
           <div className="text-xs text-gray-600 mt-0.5">{alert.message}</div>
         </div>

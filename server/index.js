@@ -80,6 +80,7 @@ app.use(express.json({ limit: '1mb' }));
 const authLimiter = rateLimit({
   windowMs: (parseInt(process.env.LOGIN_RATE_WINDOW_MIN) || 15) * 60 * 1000,
   max: parseInt(process.env.LOGIN_RATE_LIMIT) || 10,
+  skipSuccessfulRequests: true,
   message: { error: 'Too many login attempts. Try again later.' },
   standardHeaders: true, legacyHeaders: false
 });
@@ -103,7 +104,7 @@ app.use('/api/platform', platformModule.router);
 // ═══ TB CLIENT HELPER ═══
 function getHotelTB(hotelId) {
   const client = tbPool.getClient(hotelId, db);
-  if (!client) throw new Error('ThingsBoard is not configured for this hotel. Contact the platform admin.');
+  if (!client) throw new Error('Smart room control is not configured for this hotel. Contact the platform admin.');
   return client;
 }
 
@@ -926,6 +927,24 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const { room, guestName, checkIn, checkOut, paymentMethod, ratePerNight } = req.body;
   if (!room || !guestName || !checkIn || !checkOut) return res.status(400).json({ error: 'All fields required' });
 
+  // Validate dates
+  if (new Date(checkOut) <= new Date(checkIn)) {
+    return res.status(400).json({ error: 'Check-out date must be after check-in date' });
+  }
+
+  // Validate room exists in this hotel
+  const lastOverview = getLastOverviewRooms(hotelId);
+  const hotelRoomRow = db.prepare('SELECT room_number FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, String(room));
+  if (!hotelRoomRow && !lastOverview[String(room)]) {
+    return res.status(400).json({ error: `Room ${room} does not exist in this hotel` });
+  }
+
+  // No duplicate active reservations
+  const existingRes = db.prepare("SELECT id FROM reservations WHERE hotel_id=? AND room=? AND active=1").get(hotelId, String(room));
+  if (existingRes) {
+    return res.status(409).json({ error: `Room ${room} already has an active reservation. Cancel it first.` });
+  }
+
   const id            = crypto.randomUUID();
   const plainPassword = crypto.randomInt(100000, 999999).toString();
   const hashedPassword = bcrypt.hashSync(plainPassword, 10);
@@ -937,7 +956,6 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const rateRow   = db.prepare('SELECT rate_per_night FROM night_rates WHERE hotel_id=? AND room_type=?').get(hotelId, roomType);
   const resolvedRate = ratePerNight ? parseFloat(ratePerNight) : (rateRow ? rateRow.rate_per_night : null);
 
-  const lastOverview = getLastOverviewRooms(hotelId);
   const roomData     = lastOverview[room] || {};
   const elecAtCheckin  = roomData.elecConsumption ?? null;
   const waterAtCheckin = roomData.waterConsumption ?? null;
@@ -1659,6 +1677,19 @@ app.post('/api/shifts/close', authenticate, requireRole('owner', 'admin', 'front
     .run(parseFloat(actualCash) || 0, parseFloat(actualVisa) || 0, expectedCash, expectedVisa, notes || null, shift.id);
   addLog(hotelId, 'shift', 'Shift closed', { user: req.user.username });
   res.json({ success: true, expectedCash, expectedVisa, actualCash, actualVisa, diffCash: actualCash - expectedCash, diffVisa: actualVisa - expectedVisa });
+});
+
+app.post('/api/shifts/:id/force-close', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const shift = db.prepare("SELECT * FROM shifts WHERE id=? AND hotel_id=? AND status='open'").get(req.params.id, hotelId);
+  if (!shift) return res.status(404).json({ error: 'Open shift not found' });
+  const expected = db.prepare('SELECT payment_method, SUM(total_amount) as amount FROM income_log WHERE hotel_id=? AND created_at>=? GROUP BY payment_method').all(hotelId, shift.opened_at);
+  const expectedCash = expected.find(e => e.payment_method === 'cash')?.amount || 0;
+  const expectedVisa = expected.find(e => e.payment_method === 'visa')?.amount || 0;
+  db.prepare("UPDATE shifts SET status='closed', closed_at=datetime('now'), actual_cash=?, actual_visa=?, expected_cash=?, expected_visa=?, notes=? WHERE id=?")
+    .run(expectedCash, expectedVisa, expectedCash, expectedVisa, `Force closed by ${req.user.username}`, shift.id);
+  addLog(hotelId, 'system', `Shift force-closed: @${shift.username}`, { user: req.user.username });
+  res.json({ success: true });
 });
 
 app.get('/api/shifts', authenticate, requireRole('owner', 'admin'), (req, res) => {
