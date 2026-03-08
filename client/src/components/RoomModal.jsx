@@ -129,6 +129,12 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
   }, [roomId, rpc, role, onLockout]);
 
   useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
     const current = r?.doorStatus;
     if (current !== prevDoorStatusRef.current) {
       prevDoorStatusRef.current = current;
