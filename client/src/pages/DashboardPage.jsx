@@ -113,8 +113,8 @@ export default function DashboardPage() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key.length === 1 && /[\d]/.test(e.key)) {
         setShowRoomSearch(true);
-        setRoomSearch(e.key);
-        setTimeout(() => roomSearchRef.current?.focus(), 50);
+        setRoomSearch('');   // keep empty — browser will type the key into the focused input once
+        // no manual focus needed; autoFocus on the input handles it
       }
     };
     window.addEventListener('keydown', onKey);
