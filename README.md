@@ -13,6 +13,7 @@ A multi-tenant SaaS hotel management platform. Each hotel (tenant) gets its own 
 - [Features](#features)
 - [Room Status Flow](#room-status-flow)
 - [Room Automation](#room-automation)
+- [Scenes Engine](#scenes-engine)
 - [Guest Portal](#guest-portal)
 - [Platform Admin Portal](#platform-admin-portal)
 - [Installation](#installation)
@@ -79,6 +80,8 @@ Real-time updates are delivered via Server-Sent Events (SSE). Control commands a
 | Guest | `/guest?room=101&hotel=hayat` | Last name + 6-digit room code |
 | Platform Admin | `/platform/login` | Username + Password (superadmin only) |
 
+**Login page always opens in Arabic** regardless of any previously stored language preference.
+
 ---
 
 ## User Roles
@@ -102,15 +105,20 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
 ### Staff Dashboard
 
 - **KPI Row** — live occupancy count, active reservations, SOS/MUR alerts, check-in/out today
-- **Room Heatmap** — color-coded grid by floor; configurable columns per row (Auto / 5 / 8 / 10 / 12 / 15 / 20); click any cell to open room control
-- **Room Table** — sortable list with floor/status/temperature/door/flag filters; inline status dropdown and checkout button
-- **Room Modal** — full room control: lights (3 circuits + dimmers), AC (mode/temperature/fan), curtains, blinds, door unlock, DND/MUR/SOS/PD services
+- **Room Heatmap** — dual-mode view:
+  - **Floors mode** (default): compact floor-summary boxes showing SVG arc chart of vacancy %, vacant room counts by type (Std/Dlx/Ste/VIP), and alert badges (🚨SOS, 🧹MUR, ⚡PD). Click a floor box to expand and inspect rooms in that floor.
+  - **Rooms mode**: original color-coded grid of all rooms by floor with configurable columns per row (Auto / 5 / 8 / 10 / 12 / 15 / 20). Keyboard shortcut: type any room number to instantly jump to it.
+  - Toggle between modes with the **⊞ Floors / ⊟ Rooms** button
+- **Room Table** — sortable list with floor/status/temperature/door/flag filters; inline status dropdown, checkout button, and guest name column
+- **Room Modal** — full room control: lights (3 circuits + dimmers), AC (mode/temperature/fan), curtains, blinds, door unlock, DND/MUR/SOS/PD services. Smart bulb SVG indicators show live light state.
 - **PMS** — create reservations (auto-marks room NOT_OCCUPIED on creation), checkout, extend stay, export CSV, QR code generation
 - **Logs** — searchable audit trail: room, category, user, timestamp
 - **Finance** — income log, night rates management, revenue summary (owner only)
 - **Users** — create/deactivate hotel users; owner can reset any user's password
-- **Shifts** — shift handover accounting
-- **Simulator** — inject mock telemetry from the browser for testing
+- **Shifts** — shift handover accounting with force-close modal (collects actual Cash and Visa amounts, compares to expected, flags discrepancies)
+- **Scenes** — create automation scenes triggered by time, status change, or sensor thresholds; apply a single scene to all rooms at once via "Apply to all rooms" checkbox
+- **Simulator** — inject mock telemetry from the browser for testing; works with any room number even without physical IoT hardware (virtual mode with SSE broadcast)
+- **Mobile-friendly tab bar** — scrollable tab navigation optimised for small screens
 
 ### Hotel Name Branding
 
@@ -190,7 +198,40 @@ If any physical activity is detected (PIR motion, door open, lights turned on, A
 
 ### PMS Reservation
 
-Creating a reservation in the PMS immediately sets the room to NOT_OCCUPIED, signalling to reception that the room is reserved but the guest hasn't arrived yet. The full cleanup automation runs at this point.
+Creating a reservation in the PMS immediately sets the room to NOT_OCCUPIED. The full cleanup automation runs at this point.
+
+---
+
+## Scenes Engine
+
+Scenes allow hotel staff to define automation rules that fire automatically based on configurable triggers.
+
+### Trigger Types
+
+| Trigger | Description |
+|---------|-------------|
+| **Time** | Fires at a specific time of day (HH:MM) |
+| **Status Change** | Fires when a room transitions to a given status (e.g. VACANT, OCCUPIED) |
+| **Sensor Threshold** | Fires when a sensor value (temperature, humidity, CO₂) crosses a threshold |
+
+### Actions
+
+Each scene can contain one or more control actions applied to the target room:
+- Set lights (on/off, dimmer level)
+- Set AC (mode, temperature, fan speed)
+- Set curtains / blinds position
+- Set room status
+- Set service flags (DND, MUR, SOS)
+
+### Apply to All Rooms
+
+When creating a new scene, enable **"Apply to all rooms"** to instantly create the same scene for every room in the hotel — useful for hotel-wide schedules (e.g. "every night at 23:00 dim all lights").
+
+### Scene Management
+
+- Enable / disable individual scenes without deleting them
+- Scenes are scoped per hotel (multi-tenant safe)
+- Scene execution is logged in the audit trail
 
 ---
 
@@ -205,7 +246,7 @@ https://hotel.example.com/guest?room=101&hotel=hayat
 **Authentication**: guest enters their last name + 6-digit code provided by reception.
 
 **Controls available to guests**:
-- Lights (on/off + dimmer)
+- Lights (on/off + dimmer) with smart bulb SVG indicators
 - Air conditioning (mode / temperature / fan speed)
 - Curtains and blinds
 - DND (Do Not Disturb) and MUR (Make Up Room) service flags
@@ -375,36 +416,38 @@ server {
 ## Project Structure
 
 ```
-hilton-v2/
+iHotel/
 ├── server/
-│   ├── index.js          Main Express server — all API routes, SSE, control logic
+│   ├── index.js          Main Express server — all API routes, SSE, scenes engine, control logic
 │   ├── db.js             SQLite schema, migrations, tenant seeding
 │   ├── auth.js           JWT middleware — token generation, verification, roles
 │   ├── thingsboard.js    ThingsBoard REST API client (per-hotel instances)
 │   ├── platform.js       Platform super-admin router (hotel CRUD, metrics)
 │   ├── .env              Environment config (not committed)
 │   ├── .env.example      Config template
-│   └── hilton.db         SQLite database (auto-created)
+│   └── ihotel.db         SQLite database (auto-created)
 │
 ├── client/src/
 │   ├── App.jsx           Root router — staff, guest, platform routes
+│   ├── i18n.js           Arabic/English translation strings
 │   ├── pages/
-│   │   ├── LoginPage.jsx          Staff + guest login (auto-detects mode from URL)
-│   │   ├── DashboardPage.jsx      Main staff dashboard with tab navigation
+│   │   ├── LoginPage.jsx          Staff login — always opens in Arabic
+│   │   ├── DashboardPage.jsx      Main staff dashboard with scrollable tab navigation
 │   │   ├── GuestPortal.jsx        In-room guest control page
 │   │   ├── PlatformLogin.jsx      Super-admin login
 │   │   └── PlatformDashboard.jsx  Super-admin management portal
 │   ├── components/
 │   │   ├── KPIRow.jsx        Occupancy / revenue / alert cards
-│   │   ├── Heatmap.jsx       Room grid (configurable columns, floor labels)
-│   │   ├── RoomTable.jsx     Room list with filters and inline controls
-│   │   ├── RoomModal.jsx     Full room control popup
+│   │   ├── Heatmap.jsx       Dual-mode: floor boxes (SVG arc charts) or full room grid
+│   │   ├── RoomTable.jsx     Room list with filters, guest name column, and inline controls
+│   │   ├── RoomModal.jsx     Full room control popup with smart bulb SVG indicators
 │   │   ├── PMSPanel.jsx      Reservation management
 │   │   ├── LogsPanel.jsx     Audit log viewer
 │   │   ├── FinancePanel.jsx  Revenue and night rates
 │   │   ├── UsersPanel.jsx    Hotel user management
-│   │   ├── ShiftsPanel.jsx   Shift accounting
-│   │   ├── SimulatorPanel.jsx Browser-based telemetry injector
+│   │   ├── ShiftsPanel.jsx   Shift accounting with force-close modal
+│   │   ├── ScenesPanel.jsx   Scene builder and management with "apply to all rooms"
+│   │   ├── SimulatorPanel.jsx Browser-based telemetry injector (virtual + hardware modes)
 │   │   └── AlertToast.jsx    SOS / MUR notification banners
 │   └── store/
 │       ├── authStore.js      Login state, JWT, hotel info
@@ -453,6 +496,31 @@ hilton-v2/
 | GET | `/api/pms/night-rates` | any | Get night rates |
 | PUT | `/api/pms/night-rates` | owner | Update night rates |
 
+### Scenes
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/scenes` | any | List all scenes for hotel |
+| POST | `/api/scenes` | owner/admin | Create scene |
+| PUT | `/api/scenes/:id` | owner/admin | Update scene |
+| DELETE | `/api/scenes/:id` | owner/admin | Delete scene |
+| POST | `/api/scenes/:id/trigger` | owner/admin | Manually trigger a scene |
+
+### Shifts
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/shifts` | any | List shifts |
+| POST | `/api/shifts` | any | Open a new shift |
+| POST | `/api/shifts/:id/close` | any | Close shift (submit actual Cash + Visa amounts) |
+| POST | `/api/shifts/:id/force-close` | owner/admin | Force-close shift with actual amount reconciliation |
+
+### Simulator
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| POST | `/api/simulator/inject` | owner/admin | Inject telemetry (virtual or hardware room) |
+
 ### Guest
 
 | Method | Endpoint | Auth | Description |
@@ -491,13 +559,14 @@ hilton-v2/
 
 | Feature | Detail |
 |---------|--------|
-| Passwords | bcrypt hashed (cost 10) |
+| Passwords | bcrypt hashed (cost 10) — staff and guest passwords |
 | Sessions | 8-hour access token + 7-day refresh token (JWT) |
 | Tenant isolation | All routes validate `hotelId` from JWT — no cross-tenant data access |
 | Rate limiting | 10 login attempts per 15 min (staff); 5 per 15 min (guest) |
 | Security headers | Helmet.js (XSS, MIME sniffing, frameguard, etc.) |
 | CORS | Allowlist-only, configurable per deployment |
 | Audit log | Every control command, login, and PMS event is logged with user + timestamp |
+| NOT_OCCUPIED guard | Activity detected in a reserved-but-empty room automatically restores OCCUPIED status |
 
 ---
 
@@ -514,3 +583,5 @@ hilton-v2/
 | UI updates slowly after control commands | Update to latest — optimistic SSE broadcast should make changes instant |
 | "Link Not Recognised" on guest page | The `hotel=` param in the URL doesn't match any active hotel slug |
 | Superadmin portal returns 401 | Platform token expired — log out and log back in at `/platform/login` |
+| Simulator "Room not found" error | Update to latest — simulator now works in virtual mode without physical devices |
+| Scene doesn't fire | Check that the scene is enabled and the trigger condition matches; verify in the audit log |

@@ -177,6 +177,7 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
   const isEdit = !!scene?.id;
   const [name, setName]               = useState(scene?.name || '');
   const [roomNum, setRoomNum]         = useState(scene?.room_number || Object.keys(rooms).sort()[0] || '');
+  const [applyToAll, setApplyToAll]   = useState(false);
   const [triggerType, setTriggerType] = useState(scene?.trigger_type || 'time');
   const [timeCfg, setTimeCfg]         = useState(() => {
     const c = parseCfg(scene?.trigger_config);
@@ -209,10 +210,12 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
     }));
 
   const handleSave = async () => {
-    if (!name.trim())           { setError('Scene name is required.'); return; }
-    if (!roomNum.trim())        { setError('Please enter a room number.'); return; }
-    if (!(roomNum in rooms))    { setError(`Room "${roomNum}" is not defined. Check the room number.`); return; }
-    if (actions.length === 0)   { setError('Add at least one action.'); return; }
+    if (!name.trim()) { setError('Scene name is required.'); return; }
+    if (!applyToAll) {
+      if (!roomNum.trim())     { setError('Please enter a room number.'); return; }
+      if (!(roomNum in rooms)) { setError(`Room "${roomNum}" is not defined. Check the room number.`); return; }
+    }
+    if (actions.length === 0) { setError('Add at least one action.'); return; }
 
     const triggerConfig = triggerType === 'time'
       ? { time: timeCfg.time, days: timeCfg.days }
@@ -224,7 +227,15 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ name: name.trim(), roomNumber: roomNum, triggerType, triggerConfig, actions, enabled });
+      if (applyToAll && !isEdit) {
+        // Create one scene per room
+        const allRooms = Object.keys(rooms).sort();
+        for (const rm of allRooms) {
+          await onSave({ name: name.trim(), roomNumber: rm, triggerType, triggerConfig, actions, enabled });
+        }
+      } else {
+        await onSave({ name: name.trim(), roomNumber: roomNum, triggerType, triggerConfig, actions, enabled });
+      }
       onClose();
     } catch (e) {
       setError(e.message || 'Failed to save scene.');
@@ -256,7 +267,9 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">Room</label>
-              {(() => {
+              {applyToAll ? (
+                <div className="input text-sm text-gray-400 bg-gray-50 cursor-not-allowed">All rooms ({Object.keys(rooms).length})</div>
+              ) : (() => {
                 const trimmed = roomNum.trim();
                 const isValid   = trimmed !== '' && trimmed in rooms;
                 const isInvalid = trimmed !== '' && !(trimmed in rooms);
@@ -273,6 +286,14 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
                   </>
                 );
               })()}
+              {!isEdit && (
+                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={applyToAll}
+                    onChange={e => setApplyToAll(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-brand-500" />
+                  <span className="text-[10px] text-gray-500">Apply to all rooms</span>
+                </label>
+              )}
             </div>
           </div>
 

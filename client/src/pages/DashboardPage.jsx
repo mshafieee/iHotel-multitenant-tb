@@ -178,21 +178,23 @@ export default function DashboardPage() {
 
       {/* Tabs */}
       <div className="bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 flex gap-1">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition ${
-                tab === t.id ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-400 hover:text-gray-600'
-              }`}>
-              <t.icon size={14} />
-              {t.label}
-              {t.badge > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-400 text-white text-[8px] flex items-center justify-center font-bold">
-                  {t.badge}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="max-w-[1600px] mx-auto overflow-x-auto scrollbar-none">
+          <div className="flex gap-0 px-2 min-w-max">
+            {TABS.map(tb => (
+              <button key={tb.id} onClick={() => setTab(tb.id)}
+                className={`relative flex items-center gap-1 px-3 sm:px-4 py-3 text-[11px] sm:text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+                  tab === tb.id ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-400 hover:text-gray-600'
+                }`}>
+                <tb.icon size={13} />
+                {tb.label}
+                {tb.badge > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-400 text-white text-[8px] flex items-center justify-center font-bold">
+                    {tb.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

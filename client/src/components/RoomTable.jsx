@@ -89,11 +89,12 @@ export default function RoomTable({ onSelectRoom, role }) {
       </div>
       {/* Table */}
       <div className="max-h-[380px] overflow-auto rounded-lg border border-gray-100">
-        <table className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: 640 }}>
+        <table dir="ltr" className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: 640 }}>
           <colgroup>
             <col style={{ width: 60 }} />
             <col style={{ width: 44 }} />
             <col style={{ width: 96 }} />
+            <col style={{ width: 110 }} />
             <col style={{ width: 110 }} />
             <col style={{ width: 56 }} />
             <col style={{ width: 74 }} />
@@ -103,7 +104,7 @@ export default function RoomTable({ onSelectRoom, role }) {
           </colgroup>
           <thead className="bg-gray-50 sticky top-0">
             <tr>
-              {[T('rt_room'), T('rt_floor'), T('rt_type'), T('rt_status'), T('rt_temp'), T('rt_door'), T('rt_lines'), T('rt_flags'), ...(canManage ? [T('rt_actions')] : [])].map(h => (
+              {[T('rt_room'), T('rt_floor'), T('rt_type'), T('rt_status'), T('rt_guest'), T('rt_temp'), T('rt_door'), T('rt_lines'), T('rt_flags'), ...(canManage ? [T('rt_actions')] : [])].map(h => (
                 <th key={h} className="px-2 py-2.5 text-left text-[10px] text-gray-400 uppercase tracking-wider font-semibold truncate">{h}</th>
               ))}
             </tr>
@@ -142,6 +143,11 @@ export default function RoomTable({ onSelectRoom, role }) {
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sc }} />
                       <span className="font-semibold text-[11px] truncate" style={{ color: sc }}>{STATUSES[statusIdx]}</span>
                     </span>
+                  </td>
+                  <td className="px-2 py-2.5">
+                    {r.reservation?.guestName
+                      ? <span className="text-[11px] text-brand-600 font-semibold truncate block">👤 {r.reservation.guestName}</span>
+                      : <span className="text-gray-300 text-[11px]">—</span>}
                   </td>
                   <td className="px-2 py-2.5 font-mono text-[11px]">{r.temperature != null ? `${r.temperature}°` : '—'}</td>
                   <td className="px-2 py-2.5 text-[11px]">{r.doorStatus ? T('rt_door_open') : T('rt_door_closed')}</td>

@@ -279,3 +279,112 @@ The SSE `snapshot` listener handles the subsequent fresh-data update.
 | Always return `cached: true` | Simplifies client logic; SSE snapshot is the "fresh" delivery mechanism |
 | 30s TTL for background re-fetch | Balances freshness against TB API load (1200 calls/30s vs 1200 calls/15s) |
 | Poll interval 60s (was 15s) | SSE delivers sub-second room changes; HTTP poll is only a safety net |
+
+---
+
+---
+
+## Session: 2026-03-09 — Scenes Engine, UX Polish, Heatmap Redesign, Simulator Fix
+
+### Summary
+This session covered several major improvements and bug fixes:
+1. **Scenes engine** — time/status/sensor triggered automations with "apply to all rooms"
+2. **Heatmap redesign** — floor-box mode with SVG arc charts + original rooms mode toggle
+3. **Force-close shift modal** — collects actual Cash/Visa amounts and compares to expected
+4. **Simulator virtual mode** — works without ThingsBoard device mapping
+5. **Bug fixes** — Arabic login default, table column alignment, room status label
+
+---
+
+### Changes Made
+
+#### 1. Scenes Engine (`server/index.js`, `client/src/components/ScenesPanel.jsx`)
+Added a full automation scenes engine with CRUD API (`GET/POST/PUT/DELETE /api/scenes`) and manual trigger endpoint. Scenes support three trigger types: time-of-day, room status change, and sensor threshold.
+
+**"Apply to all rooms" checkbox** added to the scene builder modal. When checked, the room input is disabled and `handleSave` iterates over all hotel rooms, creating the scene for each.
+
+#### 2. Heatmap Floor Boxes (`client/src/components/Heatmap.jsx`)
+Complete redesign. Two modes toggled by a `⊞ Floors / ⊟ Rooms` button:
+
+- **Floors mode** (default): grid of 120×130px floor summary boxes. Each box shows:
+  - SVG `ArcProgress` component — circular arc indicating % vacancy, coloured green/amber/red
+  - Vacant room count and breakdown by type (Std/Dlx/Ste/VIP)
+  - Alert badges: 🚨SOS, 🧹MUR, ⚡PD counts
+  - Click to expand and see individual rooms for that floor inline below the box
+- **Rooms mode**: original all-rooms heatmap grid with configurable column count and keyboard room search overlay
+
+#### 3. Force-Close Shift Modal (`client/src/components/ShiftsPanel.jsx`, `server/index.js`)
+Replaced the `confirm()` dialog with a full modal:
+- `openForceClose(shift)` fetches shift entries to calculate expected Cash and Visa amounts
+- Modal displays expected amounts (in blue), then collects actual Cash, actual Visa, and optional notes
+- `submitForceClose()` POSTs to `/api/shifts/:id/force-close` with actual amounts
+- Server calculates discrepancy (`diffCash`, `diffVisa`) and stores all four values
+
+Updated `/api/shifts/:id/force-close` to accept `{ actualCash, actualVisa, notes }` in the request body and persist them properly.
+
+#### 4. Simulator Virtual Mode (`server/index.js`, `client/src/components/SimulatorPanel.jsx`)
+Fixed the simulator to work without a ThingsBoard device mapping:
+- Updates `_lastOverviewRooms[room]` directly so the in-memory state reflects simulated values
+- Calls `detectAndLogChanges` to trigger any matching scenes/automation
+- Broadcasts SSE `telemetry` event to all connected dashboards
+- If a real TB device is mapped, also writes to ThingsBoard (best-effort, non-blocking)
+- Returns `{ mode: 'hardware' | 'virtual' }` in the response
+
+Changed the "Room not found" red error in `SimulatorPanel.jsx` to an amber info notice: "Virtual room — no physical device. SSE broadcast only (great for testing!)."
+
+#### 5. Login Page Arabic Default (`client/src/pages/LoginPage.jsx`)
+Changed from reading `useLangStore()` (which persists the last-used language) to a local `useState('ar')` so the login page always opens in Arabic, regardless of any stored preference.
+
+Added `useEffect` to sync `document.documentElement.dir/lang` with the local state.
+
+#### 6. Room Table: Guest Name Column + Column Alignment (`client/src/components/RoomTable.jsx`)
+- Added `dir="ltr"` to the `<table>` element to fix header/data column misalignment in RTL layouts
+- Added a **Guest** column (`rt_guest` i18n key) after the Status column showing `reservation.guestName`
+
+#### 7. Room Status Label Fix (`client/src/i18n.js`)
+Changed `rm_not_occupied` label:
+- Before: `'🟣 الغرفة محجوزة - لم يصل الضيف بعد'` / `'🟣 Room Reserved - Guest not checked in yet'`
+- After: `'🟣 الغرفة محجوزة'` / `'🟣 Room Reserved'`
+
+Removed the "guest hasn't arrived" qualifier because NOT_OCCUPIED also covers the low-power mode state (guest inactive 5 min).
+
+#### 8. Mobile Tab Bar (`client/src/pages/DashboardPage.jsx`)
+Made the dashboard tab navigation scrollable horizontally on small screens using `overflow-x-auto` with `scrollbar-none` CSS. Tab buttons use `whitespace-nowrap` and `min-w-max` to prevent wrapping.
+
+---
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `79462c0` | feat: scenes engine, password reset, NOT_OCCUPIED guard, CI/CD deploy |
+| *(pending)* | feat: heatmap floor boxes, force-close modal, simulator virtual mode, UX fixes |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/index.js` | Scenes CRUD + engine; force-close body params; simulator virtual mode |
+| `client/src/components/Heatmap.jsx` | Complete rewrite — floor boxes with SVG arcs + rooms mode toggle |
+| `client/src/components/ShiftsPanel.jsx` | Force-close modal with actual amount input and discrepancy display |
+| `client/src/components/ScenesPanel.jsx` | "Apply to all rooms" checkbox in scene builder |
+| `client/src/components/SimulatorPanel.jsx` | Virtual room amber notice instead of red error |
+| `client/src/components/RoomTable.jsx` | `dir="ltr"` fix; Guest name column |
+| `client/src/pages/LoginPage.jsx` | Local `useState('ar')` — always opens in Arabic |
+| `client/src/pages/DashboardPage.jsx` | Scrollable mobile tab bar |
+| `client/src/i18n.js` | Removed "guest hasn't arrived" from NOT_OCCUPIED label; added `rt_guest` key |
+| `README.md` | Full update with all new features, scenes section, new API endpoints |
+
+---
+
+### Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Local state for login language | Prevents stored language preference from changing the login page; always Arabic for this hotel's staff |
+| `dir="ltr"` on table element | In RTL document context, table column order reverses; forcing LTR on the table alone fixes alignment without affecting surrounding UI |
+| Virtual simulator mode | Enables end-to-end testing of automation, SSE, and scenes without physical IoT hardware |
+| Floor boxes as default heatmap | 600-room hotel makes individual room grid cluttered; floor summary with expand is more actionable at a glance |
+| Force-close requires actual amounts | Prevents lazy shift closing; discrepancy is logged and visible in shift history for accountability |

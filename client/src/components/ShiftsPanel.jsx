@@ -18,7 +18,12 @@ export default function ShiftsPanel() {
   const [shiftDetail, setShiftDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [forceClosing, setForceClosing] = useState(null);
+
+  // Force-close modal state
+  const [forceCloseTarget, setForceCloseTarget] = useState(null);
+  const [forceForm, setForceForm] = useState({ actualCash: '', actualVisa: '', notes: '' });
+  const [forceLoading, setForceLoading] = useState(false);
+  const [forceLoadingExpected, setForceLoadingExpected] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -52,14 +57,41 @@ export default function ShiftsPanel() {
     } catch (e) { setError(e.message); }
   };
 
-  const forceCloseShift = async (shiftId, username) => {
-    if (!confirm(lang === 'ar' ? `إغلاق وردية @${username} قسراً؟` : `Force-close shift for @${username}?`)) return;
-    setForceClosing(shiftId);
+  // Open force-close: fetch expected amounts first from shift entries
+  const openForceClose = async (shift) => {
+    setForceForm({ actualCash: '', actualVisa: '', notes: '' });
+    setForceLoadingExpected(true);
+    setForceCloseTarget({ shiftId: shift.id, username: shift.username, expectedCash: null, expectedVisa: null });
     try {
-      await api(`/api/shifts/${shiftId}/force-close`, { method: 'POST' });
+      const detail = await api(`/api/shifts/${shift.id}`);
+      const expectedCash = (detail.entries || [])
+        .filter(e => e.payment_method === 'cash')
+        .reduce((s, e) => s + (e.total_amount || 0), 0);
+      const expectedVisa = (detail.entries || [])
+        .filter(e => e.payment_method === 'visa')
+        .reduce((s, e) => s + (e.total_amount || 0), 0);
+      setForceCloseTarget({ shiftId: shift.id, username: shift.username, expectedCash, expectedVisa });
+    } catch {
+      setForceCloseTarget(prev => prev ? { ...prev, expectedCash: 0, expectedVisa: 0 } : null);
+    } finally { setForceLoadingExpected(false); }
+  };
+
+  const submitForceClose = async () => {
+    if (!forceCloseTarget) return;
+    setForceLoading(true);
+    try {
+      await api(`/api/shifts/${forceCloseTarget.shiftId}/force-close`, {
+        method: 'POST',
+        body: JSON.stringify({
+          actualCash: forceForm.actualCash,
+          actualVisa: forceForm.actualVisa,
+          notes: forceForm.notes || `Force closed by ${user?.username}`,
+        }),
+      });
+      setForceCloseTarget(null);
       fetchData();
     } catch (e) { setError(e.message); }
-    finally { setForceClosing(null); }
+    finally { setForceLoading(false); }
   };
 
   const loadDetail = async (id) => {
@@ -156,12 +188,10 @@ export default function ShiftsPanel() {
                           {isOpen ? (
                             <div className="flex items-center gap-2">
                               <span className="badge bg-emerald-50 text-emerald-600 text-[9px]">{T('shf_status_open')}</span>
-                              {/* Force close button */}
                               <button
-                                onClick={e => { e.stopPropagation(); forceCloseShift(s.id, s.username); }}
-                                disabled={forceClosing === s.id}
-                                className="px-2 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
-                                {forceClosing === s.id ? T('shf_force_closing') : T('shf_force_close')}
+                                onClick={e => { e.stopPropagation(); openForceClose(s); }}
+                                className="px-2 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition">
+                                {T('shf_force_close')}
                               </button>
                             </div>
                           ) : (
@@ -205,6 +235,73 @@ export default function ShiftsPanel() {
                 })}
               </div>
           }
+        </div>
+      )}
+
+      {/* Force-close modal */}
+      {forceCloseTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setForceCloseTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <div className="text-sm font-bold text-gray-800 mb-1">
+                {lang === 'ar' ? `إغلاق وردية @${forceCloseTarget.username}` : `Force-close @${forceCloseTarget.username}'s shift`}
+              </div>
+              <div className="text-[10px] text-gray-400">
+                {lang === 'ar' ? 'أدخل المبالغ الفعلية للمقارنة مع المتوقع' : 'Enter actual amounts to compare with expected'}
+              </div>
+            </div>
+
+            {/* Expected amounts */}
+            {forceLoadingExpected ? (
+              <div className="text-xs text-gray-400 text-center py-2">
+                {lang === 'ar' ? 'جارٍ تحميل المبالغ المتوقعة…' : 'Loading expected amounts…'}
+              </div>
+            ) : (
+              <div className="bg-blue-50 rounded-xl p-3 grid grid-cols-2 gap-3 text-center text-xs border border-blue-100">
+                <div>
+                  <div className="text-[9px] text-blue-400 uppercase font-semibold">{T('shf_exp_cash')}</div>
+                  <div className="font-bold text-blue-700 text-sm">{(forceCloseTarget.expectedCash || 0).toLocaleString()} {T('sar')}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] text-blue-400 uppercase font-semibold">{T('shf_exp_visa')}</div>
+                  <div className="font-bold text-blue-700 text-sm">{(forceCloseTarget.expectedVisa || 0).toLocaleString()} {T('sar')}</div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[9px] text-gray-400 uppercase block mb-1">{T('shf_actual_cash')}</label>
+                <input type="number" className="input" placeholder="0.00"
+                  value={forceForm.actualCash}
+                  onChange={e => setForceForm(f => ({ ...f, actualCash: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-[9px] text-gray-400 uppercase block mb-1">{T('shf_actual_visa')}</label>
+                <input type="number" className="input" placeholder="0.00"
+                  value={forceForm.actualVisa}
+                  onChange={e => setForceForm(f => ({ ...f, actualVisa: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-[9px] text-gray-400 uppercase block mb-1">{T('shf_notes')}</label>
+              <input className="input" placeholder={T('shf_notes_ph')}
+                value={forceForm.notes}
+                onChange={e => setForceForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setForceCloseTarget(null)}
+                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition">
+                {T('cancel')}
+              </button>
+              <button onClick={submitForceClose} disabled={forceLoading}
+                className="flex-1 px-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition disabled:opacity-50">
+                {forceLoading ? T('shf_force_closing') : T('shf_force_close')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

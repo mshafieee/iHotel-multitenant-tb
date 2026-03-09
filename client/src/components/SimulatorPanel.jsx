@@ -252,7 +252,9 @@ export default function SimulatorPanel() {
             </div>
           )}
           {!liveRoom && roomNum && (
-            <div className="text-xs text-red-400 pb-1">Room {roomNum} not found in live data</div>
+            <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 pb-1">
+              ⚠ Virtual room — no physical device. SSE broadcast only (great for testing!).
+            </div>
           )}
         </div>
 

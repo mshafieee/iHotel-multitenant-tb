@@ -2,13 +2,19 @@ import { useState, useEffect } from 'react';
 import { Building2, Shield, Eye, EyeOff } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
-import useLangStore from '../store/langStore';
 import { t } from '../i18n';
 import { setTokens } from '../utils/api';
 
 export default function LoginPage() {
-  const { lang, setLang } = useLangStore();
+  // Always default to Arabic on the login page regardless of previous session preference
+  const [lang, setLang] = useState('ar');
   const T = (key) => t(key, lang);
+
+  // Keep document dir in sync with local lang toggle
+  useEffect(() => {
+    document.documentElement.dir  = lang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   const [hotelSlug, setHotelSlug] = useState('');
   const [username, setUsername] = useState('');

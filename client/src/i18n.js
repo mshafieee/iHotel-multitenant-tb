@@ -64,6 +64,7 @@ const translations = {
 
   // ── RoomTable ─────────────────────────────────────────────────────────────
   rt_room:           { ar: 'الغرفة',            en: 'Room' },
+  rt_guest:          { ar: 'الضيف',             en: 'Guest' },
   rt_floor:          { ar: 'الطابق',            en: 'Flr' },
   rt_type:           { ar: 'النوع',             en: 'Type' },
   rt_status:         { ar: 'الحالة',            en: 'Status' },
@@ -131,7 +132,7 @@ const translations = {
   rm_checking_out:   { ar: '⏳ جارٍ المغادرة…',  en: '⏳ Checking out…' },
   rm_pd_guest_title: { ar: '⚡ الكهرباء مقطوعة', en: '⚡ Room Power Restricted' },
   rm_pd_guest_msg:   { ar: 'التحكم في الغرفة معطَّل مؤقتاً. تواصل مع الاستقبال.', en: 'Room controls are temporarily disabled. Please contact reception.' },
-  rm_not_occupied:   { ar: '🟣 الغرفة محجوزة — لم يصل الضيف بعد', en: '🟣 Room Reserved — Guest not checked in yet' },
+  rm_not_occupied:   { ar: '🟣 الغرفة محجوزة', en: '🟣 Room Reserved' },
 
   // ── DashboardPage ────────────────────────────────────────────────────────
   dash_heatmap_cols:  { ar: 'أعمدة الخريطة:', en: 'Heatmap cols:' },

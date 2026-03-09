@@ -1560,9 +1560,6 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
   if (!room || !telemetry || typeof telemetry !== 'object') {
     return res.status(400).json({ error: 'room and telemetry object required' });
   }
-  const deviceRoomMap = getDeviceRoomMap(hotelId);
-  const devId         = deviceRoomMap[room];
-  if (!devId) return res.status(404).json({ error: `Room ${room} not mapped to a device` });
 
   const coerced = {};
   for (const [k, v] of Object.entries(telemetry)) {
@@ -1575,13 +1572,29 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
   }
   if (!Object.keys(coerced).length) return res.status(400).json({ error: 'No valid telemetry keys provided' });
 
-  try {
-    const tb = getHotelTB(hotelId);
-    await tb.saveTelemetry(devId, coerced);
-    detectAndLogChanges(hotelId, room, coerced);
-    sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: coerced });
-    res.json({ success: true, injected: coerced });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  // Update in-memory overview state so SSE reflects the simulated values
+  const lastOverview = getLastOverviewRooms(hotelId);
+  if (!lastOverview[room]) lastOverview[room] = { room, floor: Math.floor(Number(room) / 100), online: true };
+  Object.assign(lastOverview[room], coerced);
+
+  detectAndLogChanges(hotelId, room, coerced);
+
+  const deviceRoomMap = getDeviceRoomMap(hotelId);
+  const devId         = deviceRoomMap[room] || `sim-${room}`;
+
+  // Broadcast SSE immediately (works even without ThingsBoard)
+  sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: coerced });
+
+  // Also push to ThingsBoard if a real device is mapped (best-effort, non-blocking)
+  const realDevId = deviceRoomMap[room];
+  if (realDevId) {
+    try {
+      const tb = getHotelTB(hotelId);
+      await tb.saveTelemetry(realDevId, coerced);
+    } catch (_) { /* ignore TB errors in simulator */ }
+  }
+
+  res.json({ success: true, injected: coerced, mode: realDevId ? 'hardware' : 'virtual' });
 });
 
 // ═══ FINANCIAL ROUTES ═══
@@ -1681,15 +1694,17 @@ app.post('/api/shifts/close', authenticate, requireRole('owner', 'admin', 'front
 
 app.post('/api/shifts/:id/force-close', authenticate, requireRole('owner', 'admin'), (req, res) => {
   const hotelId = req.user.hotelId;
+  const { actualCash, actualVisa, notes } = req.body || {};
   const shift = db.prepare("SELECT * FROM shifts WHERE id=? AND hotel_id=? AND status='open'").get(req.params.id, hotelId);
   if (!shift) return res.status(404).json({ error: 'Open shift not found' });
   const expected = db.prepare('SELECT payment_method, SUM(total_amount) as amount FROM income_log WHERE hotel_id=? AND created_at>=? GROUP BY payment_method').all(hotelId, shift.opened_at);
   const expectedCash = expected.find(e => e.payment_method === 'cash')?.amount || 0;
   const expectedVisa = expected.find(e => e.payment_method === 'visa')?.amount || 0;
+  const noteText = notes || `Force closed by ${req.user.username}`;
   db.prepare("UPDATE shifts SET status='closed', closed_at=datetime('now'), actual_cash=?, actual_visa=?, expected_cash=?, expected_visa=?, notes=? WHERE id=?")
-    .run(expectedCash, expectedVisa, expectedCash, expectedVisa, `Force closed by ${req.user.username}`, shift.id);
-  addLog(hotelId, 'system', `Shift force-closed: @${shift.username}`, { user: req.user.username });
-  res.json({ success: true });
+    .run(parseFloat(actualCash) || 0, parseFloat(actualVisa) || 0, expectedCash, expectedVisa, noteText, shift.id);
+  addLog(hotelId, 'system', `Shift force-closed: @${shift.username}`, { user: req.user.username, by: req.user.username });
+  res.json({ success: true, expectedCash, expectedVisa, diffCash: (parseFloat(actualCash)||0) - expectedCash, diffVisa: (parseFloat(actualVisa)||0) - expectedVisa });
 });
 
 app.get('/api/shifts', authenticate, requireRole('owner', 'admin'), (req, res) => {
