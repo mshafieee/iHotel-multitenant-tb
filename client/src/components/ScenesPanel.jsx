@@ -228,10 +228,10 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
     setError('');
     try {
       if (applyToAll && !isEdit) {
-        // Create one scene per room
+        // Create one room-level scene per room (is_default=1 → shown in RoomModal, not automation list)
         const allRooms = Object.keys(rooms).sort();
         for (const rm of allRooms) {
-          await onSave({ name: name.trim(), roomNumber: rm, triggerType, triggerConfig, actions, enabled });
+          await onSave({ name: name.trim(), roomNumber: rm, triggerType, triggerConfig, actions, enabled, isDefault: true });
         }
       } else {
         await onSave({ name: name.trim(), roomNumber: roomNum, triggerType, triggerConfig, actions, enabled });

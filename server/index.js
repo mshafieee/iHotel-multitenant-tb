@@ -1840,13 +1840,13 @@ app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) =
 
 app.post('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {
   const hotelId = req.user.hotelId;
-  const { roomNumber, name, triggerType, triggerConfig, actions } = req.body;
+  const { roomNumber, name, triggerType, triggerConfig, actions, isDefault } = req.body;
   if (!roomNumber || !name || !triggerType)
     return res.status(400).json({ error: 'roomNumber, name, triggerType required' });
   const id = crypto.randomUUID();
-  db.prepare('INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions) VALUES (?,?,?,?,?,?,?)')
+  db.prepare('INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions,is_default) VALUES (?,?,?,?,?,?,?,?)')
     .run(id, hotelId, roomNumber, name, triggerType,
-      JSON.stringify(triggerConfig || {}), JSON.stringify(actions || []));
+      JSON.stringify(triggerConfig || {}), JSON.stringify(actions || []), isDefault ? 1 : 0);
   res.json({ id });
 });
 
