@@ -204,7 +204,7 @@ function sseConnect(req, res) {
     Connection: 'keep-alive'
   });
   res.write(':\n\n');
-  sseClients.set(res, { userId: req.user?.id, role: req.user?.role, hotelId: req.user?.hotelId });
+  sseClients.set(res, { userId: req.user?.id, role: req.user?.role, hotelId: req.user?.hotelId, room: req.user?.room || null });
   req.on('close', () => sseClients.delete(res));
 }
 
@@ -212,6 +212,17 @@ function sseBroadcast(hotelId, event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const [c, meta] of sseClients) {
     if (meta.hotelId !== hotelId) continue;
+    // Guests receive telemetry ONLY for their own room
+    if (meta.role === 'guest') {
+      if (event === 'telemetry' && data.room === meta.room) {
+        try { c.write(msg); } catch {}
+      } else if (event === 'batch-telemetry' && meta.room && data.rooms?.[meta.room]) {
+        const roomData = data.rooms[meta.room];
+        const guestMsg = `event: telemetry\ndata: ${JSON.stringify({ room: meta.room, deviceId: roomData.deviceId, data: roomData.data })}\n\n`;
+        try { c.write(guestMsg); } catch {}
+      }
+      continue; // all other events (snapshot, logs, alerts, lockout, etc.) are blocked
+    }
     try { c.write(msg); } catch {}
   }
 }
