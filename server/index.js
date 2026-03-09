@@ -347,7 +347,6 @@ app.post('/api/auth/refresh', (req, res) => {
 
 app.post('/api/auth/logout', authenticate, (req, res) => {
   db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(req.user.id);
-  addLog(req.user.hotelId, 'auth', 'Logout', { user: req.user.username });
   res.json({ success: true });
 });
 
@@ -411,12 +410,12 @@ function detectAndLogChanges(hotelId, roomNum, t) {
     let msg, cat = 'telemetry';
 
     if (key === 'roomStatus') {
-      msg = `Room status → ${ROOM_STATUS[to] ?? to}`; cat = 'system';
       // Discard restore snapshot when the room reaches a definitive state (not returning from NOT_OCCUPIED)
       if (to !== 4) delete getRoomStateSnapshots(hotelId)[roomNum];
+      // not logged here — PMS/control/checkout routes log status changes directly
     }
     else if (key === 'doorStatus') {
-      msg = to ? 'Door OPENED' : 'Door CLOSED'; cat = 'sensor';
+      if (to === true) { msg = 'Door OPENED'; cat = 'sensor'; }  // log opens only
       const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
       if (to === true) {
         if (curStatus === 0) {
@@ -433,26 +432,23 @@ function detectAndLogChanges(hotelId, roomNum, t) {
       }
     }
     else if (key === 'pirMotionStatus') {
-      msg = to ? 'Motion detected' : 'No motion'; cat = 'sensor';
+      // not logged
       if (to === true) {
         const timers = getDoorOpenTimers(hotelId);
         clearTimeout(timers[roomNum]);
         delete timers[roomNum];
       }
     }
-    else if (key === 'dndService') { msg = to ? 'DND activated' : 'DND cleared'; cat = 'service'; }
+    else if (key === 'dndService') { /* not logged */ }
     else if (key === 'murService') {
-      msg = to ? 'Housekeeping requested' : 'MUR cleared'; cat = 'service';
+      if (to) { msg = 'MUR — Housekeeping requested'; cat = 'service'; }
       if (to) sseBroadcastAlert(hotelId, { type: 'MUR', room: roomNum, message: `Room ${roomNum}: Housekeeping`, ts: Date.now() });
     } else if (key === 'sosService') {
-      msg = to ? 'SOS EMERGENCY' : 'SOS cleared'; cat = 'service';
+      if (to) { msg = 'SOS EMERGENCY'; cat = 'service'; }
       if (to) sseBroadcastAlert(hotelId, { type: 'SOS', room: roomNum, message: `EMERGENCY Room ${roomNum}`, ts: Date.now() });
     } else if (key === 'pdMode') {
       pdState[roomNum] = !!to;
-      msg = to ? 'Power Down mode activated' : 'Power Down mode cleared'; cat = 'system';
-    } else if (key === 'acMode') { msg = `AC → ${AC_MODES[to] || to}`; }
-    else if (key === 'fanSpeed') { msg = `Fan → ${FAN_SPEEDS[to] || to}`; }
-    else { msg = `${key} → ${to}`; }
+    }
 
     // Auto-restore OCCUPIED on ANY physical activity while room is NOT_OCCUPIED
     const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
@@ -577,7 +573,6 @@ function startNotOccupiedTimer(hotelId, roomNum) {
       // Only set status to NOT_OCCUPIED — the Departure Routine scene handles
       // lights off, AC 26°C, curtains closed automatically when status leaves 1.
       await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, 'auto');
-      addLog(hotelId, 'system', 'Room auto → NOT_OCCUPIED (no motion 5 min)', { room: roomNum, source: 'gateway' });
       sseBroadcastRoles(hotelId, 'checkout_alert', { type: 'NOT_OCCUPIED', room: roomNum, ts: Date.now() }, ['owner', 'admin', 'frontdesk']);
     } catch (e) { console.error('NOT_OCCUPIED set failed:', e.message); }
   }, 5 * 60 * 1000);
@@ -617,7 +612,6 @@ async function restoreOccupied(hotelId, roomNum) {
           blindsPosition: snap.blindsPosition }, 'auto');
     }
 
-    addLog(hotelId, 'system', 'Room auto → OCCUPIED (activity detected, state restored)', { room: roomNum, source: 'gateway' });
   } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
 }
 
@@ -672,7 +666,6 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   if ('roomStatus' in telemetry && telemetry.roomStatus !== 4) {
     delete getRoomStateSnapshots(hotelId)[roomNum];
   }
-  addLog(hotelId, 'control', method, { room: roomNum, source: 'dashboard', user: username, params: JSON.stringify(telemetry) });
   if (telemetry.murService) sseBroadcastAlert(hotelId, { type: 'MUR', room: roomNum, message: `Room ${roomNum}: Housekeeping`, ts: Date.now() });
   if (telemetry.sosService) sseBroadcastAlert(hotelId, { type: 'SOS', room: roomNum, message: `EMERGENCY Room ${roomNum}`, ts: Date.now() });
   sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: { ...telemetry, ...sharedAttrs } });
@@ -699,7 +692,6 @@ async function executeScene(hotelId, scene, triggeredBy = 'auto') {
   }
   try {
     db.prepare("UPDATE scenes SET last_run = datetime('now') WHERE id = ?").run(scene.id);
-    addLog(hotelId, 'scene', `Scene "${scene.name}" triggered`, { room: scene.room_number, source: triggeredBy });
 
     for (const action of scene.actions) {
       if ((action.delay || 0) > 0) {
@@ -964,7 +956,6 @@ app.get('/api/logs/export', authenticate, requireRole('owner', 'admin'), (req, r
 app.delete('/api/logs', authenticate, requireRole('owner', 'admin'), (req, res) => {
   const hotelId = req.user.hotelId;
   db.prepare('DELETE FROM audit_log WHERE hotel_id=?').run(hotelId);
-  addLog(hotelId, 'system', 'Audit log cleared', { user: req.user.username });
   res.json({ success: true });
 });
 
@@ -1053,7 +1044,6 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
     if (!devId) return;
     try {
       await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, req.user.username);
-      addLog(hotelId, 'system', `Room ${room} → NOT_OCCUPIED (reservation for ${guestName})`, { room, user: req.user.username });
     } catch (e) { console.error(`Failed to set room ${room} NOT_OCCUPIED after reservation:`, e.message); }
     // Fire checkIn event scenes
     checkEventScenes(hotelId, room, { checkIn: 1 });
@@ -1076,7 +1066,6 @@ app.get('/api/pms/export', authenticate, requireRole('owner', 'admin', 'frontdes
 app.delete('/api/pms/history', authenticate, requireRole('owner', 'admin'), (req, res) => {
   const hotelId = req.user.hotelId;
   const result  = db.prepare('DELETE FROM reservations WHERE hotel_id=? AND active=0').run(hotelId);
-  addLog(hotelId, 'pms', `PMS history cleared (${result.changes} records)`, { user: req.user.username });
   res.json({ success: true, deleted: result.changes });
 });
 
@@ -1119,7 +1108,6 @@ app.post('/api/rooms/:room/lockdown', authenticate, requireRole('owner', 'admin'
   const hotelId = req.user.hotelId;
   const { room } = req.params;
   db.prepare('UPDATE reservations SET active=0 WHERE hotel_id=? AND room=? AND active=1').run(hotelId, room);
-  addLog(hotelId, 'system', `Room ${room} forced lockdown`, { room, user: req.user.username });
   sseBroadcast(hotelId, 'lockout', { room });
   res.json({ success: true });
 });
@@ -1543,7 +1531,6 @@ app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (r
   const deviceRoomMap = getDeviceRoomMap(hotelId);
   const rooms         = Object.keys(deviceRoomMap);
   const username      = req.user.username;
-  addLog(hotelId, 'system', `All rooms reset to default by ${username}`, { user: username });
   res.json({ success: true, total: rooms.length, message: 'Reset started in background' });
 
   (async () => {
@@ -1564,7 +1551,6 @@ app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (r
         } catch (e) { console.error(`Reset room ${room} failed:`, e.message); }
       }));
     }
-    addLog(hotelId, 'system', `All rooms reset complete`, { user: username });
   })();
 });
 
@@ -1610,7 +1596,6 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
     await sendControl(hotelId, devId, 'resetServices', { services: ['dndService', 'murService', 'sosService'] }, req.user.username);
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
     await sendControl(hotelId, devId, 'resetMeters', {}, req.user.username);
-    addLog(hotelId, 'system', `Room ${room} reset to default (meters zeroed)`, { room, user: req.user.username });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1674,7 +1659,6 @@ app.put('/api/finance/rates', authenticate, requireRole('owner'), (req, res) => 
     }
   });
   run();
-  addLog(hotelId, 'finance', 'Night rates updated', { user: req.user.username });
   res.json({ success: true });
 });
 
@@ -1707,7 +1691,6 @@ app.get('/api/finance/income/export', authenticate, requireRole('owner'), (req, 
 app.delete('/api/finance/income', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const result  = db.prepare('DELETE FROM income_log WHERE hotel_id=?').run(hotelId);
-  addLog(hotelId, 'finance', `Income log cleared (${result.changes} records)`, { user: req.user.username });
   res.json({ success: true, deleted: result.changes });
 });
 
@@ -1765,7 +1748,7 @@ app.post('/api/shifts/:id/force-close', authenticate, requireRole('owner', 'admi
   const noteText = notes || `Force closed by ${req.user.username}`;
   db.prepare("UPDATE shifts SET status='closed', closed_at=datetime('now'), actual_cash=?, actual_visa=?, expected_cash=?, expected_visa=?, notes=? WHERE id=?")
     .run(parseFloat(actualCash) || 0, parseFloat(actualVisa) || 0, expectedCash, expectedVisa, noteText, shift.id);
-  addLog(hotelId, 'system', `Shift force-closed: @${shift.username}`, { user: req.user.username, by: req.user.username });
+  addLog(hotelId, 'shift', `Shift force-closed: @${shift.username} (by ${req.user.username})`, { user: req.user.username });
   res.json({ success: true, expectedCash, expectedVisa, diffCash: (parseFloat(actualCash)||0) - expectedCash, diffVisa: (parseFloat(actualVisa)||0) - expectedVisa });
 });
 
@@ -1795,7 +1778,6 @@ app.post('/api/users', authenticate, requireRole('owner'), (req, res) => {
   try {
     const hash = bcrypt.hashSync(password, 10);
     db.prepare('INSERT INTO hotel_users (hotel_id, username, password_hash, role, full_name) VALUES (?,?,?,?,?)').run(hotelId, username, hash, role, fullName || null);
-    addLog(hotelId, 'system', `User created: ${username} (${role})`, { user: req.user.username });
     res.json({ success: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -1808,7 +1790,6 @@ app.put('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   if (role && !['owner', 'admin', 'frontdesk'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   db.prepare('UPDATE hotel_users SET full_name=COALESCE(?,full_name), role=COALESCE(?,role), active=COALESCE(?,active) WHERE id=? AND hotel_id=?')
     .run(fullName ?? null, role ?? null, active != null ? (active ? 1 : 0) : null, req.params.id, hotelId);
-  addLog(hotelId, 'system', `User updated: ${user.username}`, { user: req.user.username });
   res.json({ success: true });
 });
 
@@ -1828,7 +1809,6 @@ app.put('/api/users/:id/password', authenticate, async (req, res) => {
   db.prepare('UPDATE hotel_users SET password_hash=? WHERE id=? AND hotel_id=?').run(hash, targetId, hotelId);
   db.prepare('DELETE FROM refresh_tokens WHERE user_id=?').run(targetId);
   const targetUser = db.prepare('SELECT username FROM hotel_users WHERE id=?').get(targetId);
-  addLog(hotelId, 'system', `Password changed: ${targetUser?.username}`, { user: req.user.username });
   res.json({ success: true });
 });
 
@@ -1838,7 +1818,6 @@ app.delete('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.id === req.user.id) return res.status(400).json({ error: 'Cannot deactivate your own account' });
   db.prepare('UPDATE hotel_users SET active=0 WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
-  addLog(hotelId, 'system', `User deactivated: ${user.username}`, { user: req.user.username });
   res.json({ success: true });
 });
 
@@ -1868,7 +1847,6 @@ app.post('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) 
   db.prepare('INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions) VALUES (?,?,?,?,?,?,?)')
     .run(id, hotelId, roomNumber, name, triggerType,
       JSON.stringify(triggerConfig || {}), JSON.stringify(actions || []));
-  addLog(hotelId, 'scene', `Scene "${name}" created for room ${roomNumber}`, { room: roomNumber, user: req.user.username });
   res.json({ id });
 });
 
@@ -1938,8 +1916,6 @@ app.post('/api/scenes/:id/push', authenticate, requireRole('owner', 'admin'), as
   try {
     const tb = getHotelTB(hotelId);
     await tb.saveAttributes(devId, { ihotel_offline_scenes: JSON.stringify(payload) });
-    addLog(hotelId, 'scene', `Offline scenes pushed to gateway for room ${row.room_number}`,
-      { room: row.room_number, user: req.user.username });
     res.json({ success: true, scenes: payload.length });
   } catch (e) {
     console.error('[scene push]', e.message);
