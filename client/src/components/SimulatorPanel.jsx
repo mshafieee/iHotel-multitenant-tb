@@ -95,6 +95,7 @@ export default function SimulatorPanel() {
   const [roomInput, setRoomInput] = useState('101');
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState(null); // { ok, msg }
+  const [tbMode, setTbMode] = useState(false); // false = Direct, true = ThingsBoard native
   const [log, setLog] = useState([]);
 
   // ── Sensor state ──────────────────────────────────────────────────────────
@@ -168,15 +169,17 @@ export default function SimulatorPanel() {
   const inject = async (telemetry) => {
     setSending(true);
     setFeedback(null);
+    const endpoint = tbMode ? '/api/simulator/tb-inject' : '/api/simulator/inject';
     try {
-      await api('/api/simulator/inject', {
+      const res = await api(endpoint, {
         method: 'POST',
         body: JSON.stringify({ room: roomNum, telemetry }),
       });
-      setFeedback({ ok: true, msg: `✓ Injected ${Object.keys(telemetry).length} key(s) into Room ${roomNum}` });
+      const modeLabel = res.mode === 'thingsboard' ? 'via ThingsBoard' : res.mode === 'virtual-pipeline' ? 'via pipeline (virtual)' : 'direct';
+      setFeedback({ ok: true, msg: `Injected ${Object.keys(telemetry).length} key(s) into Room ${roomNum} — ${modeLabel}` });
       addLog(true, roomNum, Object.keys(telemetry));
     } catch (e) {
-      setFeedback({ ok: false, msg: `✗ ${e.message}` });
+      setFeedback({ ok: false, msg: `${e.message}` });
       addLog(false, roomNum, Object.keys(telemetry));
     } finally { setSending(false); }
   };
@@ -224,7 +227,27 @@ export default function SimulatorPanel() {
     <div className="space-y-4">
       {/* Header */}
       <div className="card p-4">
-        <div className="text-[9px] text-gray-400 uppercase tracking-widest font-bold mb-3">Gateway Simulator</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Gateway Simulator</div>
+          {/* Mode toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => setTbMode(false)}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition ${!tbMode ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              Direct
+            </button>
+            <button onClick={() => setTbMode(true)}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition ${tbMode ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              ThingsBoard
+            </button>
+          </div>
+        </div>
+        {tbMode && (
+          <div className="mb-3 text-[10px] text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2">
+            <strong>ThingsBoard mode:</strong> telemetry is published to TB as a real device would.
+            Data flows back via WebSocket → scene engine → SSE → UI. Requires a real mapped device.
+            Virtual rooms fall back to the direct pipeline automatically.
+          </div>
+        )}
         <div className="flex gap-3 items-end">
           <div className="flex-1">
             <label className="text-[9px] text-gray-400 uppercase block mb-1">Room Number</label>

@@ -131,10 +131,36 @@ function getDoorOpenTimers(hotelId)    { return (_doorOpenTimers[hotelId]     ??
 function getSleepTimers(hotelId)       { return (_sleepTimers[hotelId]       ??= {}); }
 function getRoomStateSnapshots(hotelId){ return (_roomStateSnapshots[hotelId] ??= {}); }
 
+// ── Core telemetry pipeline ──────────────────────────────────────────────────
+// Single entry point for ALL incoming device telemetry — whether from the live
+// TB WebSocket subscription or the TB-native simulator.  This guarantees that
+// simulated data goes through exactly the same path as real hardware data:
+// change-detection → SSE batch → scene engine.
+function processTelemetry(hotelId, roomNum, deviceId, data) {
+  const lastOverview = getLastOverviewRooms(hotelId);
+  detectAndLogChanges(hotelId, roomNum, data);
+
+  // Capture previous state BEFORE applying updates (for scene fromValues matching)
+  const prevState = {};
+  if (lastOverview[roomNum]) {
+    for (const key of Object.keys(data)) prevState[key] = lastOverview[roomNum][key];
+
+    // NOT_OCCUPIED guard: while a restore snapshot exists the server owns
+    // roomStatus=4 — don't let raw device telemetry overwrite it.
+    let broadcastData = data;
+    if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in data && data.roomStatus !== 4) {
+      broadcastData = { ...data };
+      delete broadcastData.roomStatus;
+    }
+    Object.assign(lastOverview[roomNum], broadcastData);
+    sseBatchTelemetry(hotelId, roomNum, deviceId, broadcastData);
+  }
+  checkEventScenes(hotelId, roomNum, data, prevState);
+}
+
 // ── Real-time TB telemetry subscription ─────────────────────────────────────
 // Opens a persistent WebSocket to ThingsBoard that fires whenever an ESP32 /
-// gateway device publishes telemetry.  Results are immediately applied to the
-// in-memory room state and broadcast to connected browser clients via SSE.
+// gateway device publishes telemetry.  Results flow through processTelemetry().
 // Called once after the first fetchAndBroadcast for a hotel (or on reconnect).
 async function startTbSubscription(hotelId, deviceIdToRoom) {
   if (!Object.keys(deviceIdToRoom).length) return;
@@ -147,29 +173,7 @@ async function startTbSubscription(hotelId, deviceIdToRoom) {
   try {
     const tb = getHotelTB(hotelId);
     const ws = await tb.openTelemetryWs(deviceIdToRoom, (roomNum, deviceId, data) => {
-      const lastOverview = getLastOverviewRooms(hotelId);
-      detectAndLogChanges(hotelId, roomNum, data);
-      // Capture previous values for the updated keys BEFORE applying the update,
-      // so event scenes can match "from → to" state transitions.
-      const prevState = {};
-      if (lastOverview[roomNum]) {
-        for (const key of Object.keys(data)) prevState[key] = lastOverview[roomNum][key];
-        // Apply the same NOT_OCCUPIED guard used in detectAndLogChanges: while
-        // a restore snapshot exists the server owns roomStatus=4, so don't let
-        // raw device telemetry (roomStatus=1) overwrite it in the overview cache
-        // or in the SSE broadcast that drives the client UI.
-        let broadcastData = data;
-        if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in data && data.roomStatus !== 4) {
-          broadcastData = { ...data };
-          delete broadcastData.roomStatus;
-        }
-        Object.assign(lastOverview[roomNum], broadcastData);
-        // Batch telemetry SSE events — merges updates for the same room within
-        // the flush window so the browser receives one combined event per tick
-        // instead of 300+ individual events.
-        sseBatchTelemetry(hotelId, roomNum, deviceId, broadcastData);
-      }
-      checkEventScenes(hotelId, roomNum, data, prevState);
+      processTelemetry(hotelId, roomNum, deviceId, data);
     });
 
     ws.on('error', e => console.error(`[${hotelId}] TB sub WS error:`, e.message));
@@ -1632,7 +1636,23 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ═══ SIMULATOR INJECT ═══
+// ── Telemetry coercion helper (shared by both simulator endpoints) ────────────
+function coerceTelemetry(telemetry) {
+  const out = {};
+  for (const [k, v] of Object.entries(telemetry)) {
+    if (v === '' || v === null || v === undefined) continue;
+    if (typeof v === 'boolean') out[k] = v;
+    else if (['roomStatus','acMode','fanSpeed','dimmer1','dimmer2','curtainsPosition','blindsPosition'].includes(k)) out[k] = parseInt(v);
+    else if (['temperature','humidity','co2','acTemperatureSet','elecConsumption','waterConsumption'].includes(k)) out[k] = parseFloat(v);
+    else if (['pirMotionStatus','doorStatus','line1','line2','line3','dndService','murService','sosService','pdMode'].includes(k)) out[k] = Boolean(v);
+    else out[k] = v;
+  }
+  return out;
+}
+
+// ═══ SIMULATOR — DIRECT INJECT ═══
+// Bypasses ThingsBoard: updates in-memory state and broadcasts SSE immediately.
+// Use for virtual rooms or when TB is unavailable.
 app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), async (req, res) => {
   const hotelId = req.user.hotelId;
   const { room, telemetry } = req.body;
@@ -1640,15 +1660,7 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
     return res.status(400).json({ error: 'room and telemetry object required' });
   }
 
-  const coerced = {};
-  for (const [k, v] of Object.entries(telemetry)) {
-    if (v === '' || v === null || v === undefined) continue;
-    if (typeof v === 'boolean') coerced[k] = v;
-    else if (['roomStatus','acMode','fanSpeed','dimmer1','dimmer2','curtainsPosition','blindsPosition'].includes(k)) coerced[k] = parseInt(v);
-    else if (['temperature','humidity','co2','acTemperatureSet','elecConsumption','waterConsumption'].includes(k)) coerced[k] = parseFloat(v);
-    else if (['pirMotionStatus','doorStatus','line1','line2','line3','dndService','murService','sosService','pdMode'].includes(k)) coerced[k] = Boolean(v);
-    else coerced[k] = v;
-  }
+  const coerced = coerceTelemetry(telemetry);
   if (!Object.keys(coerced).length) return res.status(400).json({ error: 'No valid telemetry keys provided' });
 
   // Update in-memory overview state so SSE reflects the simulated values
@@ -1683,6 +1695,54 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
   }
 
   res.json({ success: true, injected: coerced, mode: realDevId ? 'hardware' : 'virtual' });
+});
+
+// ═══ SIMULATOR — TB NATIVE INJECT ═══
+// The "real operation" path: pushes telemetry TO ThingsBoard for real devices so
+// it flows back through the TB WebSocket → processTelemetry() pipeline, exactly
+// like a physical room controller would.  For virtual rooms (no TB device) it
+// calls processTelemetry() directly, giving the same code path without TB.
+app.post('/api/simulator/tb-inject', authenticate, requireRole('owner', 'admin'), async (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { room, telemetry } = req.body;
+  if (!room || !telemetry || typeof telemetry !== 'object')
+    return res.status(400).json({ error: 'room and telemetry object required' });
+
+  const coerced = coerceTelemetry(telemetry);
+  if (!Object.keys(coerced).length) return res.status(400).json({ error: 'No valid telemetry keys provided' });
+
+  const deviceRoomMap = getDeviceRoomMap(hotelId);
+  const devId         = deviceRoomMap[room];
+
+  if (devId) {
+    // Real device: publish to ThingsBoard. TB stores it and pushes it back to our
+    // WebSocket subscription → processTelemetry() fires → SSE → browser.
+    // This is identical to what a real room controller does.
+    try {
+      const tb = getHotelTB(hotelId);
+      await tb.saveTelemetry(devId, coerced);
+      res.json({ success: true, mode: 'thingsboard', room, injected: coerced });
+    } catch (e) {
+      res.status(502).json({ error: `ThingsBoard write failed: ${e.message}` });
+    }
+  } else {
+    // Virtual room: no TB device, but run through the exact same processing
+    // pipeline as if the data came from the TB WebSocket.
+    const virtualDevId  = `sim-${room}`;
+    const lastOverview  = getLastOverviewRooms(hotelId);
+    if (!lastOverview[room]) lastOverview[room] = { room, floor: Math.floor(Number(room) / 100), online: true };
+    processTelemetry(hotelId, room, virtualDevId, coerced);
+
+    // Auto-close door after 5 s for virtual rooms
+    if (coerced.doorStatus === true) {
+      setTimeout(() => {
+        const snap = getLastOverviewRooms(hotelId);
+        if (snap[room]) snap[room].doorStatus = false;
+        processTelemetry(hotelId, room, virtualDevId, { doorStatus: false });
+      }, 5000);
+    }
+    res.json({ success: true, mode: 'virtual-pipeline', room, injected: coerced });
+  }
 });
 
 // ═══ FINANCIAL ROUTES ═══
