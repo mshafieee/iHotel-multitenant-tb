@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import useHotelStore from '../store/hotelStore';
 
 // 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
@@ -32,23 +32,10 @@ function ArcProgress({ pct, size = 52, stroke = 5 }) {
   );
 }
 
-// ── Floor summary box ────────────────────────────────────────────────────────
-function FloorBox({ floorNum, floorRooms, rooms, isExpanded, onClick }) {
-  const stats = useMemo(() => {
-    const s = { total: floorRooms.length, vacant: 0, occupied: 0, sos: 0, mur: 0, pd: 0, byType: {} };
-    TYPE_KEYS.forEach(k => { s.byType[k] = 0; });
-    floorRooms.forEach(rn => {
-      const r = rooms[rn];
-      if (!r) return;
-      if (r.sosService)      s.sos++;
-      if (r.murService)      s.mur++;
-      if (r.pdMode)          s.pd++;
-      if (r.roomStatus === 1) s.occupied++;
-      if (r.roomStatus === 0) { s.vacant++; if (r.type) s.byType[r.type] = (s.byType[r.type] || 0) + 1; }
-    });
-    s.vacantPct = s.total > 0 ? (s.vacant / s.total) * 100 : 0;
-    return s;
-  }, [floorRooms, rooms]);
+// ── Floor summary box — receives pre-computed stats, wrapped with memo ────────
+// Stats are computed once in the parent per floor; this component only
+// re-renders when its specific floor's stats object changes reference.
+const FloorBox = memo(function FloorBox({ floorNum, stats, isExpanded, onClick }) {
 
   const hasSOS = stats.sos > 0;
   const border = hasSOS ? 'border-red-400 animate-pulse' : isExpanded ? 'border-brand-400' : 'border-gray-200 hover:border-brand-300';
@@ -102,9 +89,9 @@ function FloorBox({ floorNum, floorRooms, rooms, isExpanded, onClick }) {
   );
 }
 
-// ── Room card (individual cell) ──────────────────────────────────────────────
-function RoomCell({ rn, rooms, onSelectRoom, hoveredRoom, setHoveredRoom }) {
-  const r        = rooms[rn];
+// ── Room card (individual cell) — receives single room object, wrapped with memo
+// Only re-renders when THIS room's data or hover state changes.
+const RoomCell = memo(function RoomCell({ rn, r, onSelectRoom, hoveredRoom, setHoveredRoom }) {
   const status   = r ? (r.roomStatus ?? 0) : 0;
   const isSOS    = r ? !!r.sosService : false;
   const isMUR    = r ? !!r.murService : false;
@@ -175,6 +162,30 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
     return { floors: floorList, roomsByFloor: byFloor, totalRooms: keys.length };
   }, [rooms]);
 
+  // Pre-compute per-floor stats so FloorBox components don't each iterate the
+  // full rooms map — they receive a plain stats object and only re-render when
+  // their floor's stats change (guarded by React.memo).
+  const floorStats = useMemo(() => {
+    const out = {};
+    for (const f of Object.keys(roomsByFloor).map(Number)) {
+      const floorRooms = roomsByFloor[f] || [];
+      const s = { total: floorRooms.length, vacant: 0, occupied: 0, sos: 0, mur: 0, pd: 0, byType: {} };
+      TYPE_KEYS.forEach(k => { s.byType[k] = 0; });
+      floorRooms.forEach(rn => {
+        const r = rooms[rn];
+        if (!r) return;
+        if (r.sosService)       s.sos++;
+        if (r.murService)       s.mur++;
+        if (r.pdMode)           s.pd++;
+        if (r.roomStatus === 1) s.occupied++;
+        if (r.roomStatus === 0) { s.vacant++; if (r.type) s.byType[r.type] = (s.byType[r.type] || 0) + 1; }
+      });
+      s.vacantPct = s.total > 0 ? (s.vacant / s.total) * 100 : 0;
+      out[f] = s;
+    }
+    return out;
+  }, [rooms, roomsByFloor]);
+
   if (floors.length === 0) {
     return (
       <div className="card p-6 text-center text-sm text-gray-400">
@@ -232,8 +243,7 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
               <FloorBox
                 key={f}
                 floorNum={f}
-                floorRooms={roomsByFloor[f] || []}
-                rooms={rooms}
+                stats={floorStats[f] || { total: 0, vacant: 0, sos: 0, mur: 0, pd: 0, byType: {}, vacantPct: 0 }}
                 isExpanded={expandedFloor === f}
                 onClick={() => toggleFloor(f)}
               />
@@ -254,7 +264,7 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                   <RoomCell
                     key={rn}
                     rn={rn}
-                    rooms={rooms}
+                    r={rooms[rn]}
                     onSelectRoom={onSelectRoom}
                     hoveredRoom={hoveredRoom}
                     setHoveredRoom={setHoveredRoom}

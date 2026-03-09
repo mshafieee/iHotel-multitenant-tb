@@ -8,25 +8,29 @@ const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
 const STATUS_BG     = ['#DCFCE7', '#DBEAFE', '#FEF3C7', '#FEE2E2', '#EDE9FE'];
 
 export default function KPIRow({ role }) {
-  const rooms = useHotelStore(s => Object.values(s.rooms));
+  // Select the rooms map (not Object.values) — Object.values creates a new
+  // array every call, defeating Zustand's equality check and causing a re-render
+  // on every unrelated store update.  useMemo below derives the array once.
+  const rooms = useHotelStore(s => s.rooms);
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
   const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
 
   const stats = useMemo(() => {
-    const n = rooms.length || 1;
-    const occ = rooms.filter(r => r.roomStatus === 1).length;
+    const roomArr = Object.values(rooms);
+    const n = roomArr.length || 1;
+    const occ = roomArr.filter(r => r.roomStatus === 1).length;
     const or = Math.round(occ / n * 100);
-    const alerts  = rooms.filter(r => r.sosService).length;
-    const offline = rooms.filter(r => !r.online).length;
-    const avgTemp = +(rooms.reduce((s, r) => s + (r.temperature || 22), 0) / n).toFixed(1);
-    const rev = rooms.filter(r => r.roomStatus === 1).reduce((s, r) => s + (RATES[r.roomType || r.type] || 0), 0);
-    const mur = rooms.filter(r => r.murService).length;
-    const dnd = rooms.filter(r => r.dndService).length;
+    const alerts  = roomArr.filter(r => r.sosService).length;
+    const offline = roomArr.filter(r => !r.online).length;
+    const avgTemp = +(roomArr.reduce((s, r) => s + (r.temperature || 22), 0) / n).toFixed(1);
+    const rev = roomArr.filter(r => r.roomStatus === 1).reduce((s, r) => s + (RATES[r.roomType || r.type] || 0), 0);
+    const mur = roomArr.filter(r => r.murService).length;
+    const dnd = roomArr.filter(r => r.dndService).length;
 
     // Room status distribution
     const dist = STATUS_LABELS.map((label, i) => {
-      const count = rooms.filter(r => r.roomStatus === i).length;
+      const count = roomArr.filter(r => r.roomStatus === i).length;
       return { label, count, pct: Math.round(count / n * 100), color: STATUS_COLORS[i], bg: STATUS_BG[i] };
     }).filter(d => d.count > 0);
 

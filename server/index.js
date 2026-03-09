@@ -754,11 +754,13 @@ async function fetchAndBroadcast(hotelId) {
   const deviceRoomMap = getDeviceRoomMap(hotelId);
   const lastOverview  = getLastOverviewRooms(hotelId);
 
+  // Always stamp the fetch time so isStale won't retry on every poll
+  // even when TB has no devices or is unreachable.
+  _overviewFetchTs[hotelId] = Date.now();
+
   const tb      = getHotelTB(hotelId);
   const devices = await tb.getDevices();
   if (!devices.length) return;
-
-  _overviewFetchTs[hotelId] = Date.now();
 
   const deviceIds     = devices.map(d => d.id.id);
   const allT          = await tb.getAllTelemetry(deviceIds, TELEMETRY_KEYS);
@@ -1529,8 +1531,13 @@ app.patch('/api/rooms/:room/type', authenticate, requireRole('owner', 'admin'), 
       .run(hotelId, room, floor, roomType);
   }
 
-  // Refresh cached broadcast so SSE clients see the new type immediately
-  fetchAndBroadcast(hotelId).catch(() => {});
+  // Update the in-memory cache immediately — no need for a full 600-room TB refetch
+  const lastOverview = getLastOverviewRooms(hotelId);
+  if (lastOverview[room]) {
+    lastOverview[room].type = roomType;
+    lastOverview[room].typeId = ROOM_TYPES.indexOf(roomType);
+    sseBroadcast(hotelId, 'telemetry', { room, deviceId: lastOverview[room].deviceId || `sim-${room}`, data: { type: roomType } });
+  }
   res.json({ ok: true });
 });
 

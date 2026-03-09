@@ -82,10 +82,10 @@ const useHotelStore = create((set, get) => ({
       try {
         const d = JSON.parse(ev.data);
         const rooms = { ...get().rooms };
-        if (rooms[d.room]) {
-          rooms[d.room] = { ...rooms[d.room], ...d.data };
-          set({ rooms });
-        }
+        // Allow new rooms (e.g. simulator virtual rooms) to be added to the store
+        if (!rooms[d.room]) rooms[d.room] = { room: d.room, floor: Math.floor(Number(d.room) / 100) || 1 };
+        rooms[d.room] = { ...rooms[d.room], ...d.data };
+        set({ rooms });
       } catch {}
     });
 
