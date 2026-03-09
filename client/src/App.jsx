@@ -55,12 +55,24 @@ export default function App() {
           ? <Navigate to={user?.role === 'guest' ? '/guest-portal' : '/'} />
           : <LoginPage />
       } />
-      <Route path="/guest-portal" element={<GuestPortal />} />
+      <Route path="/guest-portal" element={
+        !isAuthenticated ? <Navigate to="/guest" /> :
+        user?.role !== 'guest' ? <Navigate to="/" /> :
+        <GuestPortal />
+      } />
 
       {/* Landing / hotel staff login */}
-      <Route path="/" element={isAuthenticated ? <DashboardPage /> : <LandingPage />} />
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <LandingPage />} />
-      <Route path="/*" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" />} />
+      <Route path="/" element={
+        !isAuthenticated ? <LandingPage /> :
+        user?.role === 'guest' ? <Navigate to="/guest-portal" /> :
+        <DashboardPage />
+      } />
+      <Route path="/login" element={isAuthenticated ? <Navigate to={user?.role === 'guest' ? '/guest-portal' : '/'} /> : <LandingPage />} />
+      <Route path="/*" element={
+        !isAuthenticated ? <Navigate to="/" /> :
+        user?.role === 'guest' ? <Navigate to="/guest-portal" /> :
+        <DashboardPage />
+      } />
     </Routes>
   );
 }
