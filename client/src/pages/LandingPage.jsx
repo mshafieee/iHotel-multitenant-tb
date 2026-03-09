@@ -457,14 +457,14 @@ export default function LandingPage() {
 
       {/* ── Hero ── */}
       <section className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 pt-28 pb-24 px-6 relative overflow-hidden">
-        <div className="absolute -top-60 -start-60 w-[700px] h-[700px] bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 end-0 w-[500px] h-[500px] bg-indigo-600/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-7xl mx-auto relative">
+        <div className="absolute -top-60 -start-60 w-[700px] h-[700px] bg-blue-600/5 rounded-full blur-3xl pointer-events-none -z-10" />
+        <div className="absolute bottom-0 end-0 w-[500px] h-[500px] bg-indigo-600/5 rounded-full blur-3xl pointer-events-none -z-10" />
+        <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 mb-7">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1.5 mb-7">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-white/50 font-medium">{t.badge}</span>
+                <span className="text-xs text-emerald-300 font-medium">{t.badge}</span>
               </div>
               <h1 className="text-5xl font-bold text-white leading-tight mb-5">
                 {t.heroLine1}<br />
