@@ -164,7 +164,10 @@ async function startTbSubscription(hotelId, deviceIdToRoom) {
           delete broadcastData.roomStatus;
         }
         Object.assign(lastOverview[roomNum], broadcastData);
-        sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: broadcastData });
+        // Batch telemetry SSE events — merges updates for the same room within
+        // the flush window so the browser receives one combined event per tick
+        // instead of 300+ individual events.
+        sseBatchTelemetry(hotelId, roomNum, deviceId, broadcastData);
       }
       checkEventScenes(hotelId, roomNum, data, prevState);
     });
@@ -227,6 +230,57 @@ function sseBroadcastRoles(hotelId, event, data, roles) {
   }
 }
 
+// ═══ SSE BATCHING LAYER ═══
+// Accumulates telemetry and log updates, then flushes them as single SSE events
+// every BATCH_INTERVAL_MS. This prevents 300+ individual SSE events per simulator
+// tick from flooding the browser and causing hundreds of React re-renders.
+const SSE_BATCH_INTERVAL_MS = 500;
+const _sseTelemetryBatch = {}; // { [hotelId]: { [roomNum]: { deviceId, data } } }
+const _sseLogBatch       = {}; // { [hotelId]: [ entry, ... ] }
+const _sseBatchTimers    = {}; // { [hotelId]: timer }
+
+function sseBatchTelemetry(hotelId, roomNum, deviceId, data) {
+  if (!_sseTelemetryBatch[hotelId]) _sseTelemetryBatch[hotelId] = {};
+  const batch = _sseTelemetryBatch[hotelId];
+  if (!batch[roomNum]) {
+    batch[roomNum] = { deviceId, data: { ...data } };
+  } else {
+    // Merge — later updates for the same room override earlier ones
+    Object.assign(batch[roomNum].data, data);
+  }
+  scheduleBatchFlush(hotelId);
+}
+
+function sseBatchLog(hotelId, entry) {
+  if (!_sseLogBatch[hotelId]) _sseLogBatch[hotelId] = [];
+  _sseLogBatch[hotelId].push(entry);
+  scheduleBatchFlush(hotelId);
+}
+
+function scheduleBatchFlush(hotelId) {
+  if (_sseBatchTimers[hotelId]) return; // already scheduled
+  _sseBatchTimers[hotelId] = setTimeout(() => {
+    delete _sseBatchTimers[hotelId];
+    flushBatch(hotelId);
+  }, SSE_BATCH_INTERVAL_MS);
+}
+
+function flushBatch(hotelId) {
+  // Flush telemetry batch
+  const telBatch = _sseTelemetryBatch[hotelId];
+  if (telBatch && Object.keys(telBatch).length) {
+    delete _sseTelemetryBatch[hotelId];
+    sseBroadcast(hotelId, 'batch-telemetry', { rooms: telBatch });
+  }
+
+  // Flush log batch
+  const logBatch = _sseLogBatch[hotelId];
+  if (logBatch && logBatch.length) {
+    delete _sseLogBatch[hotelId];
+    sseBroadcast(hotelId, 'batch-log', { entries: logBatch });
+  }
+}
+
 // ═══ AUDIT LOG ═══
 function addLog(hotelId, category, message, details = {}) {
   const ts    = Date.now();
@@ -235,7 +289,8 @@ function addLog(hotelId, category, message, details = {}) {
     db.prepare('INSERT INTO audit_log (hotel_id, ts, category, message, room, source, user, details) VALUES (?,?,?,?,?,?,?,?)')
       .run(hotelId, ts, category, message, details.room || null, details.source || null, details.user || null, JSON.stringify(details));
   } catch (e) { console.error('Log DB error:', e.message); }
-  sseBroadcast(hotelId, 'log', entry);
+  // Batch log SSE events instead of sending individually
+  sseBatchLog(hotelId, entry);
 }
 
 // ═══ AUTH ROUTES ═══

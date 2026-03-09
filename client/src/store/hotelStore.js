@@ -78,6 +78,7 @@ const useHotelStore = create((set, get) => ({
       } catch {}
     });
 
+    // Individual telemetry events (from direct control actions / non-batched sources)
     es2.addEventListener('telemetry', (ev) => {
       try {
         const d = JSON.parse(ev.data);
@@ -89,12 +90,41 @@ const useHotelStore = create((set, get) => ({
       } catch {}
     });
 
+    // Batched telemetry — server accumulates all room updates within a 500ms window
+    // and sends them as a single event. One Zustand set() = one React re-render
+    // instead of 300+ individual re-renders per simulator tick.
+    es2.addEventListener('batch-telemetry', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        const rooms = { ...get().rooms };
+        for (const [roomNum, { data }] of Object.entries(d.rooms)) {
+          if (!rooms[roomNum]) rooms[roomNum] = { room: roomNum, floor: Math.floor(Number(roomNum) / 100) || 1 };
+          rooms[roomNum] = { ...rooms[roomNum], ...data };
+        }
+        set({ rooms });
+      } catch {}
+    });
+
+    // Individual log events (from non-batched sources)
     es2.addEventListener('log', (ev) => {
       try {
         const entry = JSON.parse(ev.data);
         const logs = get().logs;
         if (!logs.some(l => l.ts === entry.ts)) {
           set({ logs: [entry, ...logs].slice(0, 300) });
+        }
+      } catch {}
+    });
+
+    // Batched log events — all log entries from a 500ms window in one event
+    es2.addEventListener('batch-log', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        const logs = get().logs;
+        const existing = new Set(logs.map(l => l.ts));
+        const newEntries = d.entries.filter(e => !existing.has(e.ts));
+        if (newEntries.length) {
+          set({ logs: [...newEntries.reverse(), ...logs].slice(0, 300) });
         }
       } catch {}
     });
