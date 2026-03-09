@@ -197,6 +197,17 @@ async function startTbSubscription(hotelId, deviceIdToRoom) {
 // ═══ SSE (hotel-scoped) ═══
 const sseClients = new Map(); // Map<res, {userId, role, hotelId}>
 
+// Deduplication cooldown for MUR/SOS alerts — prevents double-firing when
+// sendControl's optimistic alert and detectAndLogChanges both see the transition.
+const _serviceAlertCooldown = {}; // key: `${hotelId}:${type}:${room}` → lastFiredMs
+function fireServiceAlert(hotelId, type, room, message) {
+  const key = `${hotelId}:${type}:${room}`;
+  const now = Date.now();
+  if (_serviceAlertCooldown[key] && now - _serviceAlertCooldown[key] < 15000) return;
+  _serviceAlertCooldown[key] = now;
+  sseBroadcastAlert(hotelId, { type, room, message, ts: now });
+}
+
 function sseConnect(req, res) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -457,10 +468,10 @@ function detectAndLogChanges(hotelId, roomNum, t) {
     else if (key === 'dndService') { /* not logged */ }
     else if (key === 'murService') {
       if (to) { msg = 'MUR — Housekeeping requested'; cat = 'service'; }
-      if (to) sseBroadcastAlert(hotelId, { type: 'MUR', room: roomNum, message: `Room ${roomNum}: Housekeeping`, ts: Date.now() });
+      if (to) fireServiceAlert(hotelId, 'MUR', roomNum, `Room ${roomNum}: Housekeeping`);
     } else if (key === 'sosService') {
       if (to) { msg = 'SOS EMERGENCY'; cat = 'service'; }
-      if (to) sseBroadcastAlert(hotelId, { type: 'SOS', room: roomNum, message: `EMERGENCY Room ${roomNum}`, ts: Date.now() });
+      if (to) fireServiceAlert(hotelId, 'SOS', roomNum, `EMERGENCY Room ${roomNum}`);
     } else if (key === 'pdMode') {
       pdState[roomNum] = !!to;
     }
@@ -681,8 +692,12 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   if ('roomStatus' in telemetry && telemetry.roomStatus !== 4) {
     delete getRoomStateSnapshots(hotelId)[roomNum];
   }
-  if (telemetry.murService) sseBroadcastAlert(hotelId, { type: 'MUR', room: roomNum, message: `Room ${roomNum}: Housekeeping`, ts: Date.now() });
-  if (telemetry.sosService) sseBroadcastAlert(hotelId, { type: 'SOS', room: roomNum, message: `EMERGENCY Room ${roomNum}`, ts: Date.now() });
+  // Also update lastOverview so guest polling (/api/guest/room/data) doesn't
+  // return stale state and cause UI flickering after a control command.
+  const lastOverviewCtl = getLastOverviewRooms(hotelId);
+  if (lastOverviewCtl[roomNum]) Object.assign(lastOverviewCtl[roomNum], telemetry);
+  if (telemetry.murService) fireServiceAlert(hotelId, 'MUR', roomNum, `Room ${roomNum}: Housekeeping`);
+  if (telemetry.sosService) fireServiceAlert(hotelId, 'SOS', roomNum, `EMERGENCY Room ${roomNum}`);
   sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: { ...telemetry, ...sharedAttrs } });
 
   // ── Persist to ThingsBoard in background — does not block the UI update ─────
