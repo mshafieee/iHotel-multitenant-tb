@@ -471,9 +471,9 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
   );
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+    <div className={`fixed inset-0 z-40 flex items-center justify-center ${isGuest ? '' : 'bg-black/40 backdrop-blur-sm p-4'}`}
       onClick={isGuest ? undefined : onClose}>
-      <div className={`bg-white shadow-2xl w-full overflow-y-auto ${isGuest ? 'min-h-screen rounded-none max-h-screen' : 'rounded-2xl max-w-lg max-h-[90vh]'}`}
+      <div className={`bg-white shadow-2xl w-full overflow-y-auto ${isGuest ? 'rounded-none h-[100dvh] max-h-[100dvh]' : 'rounded-2xl max-w-lg max-h-[90vh]'}`}
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
