@@ -298,6 +298,46 @@ function initDB() {
     markMigration('013_scenes_is_default');
   }
 
+  // ── Migration 017: (no-op — placeholder, previously removed default scenes) ──
+  if (!hasMigration('017_remove_seeded_scenes')) {
+    markMigration('017_remove_seeded_scenes');
+  }
+
+  // ── Migration 018: re-seed Welcome + Departure scenes for every room ─────────
+  // Restores scenes deleted by migration 017; skips rooms that already have them.
+  if (!hasMigration('018_reseed_default_scenes')) {
+    const rooms = db.prepare('SELECT hotel_id, room_number FROM hotel_rooms').all();
+    let seeded = 0;
+    for (const room of rooms) {
+      const has = db.prepare(
+        "SELECT COUNT(*) as c FROM scenes WHERE hotel_id=? AND room_number=? AND name IN ('Welcome to Room','Departure Routine')"
+      ).get(room.hotel_id, room.room_number).c;
+      if (has < 2) {
+        seedRoomDefaultScenes(db, room.hotel_id, room.room_number);
+        seeded++;
+      }
+    }
+    if (seeded > 0) console.log(`✓ Migration 018: re-seeded default scenes for ${seeded} room(s)`);
+    markMigration('018_reseed_default_scenes');
+  }
+
+  // ── Migration 019: delete all scenes named 'Test' ────────────────────────
+  if (!hasMigration('019_delete_test_scenes')) {
+    const deleted = db.prepare("DELETE FROM scenes WHERE name = 'Test'").run();
+    if (deleted.changes > 0) console.log(`✓ Migration 019: deleted ${deleted.changes} 'Test' scenes`);
+    markMigration('019_delete_test_scenes');
+  }
+
+  // ── Migration 016: add is_shared column to scenes ────────────────────────
+  if (!hasMigration('016_scenes_is_shared')) {
+    const cols = db.pragma('table_info(scenes)').map(c => c.name);
+    if (!cols.includes('is_shared')) {
+      db.exec('ALTER TABLE scenes ADD COLUMN is_shared INTEGER DEFAULT 0');
+      console.log('✓ Migration 016: added is_shared to scenes');
+    }
+    markMigration('016_scenes_is_shared');
+  }
+
   // ── Migration 015: add logo_url column to hotels ─────────────────────────
   if (!hasMigration('015_hotel_logo')) {
     const cols = db.pragma('table_info(hotels)').map(c => c.name);
@@ -442,42 +482,6 @@ function initDB() {
   return db;
 }
 
-// ── Seed 2 default automation scenes for a new room ─────────────────────────
-// Called on room creation; scenes are disabled by default so they don't fire
-// until the admin explicitly enables them.
-function seedRoomDefaultScenes(db, hotelId, roomNumber) {
-  const crypto = require('crypto');
-  const ins = db.prepare(
-    'INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions,enabled,is_default) VALUES (?,?,?,?,?,?,?,?,?)'
-  );
-
-  // Scene 1 — Welcome to Room
-  // Fires when roomStatus becomes Occupied (1), coming FROM Vacant (0) or Not Occupied (4)
-  ins.run(
-    crypto.randomUUID(), hotelId, roomNumber,
-    'Welcome to Room', 'event',
-    JSON.stringify({ event: 'roomStatus', operator: 'eq', value: 1, fromValues: [0, 4] }),
-    JSON.stringify([
-      { type: 'setLines',          params: { line1: true, line2: true, line3: true, dimmer1: 100, dimmer2: 100 }, delay: 0 },
-      { type: 'setCurtainsBlinds', params: { curtainsPosition: 100, blindsPosition: 100 },                        delay: 2 }
-    ]),
-    1, 1  // enabled=1, is_default=1
-  );
-
-  // Scene 2 — Departure Routine
-  // Fires when roomStatus leaves Occupied (1) → Service (2) or Not Occupied (4)
-  ins.run(
-    crypto.randomUUID(), hotelId, roomNumber,
-    'Departure Routine', 'event',
-    JSON.stringify({ event: 'roomStatus', operator: 'neq', value: 1, fromValues: [1] }),
-    JSON.stringify([
-      { type: 'setAC',             params: { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, delay: 0 },
-      { type: 'setLines',          params: { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, delay: 1 },
-      { type: 'setCurtainsBlinds', params: { curtainsPosition: 0, blindsPosition: 0 },                           delay: 2 }
-    ]),
-    1, 1  // enabled=1, is_default=1
-  );
-}
 
 // ── Seed night rates for a new hotel ────────────────────────────────────────
 function seedHotelRates(db, hotelId) {
@@ -497,6 +501,39 @@ function seedHotelUsers(db, hotelId, slug = '') {
   ins.run(hotelId, 'owner',     hash, 'owner',     'Hotel Owner');
   ins.run(hotelId, 'admin',     hash, 'admin',     'Operations Manager');
   ins.run(hotelId, 'frontdesk', hash, 'frontdesk', 'Front Desk Agent');
+}
+
+// ── Seed 2 default automation scenes for a new room ─────────────────────────
+function seedRoomDefaultScenes(db, hotelId, roomNumber) {
+  const crypto = require('crypto');
+  const ins = db.prepare(
+    'INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions,enabled,is_default) VALUES (?,?,?,?,?,?,?,?,?)'
+  );
+
+  // Scene 1 — Welcome to Room: fires when roomStatus → Occupied from Vacant or Not Occupied
+  ins.run(
+    crypto.randomUUID(), hotelId, roomNumber,
+    'Welcome to Room', 'event',
+    JSON.stringify({ event: 'roomStatus', operator: 'eq', value: 1, fromValues: [0, 4] }),
+    JSON.stringify([
+      { type: 'setLines',          params: { line1: true, line2: true, line3: true, dimmer1: 100, dimmer2: 100 }, delay: 0 },
+      { type: 'setCurtainsBlinds', params: { curtainsPosition: 100, blindsPosition: 100 }, delay: 2 }
+    ]),
+    1, 1
+  );
+
+  // Scene 2 — Departure Routine: fires when roomStatus leaves Occupied
+  ins.run(
+    crypto.randomUUID(), hotelId, roomNumber,
+    'Departure Routine', 'event',
+    JSON.stringify({ event: 'roomStatus', operator: 'neq', value: 1, fromValues: [1] }),
+    JSON.stringify([
+      { type: 'setAC',             params: { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, delay: 0 },
+      { type: 'setLines',          params: { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, delay: 1 },
+      { type: 'setCurtainsBlinds', params: { curtainsPosition: 0, blindsPosition: 0 }, delay: 2 }
+    ]),
+    1, 1
+  );
 }
 
 module.exports = { initDB, seedHotelRates, seedHotelUsers, seedRoomDefaultScenes };

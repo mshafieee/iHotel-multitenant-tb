@@ -683,11 +683,13 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
 // ═══ SCENES / AUTOMATION ENGINE ═══
 
 // Execute all actions of a scene sequentially, respecting per-action delays.
-async function executeScene(hotelId, scene, triggeredBy = 'auto') {
+// roomOverride: for shared scenes, pass the target room number at runtime.
+async function executeScene(hotelId, scene, triggeredBy = 'auto', roomOverride = null) {
+  const targetRoom = roomOverride || scene.room_number;
   const deviceRoomMap = getDeviceRoomMap(hotelId);
-  const devId = deviceRoomMap[scene.room_number];
+  const devId = deviceRoomMap[targetRoom];
   if (!devId) {
-    console.warn(`[scene] "${scene.name}": no device for room ${scene.room_number}`);
+    console.warn(`[scene] "${scene.name}": no device for room ${targetRoom}`);
     return;
   }
   try {
@@ -718,8 +720,9 @@ function normalizeSensorVal(v) {
 // prevState: values BEFORE this update (for "from → to" state-transition matching).
 function checkEventScenes(hotelId, roomNum, updates, prevState = {}) {
   try {
+    // Include both room-specific scenes AND shared scenes (is_shared=1, room_number=null)
     const sceneRows = db.prepare(
-      "SELECT * FROM scenes WHERE hotel_id=? AND room_number=? AND enabled=1 AND trigger_type='event'"
+      "SELECT * FROM scenes WHERE hotel_id=? AND (room_number=? OR is_shared=1) AND enabled=1 AND trigger_type='event'"
     ).all(hotelId, roomNum);
 
     for (const sceneRow of sceneRows) {
@@ -747,7 +750,9 @@ function checkEventScenes(hotelId, roomNum, updates, prevState = {}) {
 
         if (matches) {
           const scene = { ...sceneRow, actions: JSON.parse(sceneRow.actions) };
-          executeScene(hotelId, scene, `event:${eventKey}=${updates[eventKey]}`).catch(() => {});
+          // Shared scenes: execute for the room that triggered the event
+          const roomOverride = sceneRow.is_shared ? roomNum : null;
+          executeScene(hotelId, scene, `event:${eventKey}=${updates[eventKey]}`, roomOverride).catch(() => {});
         }
       } catch {}
     }
@@ -768,7 +773,15 @@ setInterval(() => {
         if (cfg.time !== timeStr) continue;
         if (cfg.days && cfg.days.length && !cfg.days.includes(DAY)) continue;
         const scene = { ...row, actions: JSON.parse(row.actions) };
-        executeScene(row.hotel_id, scene, `time:${timeStr}`).catch(() => {});
+        if (row.is_shared) {
+          // Shared scenes: run for every room in the hotel
+          const deviceRoomMap = getDeviceRoomMap(row.hotel_id);
+          for (const roomNum of Object.keys(deviceRoomMap)) {
+            executeScene(row.hotel_id, scene, `time:${timeStr}`, roomNum).catch(() => {});
+          }
+        } else {
+          executeScene(row.hotel_id, scene, `time:${timeStr}`).catch(() => {});
+        }
       } catch {}
     }
   } catch {}
@@ -1530,25 +1543,44 @@ app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (r
   const hotelId       = req.user.hotelId;
   const deviceRoomMap = getDeviceRoomMap(hotelId);
   const rooms         = Object.keys(deviceRoomMap);
-  const username      = req.user.username;
   res.json({ success: true, total: rooms.length, message: 'Reset started in background' });
 
+  // Reset state applied to every room
+  const RESET_STATE = {
+    pdMode: false, line1: false, line2: false, line3: false,
+    dimmer1: 0, dimmer2: 0, acMode: 0, fanSpeed: 0, acTemperatureSet: 26,
+    curtainsPosition: 0, blindsPosition: 0,
+    dndService: false, murService: false, sosService: false, roomStatus: 0
+  };
+
   (async () => {
-    const BATCH = 10;
+    const lastTelemetry = getLastKnownTelemetry(hotelId);
+    const lastOverview  = getLastOverviewRooms(hotelId);
+    const tb            = getHotelTB(hotelId);
+
+    // Step 1: update all in-memory state instantly + queue into ONE batch-telemetry SSE flush.
+    // sseBatchTelemetry accumulates all rooms within the 500ms window and fires a single
+    // batch-telemetry event — client processes it in one React state update instead of
+    // the 4 200 individual SSE events that sendControl() would have produced.
+    for (const room of rooms) {
+      const devId = deviceRoomMap[room];
+      if (!devId) continue;
+      lastTelemetry[room] = { ...(lastTelemetry[room] || {}), ...RESET_STATE };
+      if (lastOverview[room]) Object.assign(lastOverview[room], RESET_STATE);
+      sseBatchTelemetry(hotelId, room, devId, RESET_STATE);
+    }
+
+    // Step 2: persist to ThingsBoard in background (non-blocking for UI).
+    const BATCH = 20;
     for (let i = 0; i < rooms.length; i += BATCH) {
       const batch = rooms.slice(i, i + BATCH);
       await Promise.allSettled(batch.map(async room => {
         const devId = deviceRoomMap[room];
         if (!devId) return;
         try {
-          await sendControl(hotelId, devId, 'setPDMode', { pdMode: false }, username);
-          await sendControl(hotelId, devId, 'setLines', { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, username);
-          await sendControl(hotelId, devId, 'setAC', { acMode: 0, fanSpeed: 0, acTemperatureSet: 22 }, username);
-          await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, username);
-          await sendControl(hotelId, devId, 'resetServices', { services: ['dndService', 'murService', 'sosService'] }, username);
-          await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, username);
-          await sendControl(hotelId, devId, 'resetMeters', {}, username);
-        } catch (e) { console.error(`Reset room ${room} failed:`, e.message); }
+          await tb.saveTelemetry(devId, RESET_STATE);
+          await tb.saveAttributes(devId, RESET_STATE);
+        } catch (e) { console.error(`Reset TB write room ${room}:`, e.message); }
       }));
     }
   })();
@@ -1591,7 +1623,7 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
   try {
     await sendControl(hotelId, devId, 'setPDMode', { pdMode: false }, req.user.username);
     await sendControl(hotelId, devId, 'setLines', { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, req.user.username);
-    await sendControl(hotelId, devId, 'setAC', { acMode: 0, fanSpeed: 0, acTemperatureSet: 22 }, req.user.username);
+    await sendControl(hotelId, devId, 'setAC', { acMode: 0, fanSpeed: 0, acTemperatureSet: 26 }, req.user.username);
     await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, req.user.username);
     await sendControl(hotelId, devId, 'resetServices', { services: ['dndService', 'murService', 'sosService'] }, req.user.username);
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
@@ -1631,6 +1663,15 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
 
   // Broadcast SSE immediately (works even without ThingsBoard)
   sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: coerced });
+
+  // Auto-close door after 5 seconds when simulator opens it
+  if (coerced.doorStatus === true) {
+    setTimeout(() => {
+      const snap = getLastOverviewRooms(hotelId);
+      if (snap[room]) snap[room].doorStatus = false;
+      sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: { doorStatus: false } });
+    }, 5000);
+  }
 
   // Also push to ThingsBoard if a real device is mapped (best-effort, non-blocking)
   const realDevId = deviceRoomMap[room];
@@ -1828,11 +1869,22 @@ app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) =
   const { room, isDefault } = req.query;
   // isDefault=1 → system scenes (shown in RoomModal); default → custom scenes (isDefault=0)
   const defFilter = isDefault === '1' ? 1 : 0;
-  const rows = room
-    ? db.prepare('SELECT * FROM scenes WHERE hotel_id=? AND room_number=? AND is_default=? ORDER BY created_at').all(hotelId, room, defFilter)
-    : db.prepare('SELECT * FROM scenes WHERE hotel_id=? AND is_default=? ORDER BY room_number, created_at').all(hotelId, defFilter);
+  let rows;
+  if (room) {
+    // Room-specific view: room scenes + shared scenes
+    rows = db.prepare(
+      'SELECT * FROM scenes WHERE hotel_id=? AND (room_number=? OR is_shared=1) AND is_default=? ORDER BY is_shared DESC, created_at'
+    ).all(hotelId, room, defFilter);
+  } else {
+    rows = db.prepare(
+      'SELECT * FROM scenes WHERE hotel_id=? AND is_default=? ORDER BY is_shared DESC, room_number, created_at'
+    ).all(hotelId, defFilter);
+  }
   res.json(rows.map(s => ({
-    ...s, enabled: !!s.enabled,
+    ...s,
+    room_number: s.is_shared ? null : s.room_number,
+    enabled: !!s.enabled,
+    is_shared: !!s.is_shared,
     trigger_config: JSON.parse(s.trigger_config),
     actions: JSON.parse(s.actions)
   })));
@@ -1840,14 +1892,14 @@ app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) =
 
 app.post('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {
   const hotelId = req.user.hotelId;
-  const { roomNumber, name, triggerType, triggerConfig, actions, isDefault } = req.body;
-  if (!roomNumber || !name || !triggerType)
-    return res.status(400).json({ error: 'roomNumber, name, triggerType required' });
+  const { roomNumber, name, triggerType, triggerConfig, actions, isDefault, isShared } = req.body;
+  if ((!roomNumber && !isShared) || !name || !triggerType)
+    return res.status(400).json({ error: 'roomNumber (or isShared), name, triggerType required' });
   const id = crypto.randomUUID();
-  db.prepare('INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions,is_default) VALUES (?,?,?,?,?,?,?,?)')
-    .run(id, hotelId, roomNumber, name, triggerType,
-      JSON.stringify(triggerConfig || {}), JSON.stringify(actions || []), isDefault ? 1 : 0);
-  res.json({ id });
+  db.prepare('INSERT INTO scenes (id,hotel_id,room_number,name,trigger_type,trigger_config,actions,is_default,is_shared) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(id, hotelId, isShared ? '' : roomNumber, name, triggerType,
+      JSON.stringify(triggerConfig || {}), JSON.stringify(actions || []), isDefault ? 1 : 0, isShared ? 1 : 0);
+  res.json({ id, is_shared: !!isShared });
 });
 
 app.put('/api/scenes/:id', authenticate, requireRole('owner', 'admin'), (req, res) => {
@@ -1879,6 +1931,18 @@ app.delete('/api/scenes/:id', authenticate, requireRole('owner', 'admin'), (req,
   if (!scene) return res.status(404).json({ error: 'Scene not found' });
   db.prepare('DELETE FROM scenes WHERE id=?').run(scene.id);
   res.json({ success: true });
+});
+
+// Bulk delete — deletes all provided IDs in one transaction
+app.delete('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0)
+    return res.status(400).json({ error: 'ids array required' });
+  const del = db.prepare('DELETE FROM scenes WHERE id=? AND hotel_id=?');
+  const run = db.transaction(() => ids.forEach(id => del.run(id, hotelId)));
+  run();
+  res.json({ success: true, deleted: ids.length });
 });
 
 // Manual run — respond immediately, execute async

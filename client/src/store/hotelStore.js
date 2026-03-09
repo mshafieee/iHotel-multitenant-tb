@@ -243,6 +243,15 @@ const useHotelStore = create((set, get) => ({
     set({ scenes: get().scenes.filter(s => s.id !== id) });
   },
 
+  bulkDeleteScenes: async (ids) => {
+    await api('/api/scenes', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids })
+    });
+    const idSet = new Set(ids);
+    set({ scenes: get().scenes.filter(s => !idSet.has(s.id)) });
+  },
+
   runScene: async (id) => {
     await api(`/api/scenes/${id}/run`, { method: 'POST' });
   },

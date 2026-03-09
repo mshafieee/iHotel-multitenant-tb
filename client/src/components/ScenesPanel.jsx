@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Zap, Plus, Play, Edit2, Trash2, Clock, Radio, X, Upload } from 'lucide-react';
+import { Zap, Plus, Play, Edit2, Trash2, Clock, Radio, X, Upload, Globe } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
   const isEdit = !!scene?.id;
   const [name, setName]               = useState(scene?.name || '');
   const [roomNum, setRoomNum]         = useState(scene?.room_number || Object.keys(rooms).sort()[0] || '');
-  const [applyToAll, setApplyToAll]   = useState(false);
+  const [applyToAll, setApplyToAll]   = useState(!!scene?.is_shared);
   const [triggerType, setTriggerType] = useState(scene?.trigger_type || 'time');
   const [timeCfg, setTimeCfg]         = useState(() => {
     const c = parseCfg(scene?.trigger_config);
@@ -228,11 +228,8 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
     setError('');
     try {
       if (applyToAll && !isEdit) {
-        // Create one room-level scene per room (is_default=1 → shown in RoomModal, not automation list)
-        const allRooms = Object.keys(rooms).sort();
-        for (const rm of allRooms) {
-          await onSave({ name: name.trim(), roomNumber: rm, triggerType, triggerConfig, actions, enabled, isDefault: true });
-        }
+        // Single shared scene — executed at runtime for every room
+        await onSave({ name: name.trim(), roomNumber: null, triggerType, triggerConfig, actions, enabled, isShared: true });
       } else {
         await onSave({ name: name.trim(), roomNumber: roomNum, triggerType, triggerConfig, actions, enabled });
       }
@@ -268,7 +265,10 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">Room</label>
               {applyToAll ? (
-                <div className="input text-sm text-gray-400 bg-gray-50 cursor-not-allowed">All rooms ({Object.keys(rooms).length})</div>
+                <div className="input text-sm text-gray-400 bg-gray-50 cursor-not-allowed flex items-center gap-1.5">
+                  <Globe size={12} className="text-brand-400" />
+                  Shared — all rooms
+                </div>
               ) : (() => {
                 const trimmed = roomNum.trim();
                 const isValid   = trimmed !== '' && trimmed in rooms;
@@ -291,7 +291,7 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
                   <input type="checkbox" checked={applyToAll}
                     onChange={e => setApplyToAll(e.target.checked)}
                     className="w-3.5 h-3.5 accent-brand-500" />
-                  <span className="text-[10px] text-gray-500">Apply to all rooms</span>
+                  <span className="text-[10px] text-gray-500">Shared scene (all rooms)</span>
                 </label>
               )}
             </div>
@@ -503,9 +503,88 @@ function SceneBuilderModal({ scene, rooms, onSave, onClose }) {
   );
 }
 
+// ── Scene Row ────────────────────────────────────────────────────────────────
+function SceneRow({ scene, selected, onSelect, onToggle, onRun, onPush, onEdit, onDelete, runningId, deletingId, pushingId, pushResult }) {
+  const actionsArr = parseArr(scene.actions);
+  return (
+    <div className={`card px-4 py-3 flex items-center gap-3 transition ${!scene.enabled ? 'opacity-55' : ''}`}>
+
+      {/* Checkbox */}
+      <input type="checkbox" checked={selected} onChange={e => onSelect(scene.id, e.target.checked)}
+        className="w-3.5 h-3.5 accent-brand-500 flex-shrink-0" />
+
+      {/* Enable toggle */}
+      <button onClick={() => onToggle(scene)}
+        className={`toggle flex-shrink-0 ${scene.enabled ? 'bg-emerald-400' : 'bg-gray-200'}`}>
+        <div className={`toggle-knob ${scene.enabled ? 'translate-x-5' : ''}`} />
+      </button>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-sm text-gray-800 truncate">{scene.name}</span>
+          {scene.is_shared
+            ? <span className="badge bg-brand-50 text-brand-500 flex items-center gap-0.5"><Globe size={9} /> Shared</span>
+            : <span className="badge bg-brand-50 text-brand-500">Rm {scene.room_number}</span>
+          }
+          <span className={`badge ${
+            scene.trigger_type === 'time'
+              ? 'bg-blue-50 text-blue-500'
+              : 'bg-purple-50 text-purple-500'
+          }`}>
+            {scene.trigger_type === 'time'
+              ? <Clock size={9} className="inline mr-0.5" />
+              : <Radio size={9} className="inline mr-0.5" />
+            }
+            {scene.trigger_type}
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-0.5">
+          {triggerSummary(scene)}
+          {' · '}{actionsArr.length} action{actionsArr.length !== 1 ? 's' : ''}
+          {scene.last_run && (
+            <> · Last run: {new Date(scene.last_run + 'Z').toLocaleString()}</>
+          )}
+        </p>
+      </div>
+
+      {/* Buttons */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {!scene.is_shared && (
+          <button onClick={() => onRun(scene.id)} disabled={runningId === scene.id}
+            title="Run now"
+            className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50">
+            <Play size={14} />
+          </button>
+        )}
+        <button onClick={() => onPush(scene.id)} disabled={pushingId === scene.id}
+          title={pushResult[scene.id]
+            ? (pushResult[scene.id].ok ? `Pushed ${pushResult[scene.id].count} scene(s)` : pushResult[scene.id].msg)
+            : 'Push to gateway (offline mode)'}
+          className={`p-1.5 rounded-lg transition disabled:opacity-50 ${
+            pushResult[scene.id]?.ok === true  ? 'text-brand-500 bg-brand-50' :
+            pushResult[scene.id]?.ok === false ? 'text-red-400 bg-red-50' :
+            'text-gray-400 hover:bg-gray-100'
+          }`}>
+          <Upload size={14} />
+        </button>
+        <button onClick={() => onEdit(scene)} title="Edit"
+          className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+          <Edit2 size={14} />
+        </button>
+        <button onClick={() => onDelete(scene.id)} disabled={deletingId === scene.id}
+          title="Delete"
+          className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition disabled:opacity-50">
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Panel ───────────────────────────────────────────────────────────────
 export default function ScenesPanel() {
-  const { scenes, fetchScenes, createScene, updateScene, deleteScene, runScene, pushScene } = useHotelStore();
+  const { scenes, fetchScenes, createScene, updateScene, deleteScene, bulkDeleteScenes, runScene, pushScene } = useHotelStore();
   const rooms = useHotelStore(s => s.rooms);
   const [roomFilter, setRoomFilter] = useState('');
   const [showBuilder, setShowBuilder] = useState(false);
@@ -514,11 +593,17 @@ export default function ScenesPanel() {
   const [deletingId, setDeletingId] = useState(null);
   const [pushingId, setPushingId]   = useState(null);
   const [pushResult, setPushResult] = useState({});
+  const [selected, setSelected]     = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => { fetchScenes(); }, []);
 
-  const roomNumbers = [...new Set(scenes.map(s => s.room_number))].sort();
-  const filtered    = roomFilter ? scenes.filter(s => s.room_number === roomFilter) : scenes;
+  // Split scenes into shared and regular
+  const sharedScenes  = scenes.filter(s => s.is_shared);
+  const regularScenes = scenes.filter(s => !s.is_shared);
+
+  const roomNumbers = [...new Set(regularScenes.map(s => s.room_number))].sort();
+  const filtered    = roomFilter ? regularScenes.filter(s => s.room_number === roomFilter) : regularScenes;
 
   const handleSave = async (data) => {
     if (editingScene?.id) await updateScene(editingScene.id, data);
@@ -539,6 +624,7 @@ export default function ScenesPanel() {
     setDeletingId(id);
     try { await deleteScene(id); } catch {}
     setDeletingId(null);
+    setSelected(s => { const n = new Set(s); n.delete(id); return n; });
   };
 
   const handlePush = async (id) => {
@@ -554,9 +640,31 @@ export default function ScenesPanel() {
     setPushingId(null);
   };
 
+  const handleSelect = (id, checked) => {
+    setSelected(s => { const n = new Set(s); checked ? n.add(id) : n.delete(id); return n; });
+  };
+
+  const handleSelectAll = (checked) => {
+    setSelected(checked ? new Set(filtered.map(s => s.id)) : new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selected.size) return;
+    if (!confirm(`Delete ${selected.size} scene(s)?`)) return;
+    setBulkDeleting(true);
+    try {
+      await bulkDeleteScenes([...selected]);
+      setSelected(new Set());
+      fetchScenes();
+    } catch {}
+    setBulkDeleting(false);
+  };
+
   const openNew   = () => { setEditingScene(null); setShowBuilder(true); };
   const openEdit  = (s) => { setEditingScene(s);   setShowBuilder(true); };
   const closeBuilder = () => { setShowBuilder(false); setEditingScene(null); fetchScenes(); };
+
+  const allSelected = filtered.length > 0 && filtered.every(s => selected.has(s.id));
 
   return (
     <div className="space-y-4">
@@ -569,6 +677,12 @@ export default function ScenesPanel() {
           <span className="badge bg-gray-100 text-gray-500">{scenes.length}</span>
         </div>
         <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <button onClick={handleBulkDelete} disabled={bulkDeleting}
+              className="btn btn-ghost text-xs text-red-500 border-red-200 hover:bg-red-50 flex items-center gap-1.5 disabled:opacity-50">
+              <Trash2 size={12} /> Delete selected ({selected.size})
+            </button>
+          )}
           {roomNumbers.length > 0 && (
             <select value={roomFilter} onChange={e => setRoomFilter(e.target.value)}
               className="input text-xs py-1.5 w-32">
@@ -582,93 +696,81 @@ export default function ScenesPanel() {
         </div>
       </div>
 
+      {/* ── Shared Scenes ── */}
+      {sharedScenes.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Globe size={13} className="text-brand-400" />
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Shared Scenes</span>
+            <span className="badge bg-brand-50 text-brand-400">{sharedScenes.length}</span>
+            <span className="text-[9px] text-gray-300 ml-1">Applied to every room at runtime</span>
+          </div>
+          {sharedScenes.map(scene => (
+            <SceneRow key={scene.id} scene={scene}
+              selected={selected.has(scene.id)}
+              onSelect={handleSelect}
+              onToggle={handleToggle}
+              onRun={handleRun}
+              onPush={handlePush}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+              runningId={runningId}
+              deletingId={deletingId}
+              pushingId={pushingId}
+              pushResult={pushResult}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ── Room Scenes ── */}
+      {(sharedScenes.length > 0 && regularScenes.length > 0) && (
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Room Scenes</span>
+          <span className="badge bg-gray-100 text-gray-400">{regularScenes.length}</span>
+        </div>
+      )}
+
       {/* Empty state */}
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && sharedScenes.length === 0 ? (
         <div className="card p-12 text-center">
           <Zap size={32} className="mx-auto text-gray-200 mb-3" />
           <p className="text-sm font-semibold text-gray-400">No custom scenes yet</p>
           <p className="text-xs text-gray-300 mt-1">
             Create custom automations based on time schedules or sensor events.<br />
-            Default room scenes (Welcome &amp; Departure) are managed per-room from the room popup.
+            Check "Shared scene" to apply a scene to every room with a single record.
           </p>
           <button onClick={openNew}
             className="btn btn-primary text-xs mt-4 inline-flex items-center gap-1.5">
             <Plus size={12} /> Create First Scene
           </button>
         </div>
-      ) : (
+      ) : filtered.length > 0 ? (
         <div className="space-y-2">
-          {filtered.map(scene => {
-            const actionsArr = parseArr(scene.actions);
-            return (
-              <div key={scene.id}
-                className={`card px-4 py-3 flex items-center gap-4 transition ${!scene.enabled ? 'opacity-55' : ''}`}>
-
-                {/* Enable toggle */}
-                <button onClick={() => handleToggle(scene)}
-                  className={`toggle flex-shrink-0 ${scene.enabled ? 'bg-emerald-400' : 'bg-gray-200'}`}>
-                  <div className={`toggle-knob ${scene.enabled ? 'translate-x-5' : ''}`} />
-                </button>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm text-gray-800 truncate">{scene.name}</span>
-                    <span className="badge bg-brand-50 text-brand-500">Rm {scene.room_number}</span>
-                    <span className={`badge ${
-                      scene.trigger_type === 'time'
-                        ? 'bg-blue-50 text-blue-500'
-                        : 'bg-purple-50 text-purple-500'
-                    }`}>
-                      {scene.trigger_type === 'time'
-                        ? <Clock size={9} className="inline mr-0.5" />
-                        : <Radio size={9} className="inline mr-0.5" />
-                      }
-                      {scene.trigger_type}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    {triggerSummary(scene)}
-                    {' · '}{actionsArr.length} action{actionsArr.length !== 1 ? 's' : ''}
-                    {scene.last_run && (
-                      <> · Last run: {new Date(scene.last_run + 'Z').toLocaleString()}</>
-                    )}
-                  </p>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={() => handleRun(scene.id)} disabled={runningId === scene.id}
-                    title="Run now"
-                    className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50">
-                    <Play size={14} />
-                  </button>
-                  <button onClick={() => handlePush(scene.id)} disabled={pushingId === scene.id}
-                    title={pushResult[scene.id]
-                      ? (pushResult[scene.id].ok ? `Pushed ${pushResult[scene.id].count} scene(s)` : pushResult[scene.id].msg)
-                      : 'Push to gateway (offline mode)'}
-                    className={`p-1.5 rounded-lg transition disabled:opacity-50 ${
-                      pushResult[scene.id]?.ok === true  ? 'text-brand-500 bg-brand-50' :
-                      pushResult[scene.id]?.ok === false ? 'text-red-400 bg-red-50' :
-                      'text-gray-400 hover:bg-gray-100'
-                    }`}>
-                    <Upload size={14} />
-                  </button>
-                  <button onClick={() => openEdit(scene)} title="Edit"
-                    className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
-                    <Edit2 size={14} />
-                  </button>
-                  <button onClick={() => handleDelete(scene.id)} disabled={deletingId === scene.id}
-                    title="Delete"
-                    className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition disabled:opacity-50">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {/* Select-all row */}
+          <div className="flex items-center gap-2 px-1">
+            <input type="checkbox" checked={allSelected}
+              onChange={e => handleSelectAll(e.target.checked)}
+              className="w-3.5 h-3.5 accent-brand-500" />
+            <span className="text-[10px] text-gray-400">Select all ({filtered.length})</span>
+          </div>
+          {filtered.map(scene => (
+            <SceneRow key={scene.id} scene={scene}
+              selected={selected.has(scene.id)}
+              onSelect={handleSelect}
+              onToggle={handleToggle}
+              onRun={handleRun}
+              onPush={handlePush}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+              runningId={runningId}
+              deletingId={deletingId}
+              pushingId={pushingId}
+              pushResult={pushResult}
+            />
+          ))}
         </div>
-      )}
+      ) : null}
 
       {showBuilder && (
         <SceneBuilderModal

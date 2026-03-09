@@ -315,7 +315,7 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                     <RoomCell
                       key={rn}
                       rn={rn}
-                      rooms={rooms}
+                      r={rooms[rn]}
                       onSelectRoom={onSelectRoom}
                       hoveredRoom={hoveredRoom}
                       setHoveredRoom={setHoveredRoom}
