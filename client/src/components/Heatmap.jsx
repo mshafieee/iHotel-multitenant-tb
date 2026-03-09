@@ -87,7 +87,7 @@ const FloorBox = memo(function FloorBox({ floorNum, stats, isExpanded, onClick }
       </div>
     </button>
   );
-}
+});
 
 // ── Room card (individual cell) — receives single room object, wrapped with memo
 // Only re-renders when THIS room's data or hover state changes.
@@ -134,7 +134,7 @@ const RoomCell = memo(function RoomCell({ rn, r, onSelectRoom, hoveredRoom, setH
       {!isOnline && <div className="absolute bottom-0 inset-x-0 h-1 bg-black/20 rounded-b-xl" />}
     </button>
   );
-}
+});
 
 // ── Main component ───────────────────────────────────────────────────────────
 export default function Heatmap({ onSelectRoom, cols = 0 }) {
