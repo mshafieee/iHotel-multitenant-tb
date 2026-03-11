@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole } from 'lucide-react';
+import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole, CalendarPlus, CheckCircle } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
 import useLangStore from '../store/langStore';
@@ -67,7 +67,7 @@ function SmartBulb({ on, dimmer, label, onClick, onDimmerChange }) {
   );
 }
 
-export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl }) {
+export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, onReserveRoom }) {
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
   const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
@@ -76,6 +76,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut] = useState(false);
   const [doorCountdown, setDoorCountdown] = useState(0);
+  const [unlockSent, setUnlockSent] = useState(false);
   const [sleepFireAt, setSleepFireAt] = useState(null);
   const [activePreset, setActivePreset] = useState(null);
   const applyingPresetRef  = useRef(false);
@@ -110,7 +111,12 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
         if (method === 'setAC') Object.assign(updated, params);
         else if (method === 'setLines') Object.assign(updated, params);
         else if (method === 'setCurtainsBlinds') Object.assign(updated, params);
-        else if (method === 'setService') Object.assign(updated, params);
+        else if (method === 'setService') {
+          Object.assign(updated, params);
+          // DND/MUR mutual exclusivity
+          if (params.dndService === true) updated.murService = false;
+          else if (params.murService === true) updated.dndService = false;
+        }
         else if (method === 'resetServices') (params.services || []).forEach(k => { updated[k] = false; });
         return { rooms: { ...s.rooms, [roomId]: updated } };
       });
@@ -160,6 +166,8 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
   const handleDoorUnlock = () => {
     if (doorCountdown > 0) return;
     send('setDoorUnlock', {});
+    setUnlockSent(true);
+    setTimeout(() => setUnlockSent(false), 2500);
     let count = 5;
     setDoorCountdown(count);
     const iv = setInterval(() => {
@@ -167,8 +175,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
       setDoorCountdown(count);
       if (count <= 0) {
         clearInterval(iv);
-        const doorOpen = useHotelStore.getState().rooms[roomId]?.doorStatus;
-        if (!doorOpen) send('setDoorLock', {});
+        send('setDoorLock', {});
       }
     }, 1000);
   };
@@ -270,13 +277,6 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
             </div>
             {r.doorContactsBattery != null && <div className="text-[9px] text-gray-300">🔋{r.doorContactsBattery}%</div>}
           </div>
-          <div className="flex-1 text-center">
-            <div className="text-[9px] text-gray-400 uppercase tracking-wider mb-1">{T('rm_lock')}</div>
-            <div className={`text-sm font-bold ${r.doorUnlock ? 'text-amber-500' : 'text-emerald-500'}`}>
-              {r.doorUnlock ? T('rm_unlocked') : T('rm_locked')}
-            </div>
-            {r.doorLockBattery != null && <div className="text-[9px] text-gray-300">🔋{r.doorLockBattery}%</div>}
-          </div>
         </div>
       )}
       <button onClick={handleDoorUnlock} disabled={doorCountdown > 0}
@@ -288,10 +288,17 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
               : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
         }`}>
         {doorCountdown > 0
-          ? <><LockKeyhole size={16} className="text-amber-600" /> {lang === 'ar' ? `مفتوح — يُقفل بعد ${doorCountdown}ث` : `Unlocked — locking in ${doorCountdown}s`}</>
+          ? <><LockKeyhole size={16} className="text-amber-600" /> {lang === 'ar' ? `أُرسل — يُقفل بعد ${doorCountdown}ث` : `Sent — locking in ${doorCountdown}s`}</>
           : <><DoorOpen size={isGuest ? 20 : 16} /> {T('rm_unlock_door')}</>
         }
       </button>
+      {/* "Sent!" confirmation popup */}
+      {unlockSent && (
+        <div className="mt-2 flex items-center justify-center gap-1.5 text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg py-2 animate-pulse">
+          <CheckCircle size={14} />
+          <span className="text-xs font-bold">{lang === 'ar' ? 'تم الإرسال!' : 'Sent!'}</span>
+        </div>
+      )}
     </Section>
   );
 
@@ -520,6 +527,15 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl })
               <div className="text-red-600 font-bold text-sm mb-1">{T('rm_pd_guest_title')}</div>
               <div className="text-xs text-red-500">{T('rm_pd_guest_msg')}</div>
             </div>
+          )}
+
+          {/* Reserve Room — shown for staff when room is vacant and unreserved */}
+          {isStaff && r.roomStatus === 0 && !r.reservation && onReserveRoom && (
+            <button onClick={() => { onReserveRoom(r.room); onClose(); }}
+              className="w-full py-2.5 rounded-xl font-bold text-sm bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition flex items-center justify-center gap-2">
+              <CalendarPlus size={16} />
+              {lang === 'ar' ? `حجز الغرفة ${r.room}` : `Reserve Room ${r.room}`}
+            </button>
           )}
 
           {/* Staff tools */}

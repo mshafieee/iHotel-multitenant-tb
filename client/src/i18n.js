@@ -58,6 +58,8 @@ const translations = {
   kpi_avg_temp:      { ar: 'متوسط الحرارة',     en: 'Avg Temp' },
   kpi_mur:           { ar: 'تنظيف',             en: 'MUR' },
   kpi_dnd:           { ar: 'عدم الإزعاج',       en: 'DND' },
+  kpi_elec:          { ar: 'كهرباء',              en: 'Electricity' },
+  kpi_water:         { ar: 'ماء',                en: 'Water' },
   kpi_dist_title:    { ar: 'توزيع حالات الغرف', en: 'Room Status Distribution' },
   kpi_service_flags: { ar: 'تنبيهات الخدمة',   en: 'Service Flags' },
   kpi_rooms_label:   { ar: 'غرفة',              en: 'Rooms' },
@@ -133,6 +135,8 @@ const translations = {
   rm_pd_guest_title: { ar: '⚡ الكهرباء مقطوعة', en: '⚡ Room Power Restricted' },
   rm_pd_guest_msg:   { ar: 'التحكم في الغرفة معطَّل مؤقتاً. تواصل مع الاستقبال.', en: 'Room controls are temporarily disabled. Please contact reception.' },
   rm_not_occupied:   { ar: '🟣 الغرفة محجوزة', en: '🟣 Room Reserved' },
+  rm_reserve_room:   { ar: 'حجز الغرفة',      en: 'Reserve Room' },
+  rm_unlock_sent:    { ar: 'تم الإرسال!',      en: 'Sent!' },
 
   // ── DashboardPage ────────────────────────────────────────────────────────
   dash_heatmap_cols:  { ar: 'أعمدة الخريطة:', en: 'Heatmap cols:' },

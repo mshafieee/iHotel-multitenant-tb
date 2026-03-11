@@ -41,7 +41,11 @@ export default function KPIRow({ role }) {
       { label: 'SOS', count: alerts, pct: Math.round(alerts / n * 100), color: '#DC2626' },
     ].filter(f => f.count > 0);
 
-    return { n, occ, or, alerts, offline, avgTemp, rev, mur, dnd, dist, flags };
+    // Total consumption across all rooms
+    const totalKwh = +(roomArr.reduce((s, r) => s + (r.elecConsumption || 0), 0)).toFixed(2);
+    const totalM3  = +(roomArr.reduce((s, r) => s + (r.waterConsumption || 0), 0)).toFixed(3);
+
+    return { n, occ, or, alerts, offline, avgTemp, rev, mur, dnd, dist, flags, totalKwh, totalM3 };
   }, [rooms]);
 
   const kpis = [
@@ -52,6 +56,10 @@ export default function KPIRow({ role }) {
     { icon: '🌡', label: T('kpi_avg_temp'), value: `${stats.avgTemp}°`, color: 'text-blue-500' },
     { icon: '🧹', label: T('kpi_mur'), value: stats.mur, color: stats.mur > 0 ? 'text-amber-500' : 'text-gray-400' },
     { icon: '🔕', label: T('kpi_dnd'), value: stats.dnd, color: stats.dnd > 0 ? 'text-orange-500' : 'text-gray-400' },
+    ...((role === 'owner' || role === 'admin') ? [
+      { icon: '⚡', label: T('kpi_elec'), value: `${stats.totalKwh.toLocaleString()} kWh`, color: 'text-amber-600' },
+      { icon: '💧', label: T('kpi_water'), value: `${stats.totalM3.toLocaleString()} m³`, color: 'text-blue-600' },
+    ] : []),
   ];
 
   // Build conic gradient for donut chart
@@ -67,7 +75,7 @@ export default function KPIRow({ role }) {
   return (
     <div className="space-y-3">
       {/* KPI Cards */}
-      <div className="grid grid-cols-3 lg:grid-cols-7 gap-2">
+      <div className="grid grid-cols-3 lg:grid-cols-9 gap-2">
         {kpis.map((k, i) => (
           <div key={i} className="card p-3 flex items-center gap-2">
             <span className="text-lg">{k.icon}</span>

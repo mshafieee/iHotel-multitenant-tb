@@ -10,6 +10,7 @@ const useHotelStore = create((set, get) => ({
   alerts: [],
   todayCheckouts: [],
   scenes: [],
+  commandAcks: [],  // { room, method, success, message, ts }
   sse: null,
   pollTimer: null,
 
@@ -136,6 +137,19 @@ const useHotelStore = create((set, get) => ({
       } catch {}
     });
 
+    // Command acknowledgement — device confirmed or failed
+    es2.addEventListener('command-ack', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        const ack = { ...d, ts: Date.now() };
+        set({ commandAcks: [ack, ...get().commandAcks].slice(0, 20) });
+        // Auto-remove after 4 seconds
+        setTimeout(() => {
+          set({ commandAcks: get().commandAcks.filter(a => a.ts !== ack.ts) });
+        }, 4000);
+      } catch {}
+    });
+
     es2.addEventListener('checkout_alert', (ev) => {
       try {
         const d = JSON.parse(ev.data);
@@ -206,6 +220,10 @@ const useHotelStore = create((set, get) => ({
     const alerts = [...get().alerts];
     alerts.splice(idx, 1);
     set({ alerts });
+  },
+
+  dismissCommandAck: (ts) => {
+    set({ commandAcks: get().commandAcks.filter(a => a.ts !== ts) });
   },
 
   fetchScenes: async (roomNumber) => {
@@ -294,7 +312,12 @@ function applyLocal(r, m, p) {
     if ('curtainsPosition' in p) r.curtainsPosition = p.curtainsPosition;
     if ('blindsPosition' in p) r.blindsPosition = p.blindsPosition;
   }
-  if (m === 'setService') Object.assign(r, p);
+  if (m === 'setService') {
+    Object.assign(r, p);
+    // DND/MUR mutual exclusivity
+    if (p.dndService === true) r.murService = false;
+    else if (p.murService === true) r.dndService = false;
+  }
   if (m === 'resetServices') (p.services || []).forEach(s => { r[s] = false; });
   if (m === 'setRoomStatus') r.roomStatus = p.roomStatus;
   if (m === 'setPDMode') {
