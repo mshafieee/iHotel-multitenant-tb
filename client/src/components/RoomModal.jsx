@@ -67,6 +67,10 @@ function SmartBulb({ on, dimmer, label, onClick, onDimmerChange }) {
   );
 }
 
+// Methods that should be debounced (continuous controls like sliders, temp buttons)
+const DEBOUNCED_METHODS = new Set(['setLines', 'setAC', 'setCurtainsBlinds', 'setService']);
+const DEBOUNCE_MS = 500;
+
 export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, onReserveRoom }) {
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
@@ -83,6 +87,24 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const activePresetRef    = useRef(null);
   const prevDoorStatusRef  = useRef(undefined);
 
+  // ── Debounce refs for command feedback system ──────────────────────────────
+  // Accumulates params per method and delays server call until user stops for 500ms
+  const debounceTimers = useRef({});    // { method: timeoutId }
+  const pendingParams  = useRef({});    // { method: { ...mergedParams } }
+
+  // Flush all pending debounced commands on unmount
+  useEffect(() => {
+    return () => {
+      Object.entries(debounceTimers.current).forEach(([method, timer]) => {
+        clearTimeout(timer);
+        const merged = pendingParams.current[method];
+        if (merged) fireRpc(method, merged);
+      });
+      debounceTimers.current = {};
+      pendingParams.current = {};
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const r = rooms[roomId];
   if (!r) return null;
 
@@ -91,6 +113,70 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const isGuest = role === 'guest';
   const statusIdx = Math.min(r.roomStatus ?? 0, STATUSES.length - 1);
   const sc = SCOL[statusIdx] ?? SCOL[0];
+
+  // Fire the actual server RPC (no debounce)
+  function fireRpc(method, params) {
+    if (role === 'guest') {
+      return api('/api/guest/rpc', { method: 'POST', body: JSON.stringify({ method, params }) })
+        .catch(e => {
+          if (e.message === 'session_expired' && onLockout) onLockout();
+          else if (e.message === 'room_pd') {
+            useHotelStore.setState(s => ({
+              rooms: { ...s.rooms, [roomId]: { ...s.rooms[roomId], pdMode: true } }
+            }));
+          }
+        });
+    }
+    const room = useHotelStore.getState().rooms[roomId];
+    const tbDeviceId = room?.deviceId || roomId;
+    return api(`/api/devices/${tbDeviceId}/rpc`, {
+      method: 'POST',
+      body: JSON.stringify({ method, params })
+    }).catch(e => console.error('RPC error:', e.message));
+  }
+
+  // Apply optimistic UI update immediately (before server call)
+  function applyOptimistic(method, params) {
+    useHotelStore.setState(s => {
+      const prev = s.rooms[roomId];
+      if (!prev) return s;
+      const updated = { ...prev };
+      if (method === 'setLines') {
+        if ('line1' in params) updated.line1 = params.line1;
+        if ('line2' in params) updated.line2 = params.line2;
+        if ('line3' in params) updated.line3 = params.line3;
+        if ('dimmer1' in params) updated.dimmer1 = params.dimmer1;
+        if ('dimmer2' in params) updated.dimmer2 = params.dimmer2;
+      } else if (method === 'setAC') {
+        if ('acMode' in params) updated.acMode = params.acMode;
+        if ('acTemperatureSet' in params) updated.acTemperatureSet = params.acTemperatureSet;
+        if ('fanSpeed' in params) updated.fanSpeed = params.fanSpeed;
+      } else if (method === 'setCurtainsBlinds') {
+        if ('curtainsPosition' in params) updated.curtainsPosition = params.curtainsPosition;
+        if ('blindsPosition' in params) updated.blindsPosition = params.blindsPosition;
+      } else if (method === 'setService') {
+        Object.assign(updated, params);
+        if (params.dndService === true) updated.murService = false;
+        else if (params.murService === true) updated.dndService = false;
+      } else if (method === 'resetServices') {
+        (params.services || []).forEach(k => { updated[k] = false; });
+      } else if (method === 'setRoomStatus') {
+        updated.roomStatus = params.roomStatus;
+      } else if (method === 'setPDMode') {
+        updated.pdMode = !!params.pdMode;
+        if (updated.pdMode) {
+          updated.line1 = false; updated.line2 = false; updated.line3 = false;
+          updated.dimmer1 = 0; updated.dimmer2 = 0; updated.acMode = 0; updated.fanSpeed = 0;
+          updated.curtainsPosition = 0; updated.blindsPosition = 0;
+        }
+      } else if (method === 'setDoorUnlock') {
+        updated.doorUnlock = true;
+      } else if (method === 'setDoorLock') {
+        updated.doorUnlock = false;
+      }
+      return { rooms: { ...s.rooms, [roomId]: updated } };
+    });
+  }
 
   const send = useCallback((method, params) => {
     if (!applyingPresetRef.current && activePresetRef.current) {
@@ -103,36 +189,28 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
         api(timerUrl, { method: 'DELETE' }).catch(() => {});
       }
     }
-    if (role === 'guest') {
-      useHotelStore.setState(s => {
-        const prev = s.rooms[roomId];
-        if (!prev) return s;
-        const updated = { ...prev };
-        if (method === 'setAC') Object.assign(updated, params);
-        else if (method === 'setLines') Object.assign(updated, params);
-        else if (method === 'setCurtainsBlinds') Object.assign(updated, params);
-        else if (method === 'setService') {
-          Object.assign(updated, params);
-          // DND/MUR mutual exclusivity
-          if (params.dndService === true) updated.murService = false;
-          else if (params.murService === true) updated.dndService = false;
-        }
-        else if (method === 'resetServices') (params.services || []).forEach(k => { updated[k] = false; });
-        return { rooms: { ...s.rooms, [roomId]: updated } };
-      });
-      return api('/api/guest/rpc', { method: 'POST', body: JSON.stringify({ method, params }) })
-        .catch(e => {
-          if (e.message === 'session_expired' && onLockout) onLockout();
-          else if (e.message === 'room_pd') {
-            useHotelStore.setState(s => ({
-              rooms: { ...s.rooms, [roomId]: { ...s.rooms[roomId], pdMode: true } }
-            }));
-          }
-          throw e;
-        });
+
+    // Always update UI immediately
+    applyOptimistic(method, params);
+
+    // Debounce continuous controls — only send to server after 500ms of inactivity
+    if (DEBOUNCED_METHODS.has(method)) {
+      // Merge params with any pending params for this method
+      pendingParams.current[method] = { ...(pendingParams.current[method] || {}), ...params };
+      // Reset timer
+      if (debounceTimers.current[method]) clearTimeout(debounceTimers.current[method]);
+      debounceTimers.current[method] = setTimeout(() => {
+        const merged = pendingParams.current[method];
+        delete pendingParams.current[method];
+        delete debounceTimers.current[method];
+        if (merged) fireRpc(method, merged);
+      }, DEBOUNCE_MS);
+      return;
     }
-    return rpc(roomId, method, params);
-  }, [roomId, rpc, role, onLockout]);
+
+    // Immediate commands (door, presets, room status, PD, etc.)
+    return fireRpc(method, params);
+  }, [roomId, role, onLockout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
