@@ -33,6 +33,7 @@ const translations = {
   tab_users:         { ar: 'المستخدمون',        en: 'Users' },
   tab_shifts:        { ar: 'الورديات',          en: 'Shifts' },
   tab_scenes:        { ar: 'الأتمتة',           en: 'Scenes' },
+  tab_hotelinfo:     { ar: 'بيانات الفندق',     en: 'Hotel Info' },
   tab_simulator:     { ar: 'المحاكي',           en: 'Simulator' },
 
   // ── Roles ────────────────────────────────────────────────────────────────
