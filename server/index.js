@@ -1327,9 +1327,338 @@ app.post('/api/public/reset-password/platform', (req, res) => {
 app.get('/api/public/hotel', (req, res) => {
   const { slug } = req.query;
   if (!slug) return res.status(400).json({ error: 'slug required' });
-  const hotel = db.prepare('SELECT name FROM hotels WHERE slug = ? AND active = 1').get(slug.toLowerCase());
+  const hotel = db.prepare('SELECT name, logo_url FROM hotels WHERE slug = ? AND active = 1').get(slug.toLowerCase());
   if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
-  res.json({ name: hotel.name });
+  res.json({ name: hotel.name, logoUrl: hotel.logo_url || null });
+});
+
+// ═══ SELF-BOOKING PUBLIC APIs ═══
+
+// Public hotel profile for booking page — /book/:slug
+app.get('/api/public/book/:slug', (req, res) => {
+  const slug = req.params.slug.toLowerCase();
+  const hotel = db.prepare('SELECT id, name, slug, logo_url FROM hotels WHERE slug=? AND active=1').get(slug);
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+  const profile = db.prepare('SELECT * FROM hotel_profiles WHERE hotel_id=?').get(hotel.id);
+  if (!profile || !profile.booking_enabled) {
+    return res.status(404).json({ error: 'Online booking is not available for this hotel' });
+  }
+
+  // Get room types with rates and availability
+  const rates = db.prepare('SELECT room_type, rate_per_night FROM night_rates WHERE hotel_id=?').all(hotel.id);
+  const rateMap = {};
+  rates.forEach(r => { rateMap[r.room_type] = r.rate_per_night; });
+
+  const roomTypeInfo = db.prepare('SELECT * FROM room_type_info WHERE hotel_id=?').all(hotel.id);
+  const images = db.prepare('SELECT room_type, image_url, caption, sort_order FROM room_type_images WHERE hotel_id=? ORDER BY sort_order').all(hotel.id);
+
+  // Group images by room type
+  const imagesByType = {};
+  images.forEach(img => {
+    if (!imagesByType[img.room_type]) imagesByType[img.room_type] = [];
+    imagesByType[img.room_type].push({ url: img.image_url, caption: img.caption });
+  });
+
+  // Get distinct room types from hotel_rooms
+  const roomTypes = db.prepare('SELECT DISTINCT room_type FROM hotel_rooms WHERE hotel_id=?').all(hotel.id).map(r => r.room_type);
+
+  // Build room type list with info
+  const types = roomTypes.map(type => {
+    const info = roomTypeInfo.find(i => i.room_type === type) || {};
+    return {
+      type,
+      rate: rateMap[type] || null,
+      description: info.description || null,
+      descriptionAr: info.description_ar || null,
+      maxGuests: info.max_guests || 2,
+      bedType: info.bed_type || 'King',
+      areaSqm: info.area_sqm || null,
+      amenities: info.amenities ? JSON.parse(info.amenities) : [],
+      images: imagesByType[type] || []
+    };
+  });
+
+  res.json({
+    hotel: {
+      name: hotel.name,
+      slug: hotel.slug,
+      logoUrl: hotel.logo_url || null,
+      description: profile.description || null,
+      descriptionAr: profile.description_ar || null,
+      location: profile.location || null,
+      locationAr: profile.location_ar || null,
+      phone: profile.phone || null,
+      email: profile.email || null,
+      website: profile.website || null,
+      amenities: profile.amenities ? JSON.parse(profile.amenities) : [],
+      checkInTime: profile.check_in_time || '15:00',
+      checkOutTime: profile.check_out_time || '12:00',
+      currency: profile.currency || 'SAR',
+      bookingTerms: profile.booking_terms || null,
+      bookingTermsAr: profile.booking_terms_ar || null,
+      heroImageUrl: profile.hero_image_url || null
+    },
+    roomTypes: types
+  });
+});
+
+// Check room availability for a date range
+app.get('/api/public/book/:slug/availability', (req, res) => {
+  const slug = req.params.slug.toLowerCase();
+  const { checkIn, checkOut, roomType } = req.query;
+  if (!checkIn || !checkOut) return res.status(400).json({ error: 'checkIn and checkOut required' });
+
+  const hotel = db.prepare('SELECT id FROM hotels WHERE slug=? AND active=1').get(slug);
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+  const profile = db.prepare('SELECT booking_enabled FROM hotel_profiles WHERE hotel_id=?').get(hotel.id);
+  if (!profile || !profile.booking_enabled) return res.status(404).json({ error: 'Booking not available' });
+
+  // Get all rooms of the requested type (or all types if not specified)
+  let roomQuery = 'SELECT room_number, room_type FROM hotel_rooms WHERE hotel_id=?';
+  const params = [hotel.id];
+  if (roomType) { roomQuery += ' AND room_type=?'; params.push(roomType); }
+  const allRooms = db.prepare(roomQuery).all(...params);
+
+  // Get rooms with active reservations overlapping the date range
+  const occupied = db.prepare(
+    `SELECT DISTINCT room FROM reservations WHERE hotel_id=? AND active=1
+     AND check_in < ? AND check_out > ?`
+  ).all(hotel.id, checkOut, checkIn).map(r => r.room);
+  const occupiedSet = new Set(occupied);
+
+  // Count available rooms per type
+  const availability = {};
+  allRooms.forEach(r => {
+    if (!availability[r.room_type]) availability[r.room_type] = { total: 0, available: 0 };
+    availability[r.room_type].total++;
+    if (!occupiedSet.has(r.room_number)) availability[r.room_type].available++;
+  });
+
+  res.json({ checkIn, checkOut, availability });
+});
+
+// Self-booking: guest creates their own reservation (public endpoint with rate limiting)
+const bookingLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Too many booking attempts' } });
+
+app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
+  const slug = req.params.slug.toLowerCase();
+  const { roomType, guestName, guestEmail, guestPhone, checkIn, checkOut } = req.body;
+  if (!roomType || !guestName || !checkIn || !checkOut) {
+    return res.status(400).json({ error: 'roomType, guestName, checkIn, checkOut required' });
+  }
+
+  const hotel = db.prepare('SELECT id, name FROM hotels WHERE slug=? AND active=1').get(slug);
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+  const profile = db.prepare('SELECT booking_enabled FROM hotel_profiles WHERE hotel_id=?').get(hotel.id);
+  if (!profile || !profile.booking_enabled) return res.status(404).json({ error: 'Online booking not available' });
+
+  // Validate dates
+  const ciDate = new Date(checkIn);
+  const coDate = new Date(checkOut);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (ciDate < today) return res.status(400).json({ error: 'Check-in date cannot be in the past' });
+  if (coDate <= ciDate) return res.status(400).json({ error: 'Check-out must be after check-in' });
+
+  // Find an available room of the requested type
+  const allRooms = db.prepare('SELECT room_number FROM hotel_rooms WHERE hotel_id=? AND room_type=?')
+    .all(hotel.id, roomType);
+  if (!allRooms.length) return res.status(400).json({ error: `No rooms of type ${roomType} exist` });
+
+  const occupied = db.prepare(
+    `SELECT DISTINCT room FROM reservations WHERE hotel_id=? AND active=1
+     AND check_in < ? AND check_out > ?`
+  ).all(hotel.id, checkOut, checkIn).map(r => r.room);
+  const occupiedSet = new Set(occupied);
+
+  const availableRoom = allRooms.find(r => !occupiedSet.has(r.room_number));
+  if (!availableRoom) return res.status(409).json({ error: 'No rooms available for the selected dates and type' });
+
+  const room = availableRoom.room_number;
+
+  // Get rate
+  const rateRow = db.prepare('SELECT rate_per_night FROM night_rates WHERE hotel_id=? AND room_type=?').get(hotel.id, roomType);
+  const ratePerNight = rateRow ? rateRow.rate_per_night : null;
+  const nights = Math.max(1, Math.round((coDate - ciDate) / 86400000));
+  const totalAmount = ratePerNight ? nights * ratePerNight : null;
+
+  // Create the reservation
+  const id = crypto.randomUUID();
+  const plainPassword = crypto.randomInt(100000, 999999).toString();
+  const hashedPassword = bcrypt.hashSync(plainPassword, 10);
+  const token = crypto.randomBytes(16).toString('hex');
+
+  const lastOverview = getLastOverviewRooms(hotel.id);
+  const roomData = lastOverview[room] || {};
+
+  db.prepare(`INSERT INTO reservations
+    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, hotel.id, room, guestName, checkIn, checkOut, plainPassword, hashedPassword, token, 'self-booking',
+      'pending', ratePerNight, roomData.elecConsumption ?? null, roomData.waterConsumption ?? null);
+
+  // Income log
+  if (ratePerNight) {
+    try {
+      db.prepare(`INSERT INTO income_log
+        (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(crypto.randomUUID(), hotel.id, id, room, guestName, checkIn, checkOut,
+          nights, roomType, ratePerNight, totalAmount, 'pending',
+          roomData.elecConsumption ?? null, roomData.waterConsumption ?? null, 'self-booking');
+    } catch (e) { console.error('Income log from self-booking failed:', e.message); }
+  }
+
+  addLog(hotel.id, 'pms', `Self-booking: Rm${room} ${guestName} (${nights}n × ${ratePerNight} SAR)`, { room, user: 'self-booking' });
+
+  const guestBase = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  const guestUrl = `${guestBase}/guest?token=${encodeURIComponent(token)}`;
+
+  // Mark room NOT_OCCUPIED (non-blocking)
+  setImmediate(async () => {
+    const deviceRoomMap = getDeviceRoomMap(hotel.id);
+    const devId = deviceRoomMap[room];
+    if (!devId) return;
+    try {
+      await sendControl(hotel.id, devId, 'setRoomStatus', { roomStatus: 4 }, 'self-booking');
+    } catch (e) { console.error(`Failed to set room ${room} NOT_OCCUPIED after self-booking:`, e.message); }
+    checkEventScenes(hotel.id, room, { checkIn: 1 });
+  });
+
+  res.json({
+    success: true,
+    booking: {
+      id, room, guestName, roomType, checkIn, checkOut,
+      nights, ratePerNight, totalAmount,
+      currency: profile.currency || 'SAR'
+    },
+    credentials: {
+      password: plainPassword,
+      guestUrl,
+      token
+    },
+    hotel: { name: hotel.name, slug }
+  });
+});
+
+// ═══ HOTEL PROFILE MANAGEMENT (Owner) ═══
+
+// Get hotel profile
+app.get('/api/hotel/profile', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const profile = db.prepare('SELECT * FROM hotel_profiles WHERE hotel_id=?').get(hotelId);
+  const roomTypeInfo = db.prepare('SELECT * FROM room_type_info WHERE hotel_id=?').all(hotelId);
+  const images = db.prepare('SELECT * FROM room_type_images WHERE hotel_id=? ORDER BY sort_order').all(hotelId);
+  res.json({ profile: profile || {}, roomTypeInfo, images });
+});
+
+// Update hotel profile
+app.put('/api/hotel/profile', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const {
+    description, descriptionAr, location, locationAr, phone, email, website,
+    amenities, checkInTime, checkOutTime, currency, bookingEnabled,
+    bookingTerms, bookingTermsAr, heroImageUrl
+  } = req.body;
+
+  db.prepare(`INSERT INTO hotel_profiles (hotel_id, description, description_ar, location, location_ar, phone, email, website, amenities, check_in_time, check_out_time, currency, booking_enabled, booking_terms, booking_terms_ar, hero_image_url, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+    ON CONFLICT(hotel_id) DO UPDATE SET
+      description=?, description_ar=?, location=?, location_ar=?, phone=?, email=?, website=?,
+      amenities=?, check_in_time=?, check_out_time=?, currency=?, booking_enabled=?,
+      booking_terms=?, booking_terms_ar=?, hero_image_url=?, updated_at=datetime('now')`)
+    .run(
+      hotelId, description || null, descriptionAr || null, location || null, locationAr || null,
+      phone || null, email || null, website || null,
+      JSON.stringify(amenities || []), checkInTime || '15:00', checkOutTime || '12:00',
+      currency || 'SAR', bookingEnabled ? 1 : 0, bookingTerms || null, bookingTermsAr || null,
+      heroImageUrl || null,
+      // ON CONFLICT values:
+      description || null, descriptionAr || null, location || null, locationAr || null,
+      phone || null, email || null, website || null,
+      JSON.stringify(amenities || []), checkInTime || '15:00', checkOutTime || '12:00',
+      currency || 'SAR', bookingEnabled ? 1 : 0, bookingTerms || null, bookingTermsAr || null,
+      heroImageUrl || null
+    );
+  res.json({ success: true });
+});
+
+// Update room type info (description, amenities, etc.)
+app.put('/api/hotel/room-type-info/:roomType', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const roomType = req.params.roomType;
+  const { description, descriptionAr, maxGuests, bedType, areaSqm, amenities } = req.body;
+
+  db.prepare(`INSERT INTO room_type_info (hotel_id, room_type, description, description_ar, max_guests, bed_type, area_sqm, amenities)
+    VALUES (?,?,?,?,?,?,?,?)
+    ON CONFLICT(hotel_id, room_type) DO UPDATE SET
+      description=?, description_ar=?, max_guests=?, bed_type=?, area_sqm=?, amenities=?`)
+    .run(
+      hotelId, roomType, description || null, descriptionAr || null,
+      maxGuests || 2, bedType || 'King', areaSqm || null, JSON.stringify(amenities || []),
+      // ON CONFLICT:
+      description || null, descriptionAr || null, maxGuests || 2, bedType || 'King',
+      areaSqm || null, JSON.stringify(amenities || [])
+    );
+  res.json({ success: true });
+});
+
+// Upload room type image
+const multer = require('multer');
+const fs = require('fs');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const imageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, _file, cb) => {
+    const ext = _file.originalname.split('.').pop();
+    cb(null, `hotel-${req.user.hotelId}-${req.params.roomType || 'hero'}-${Date.now()}.${ext}`);
+  }
+});
+const uploadImage = multer({
+  storage: imageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) return cb(new Error('Images only'));
+    cb(null, true);
+  }
+});
+
+app.post('/api/hotel/room-type-images/:roomType', authenticate, requireRole('owner'), uploadImage.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image file' });
+  const hotelId = req.user.hotelId;
+  const roomType = req.params.roomType;
+  const imageUrl = `/uploads/${req.file.filename}`;
+  const caption = req.body.caption || null;
+  const sortOrder = parseInt(req.body.sortOrder) || 0;
+
+  db.prepare('INSERT INTO room_type_images (hotel_id, room_type, image_url, caption, sort_order) VALUES (?,?,?,?,?)')
+    .run(hotelId, roomType, imageUrl, caption, sortOrder);
+  res.json({ success: true, imageUrl });
+});
+
+// Delete room type image
+app.delete('/api/hotel/room-type-images/:id', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const img = db.prepare('SELECT image_url FROM room_type_images WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!img) return res.status(404).json({ error: 'Image not found' });
+  // Remove file
+  try { fs.unlinkSync(path.join(__dirname, img.image_url)); } catch {}
+  db.prepare('DELETE FROM room_type_images WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
+  res.json({ success: true });
+});
+
+// Upload hero image
+app.post('/api/hotel/hero-image', authenticate, requireRole('owner'), uploadImage.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image file' });
+  const imageUrl = `/uploads/${req.file.filename}`;
+  db.prepare(`INSERT INTO hotel_profiles (hotel_id, hero_image_url, updated_at) VALUES (?,?,datetime('now'))
+    ON CONFLICT(hotel_id) DO UPDATE SET hero_image_url=?, updated_at=datetime('now')`)
+    .run(req.user.hotelId, imageUrl, imageUrl);
+  res.json({ success: true, imageUrl });
 });
 
 // Resolves an opaque reservation token → hotel display name (no room, no PII)
