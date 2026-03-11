@@ -110,10 +110,10 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
   - **Rooms mode**: original color-coded grid of all rooms by floor with configurable columns per row (Auto / 5 / 8 / 10 / 12 / 15 / 20). Keyboard shortcut: type any room number to instantly jump to it.
   - Toggle between modes with the **⊞ Floors / ⊟ Rooms** button
 - **Room Table** — sortable list with floor/status/temperature/door/flag filters; inline status dropdown, checkout button, and guest name column
-- **Room Modal** — full room control: lights (3 circuits + dimmers), AC (mode/temperature/fan), curtains, blinds, door unlock, DND/MUR/SOS/PD services. Smart bulb SVG indicators show live light state.
+- **Room Modal** — full room control: lights (3 circuits + dimmers), AC (mode/temperature/fan), curtains, blinds, door unlock, DND/MUR/SOS/PD services. Smart bulb SVG indicators show live light state. "Reserve Room" button for vacant rooms links directly to PMS. Door unlock shows "Sent!" confirmation with auto-lock countdown.
 - **PMS** — create reservations (auto-marks room NOT_OCCUPIED on creation), checkout, extend stay, export CSV, QR code generation
 - **Logs** — searchable audit trail: room, category, user, timestamp
-- **Finance** — income log, night rates management, revenue summary (owner only)
+- **Finance** — income log, night rates management, revenue summary (owner only), utility cost configuration (cost per kWh / m³), hotel-wide consumption dashboard with total electricity and water costs
 - **Users** — create/deactivate hotel users; owner can reset any user's password
 - **Shifts** — shift handover accounting with force-close modal (collects actual Cash and Visa amounts, compares to expected, flags discrepancies)
 - **Scenes** — create automation scenes triggered by time, status change, or sensor thresholds; apply a single scene to all rooms at once via "Apply to all rooms" checkbox
@@ -130,6 +130,9 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
 
 - SSE (Server-Sent Events) connection per client, scoped to hotel
 - **Optimistic broadcast**: dashboard updates instantly on control commands — ThingsBoard writes happen in the background without blocking the UI
+- **Command debounce**: continuous controls (sliders, temperature, AC mode) are debounced by 500ms — UI updates in real-time but only one server call is sent after the user stops adjusting, preventing command failures from rapid interactions
+- **Command verification**: after each control command, the server verifies device state after 2 seconds and broadcasts a `command-ack` SSE event (confirmed/mismatch)
+- **DND/MUR mutual exclusivity**: activating Do Not Disturb automatically cancels Make Up Room and vice versa, enforced on both client and server
 - Audio alerts for SOS (urgent beep pattern) and MUR (housekeeping chime) events
 - Today's checkouts banner shown to admin and frontdesk on login
 
@@ -506,6 +509,15 @@ iHotel/
 | DELETE | `/api/scenes/:id` | owner/admin | Delete scene |
 | POST | `/api/scenes/:id/trigger` | owner/admin | Manually trigger a scene |
 
+### Finance
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/finance/summary` | owner/admin | Revenue summary by type and payment method |
+| GET | `/api/finance/utility-costs` | owner | Get utility cost rates (cost/kWh, cost/m³) |
+| PUT | `/api/finance/utility-costs` | owner | Update utility cost rates |
+| GET | `/api/hotel/consumption` | owner/admin | Total hotel electricity and water consumption with costs |
+
 ### Shifts
 
 | Method | Endpoint | Role | Description |
@@ -585,3 +597,5 @@ iHotel/
 | Superadmin portal returns 401 | Platform token expired — log out and log back in at `/platform/login` |
 | Simulator "Room not found" error | Update to latest — simulator now works in virtual mode without physical devices |
 | Scene doesn't fire | Check that the scene is enabled and the trigger condition matches; verify in the audit log |
+| Commands fail when adjusting controls quickly | Update to latest — the command debounce system batches rapid changes into a single server call after 500ms of inactivity |
+| DND and MUR both active | Update to latest — DND/MUR are now mutually exclusive; activating one auto-cancels the other |
