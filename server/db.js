@@ -338,6 +338,60 @@ function initDB() {
     markMigration('016_scenes_is_shared');
   }
 
+  // ── Hotel profile (public info for self-booking) ─────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hotel_profiles (
+      hotel_id TEXT PRIMARY KEY,
+      description TEXT,
+      description_ar TEXT,
+      location TEXT,
+      location_ar TEXT,
+      phone TEXT,
+      email TEXT,
+      website TEXT,
+      amenities TEXT DEFAULT '[]',
+      check_in_time TEXT DEFAULT '15:00',
+      check_out_time TEXT DEFAULT '12:00',
+      currency TEXT DEFAULT 'SAR',
+      booking_enabled INTEGER DEFAULT 0,
+      booking_terms TEXT,
+      booking_terms_ar TEXT,
+      hero_image_url TEXT,
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
+  // ── Room type images (for self-booking pages) ───────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS room_type_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hotel_id TEXT NOT NULL,
+      room_type TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      caption TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
+  // ── Room type descriptions (for self-booking pages) ─────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS room_type_info (
+      hotel_id TEXT NOT NULL,
+      room_type TEXT NOT NULL,
+      description TEXT,
+      description_ar TEXT,
+      max_guests INTEGER DEFAULT 2,
+      bed_type TEXT DEFAULT 'King',
+      area_sqm REAL,
+      amenities TEXT DEFAULT '[]',
+      PRIMARY KEY (hotel_id, room_type),
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (

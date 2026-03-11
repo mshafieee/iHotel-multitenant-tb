@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage';
 import PlatformLogin from './pages/PlatformLogin';
 import PlatformDashboard from './pages/PlatformDashboard';
 import PlatformResetPassword from './pages/PlatformResetPassword';
+import BookingPage from './pages/BookingPage';
 
 // Guard for platform admin routes
 function PlatformRoute({ children }) {
@@ -48,6 +49,9 @@ export default function App() {
       <Route path="/platform" element={
         <PlatformRoute><PlatformDashboard /></PlatformRoute>
       } />
+
+      {/* Public booking page */}
+      <Route path="/book/:slug" element={<BookingPage />} />
 
       {/* Guest routes */}
       <Route path="/guest" element={

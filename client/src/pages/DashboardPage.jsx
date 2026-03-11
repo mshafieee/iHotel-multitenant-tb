@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap } from 'lucide-react';
+import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import useHotelStore from '../store/hotelStore';
 import useLangStore from '../store/langStore';
@@ -17,6 +17,7 @@ import UsersPanel from '../components/UsersPanel';
 import ShiftsPanel from '../components/ShiftsPanel';
 import SimulatorPanel from '../components/SimulatorPanel';
 import ScenesPanel from '../components/ScenesPanel';
+import HotelInfoPanel from '../components/HotelInfoPanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
 function beep(freq, duration, volume = 0.6) {
@@ -93,6 +94,7 @@ export default function DashboardPage() {
     { id: 'users',     label: T('tab_users'),      icon: Users,         visible: canSeeUsers },
     { id: 'shifts',    label: T('tab_shifts'),     icon: Clock,         visible: canSeeShifts },
     { id: 'scenes',    label: T('tab_scenes'),     icon: Zap,           visible: isOwner || isAdmin },
+    { id: 'hotelinfo', label: T('tab_hotelinfo'),  icon: Hotel,         visible: isOwner },
     { id: 'simulator', label: T('tab_simulator'),  icon: FlaskConical,  visible: isOwner || isAdmin },
   ].filter(tb => tb.visible);
 
@@ -234,6 +236,7 @@ export default function DashboardPage() {
         {tab === 'users'     && <UsersPanel />}
         {tab === 'shifts'    && <ShiftsPanel />}
         {tab === 'scenes'    && <ScenesPanel />}
+        {tab === 'hotelinfo' && <HotelInfoPanel />}
         {tab === 'simulator' && <SimulatorPanel />}
       </main>
 
