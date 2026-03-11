@@ -10,13 +10,19 @@ export default function FinancePanel() {
   const [income, setIncome] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [utilityCosts, setUtilityCosts] = useState({ costPerKwh: 0, costPerM3: 0 });
+  const [editingUtility, setEditingUtility] = useState(false);
+  const [utilityForm, setUtilityForm] = useState({ costPerKwh: 0, costPerM3: 0 });
+  const [consumption, setConsumption] = useState(null);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [r, i, s] = await Promise.all([
+      const [r, i, s, uc, cons] = await Promise.all([
         api('/api/finance/rates'),
         api('/api/finance/income'),
         api('/api/finance/summary'),
+        api('/api/finance/utility-costs').catch(() => ({ costPerKwh: 0, costPerM3: 0 })),
+        api('/api/hotel/consumption').catch(() => null),
       ]);
       const rateMap = {};
       r.forEach(row => { rateMap[row.room_type] = row.rate_per_night; });
@@ -24,6 +30,9 @@ export default function FinancePanel() {
       setRateForm(rateMap);
       setIncome(i.rows || []);
       setSummary(s);
+      setUtilityCosts(uc);
+      setUtilityForm(uc);
+      if (cons) setConsumption(cons);
     } catch (e) { console.error('Finance fetch:', e.message); }
     finally { setLoading(false); }
   }, []);
@@ -34,6 +43,17 @@ export default function FinancePanel() {
     await api('/api/finance/rates', { method: 'PUT', body: JSON.stringify(rateForm) });
     setRates({ ...rateForm });
     setEditingRates(false);
+  };
+
+  const saveUtilityCosts = async () => {
+    await api('/api/finance/utility-costs', { method: 'PUT', body: JSON.stringify(utilityForm) });
+    setUtilityCosts({ ...utilityForm });
+    setEditingUtility(false);
+    // Refresh consumption to get updated costs
+    try {
+      const cons = await api('/api/hotel/consumption');
+      setConsumption(cons);
+    } catch {}
   };
 
   const exportCSV = () => {
@@ -74,6 +94,66 @@ export default function FinancePanel() {
               <div className="text-[9px] text-gray-400">{p.count} reservations</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Hotel Consumption & Utility Costs */}
+      {consumption && (
+        <div className="card p-4">
+          <div className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold mb-3">Hotel Consumption — Current Totals</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-amber-50 rounded-xl p-3 text-center">
+              <div className="text-[9px] text-gray-400 mb-1">Electricity</div>
+              <div className="text-xl font-bold text-amber-600">{consumption.totalKwh.toLocaleString()}</div>
+              <div className="text-[9px] text-gray-400">kWh</div>
+              {consumption.costPerKwh > 0 && (
+                <div className="text-sm font-bold text-amber-700 mt-1">
+                  {consumption.totalElecCost.toLocaleString()} SAR
+                </div>
+              )}
+            </div>
+            <div className="bg-blue-50 rounded-xl p-3 text-center">
+              <div className="text-[9px] text-gray-400 mb-1">Water</div>
+              <div className="text-xl font-bold text-blue-600">{consumption.totalM3.toLocaleString()}</div>
+              <div className="text-[9px] text-gray-400">m³</div>
+              {consumption.costPerM3 > 0 && (
+                <div className="text-sm font-bold text-blue-700 mt-1">
+                  {consumption.totalWaterCost.toLocaleString()} SAR
+                </div>
+              )}
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <div className="text-[9px] text-gray-400 mb-1">Cost / kWh</div>
+              {editingUtility ? (
+                <input type="number" step="0.01" className="input text-center text-sm font-bold w-full"
+                  value={utilityForm.costPerKwh}
+                  onChange={e => setUtilityForm({ ...utilityForm, costPerKwh: e.target.value })} />
+              ) : (
+                <div className="text-xl font-bold text-gray-700">{utilityCosts.costPerKwh || '—'}</div>
+              )}
+              <div className="text-[9px] text-gray-400">SAR / kWh</div>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <div className="text-[9px] text-gray-400 mb-1">Cost / m³</div>
+              {editingUtility ? (
+                <input type="number" step="0.01" className="input text-center text-sm font-bold w-full"
+                  value={utilityForm.costPerM3}
+                  onChange={e => setUtilityForm({ ...utilityForm, costPerM3: e.target.value })} />
+              ) : (
+                <div className="text-xl font-bold text-gray-700">{utilityCosts.costPerM3 || '—'}</div>
+              )}
+              <div className="text-[9px] text-gray-400">SAR / m³</div>
+            </div>
+          </div>
+          <div className="flex justify-end mt-3">
+            {!editingUtility
+              ? <button onClick={() => setEditingUtility(true)} className="btn btn-ghost text-xs">Edit Costs</button>
+              : <div className="flex gap-2">
+                  <button onClick={saveUtilityCosts} className="btn btn-primary text-xs">Save</button>
+                  <button onClick={() => { setEditingUtility(false); setUtilityForm(utilityCosts); }} className="btn btn-ghost text-xs">Cancel</button>
+                </div>
+            }
+          </div>
         </div>
       )}
 
@@ -152,6 +232,8 @@ export default function FinancePanel() {
                       ? (row.elec_at_checkout - row.elec_at_checkin).toFixed(2) : '—';
                     const waterDelta = (row.water_at_checkout != null && row.water_at_checkin != null)
                       ? (row.water_at_checkout - row.water_at_checkin).toFixed(3) : '—';
+                    const elecCost = elecDelta !== '—' && utilityCosts.costPerKwh ? (parseFloat(elecDelta) * utilityCosts.costPerKwh).toFixed(2) : null;
+                    const waterCost = waterDelta !== '—' && utilityCosts.costPerM3 ? (parseFloat(waterDelta) * utilityCosts.costPerM3).toFixed(2) : null;
                     return (
                       <tr key={row.id} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="py-2 font-mono font-bold">{row.room}</td>
@@ -166,8 +248,14 @@ export default function FinancePanel() {
                             {row.payment_method || 'pending'}
                           </span>
                         </td>
-                        <td className="py-2 text-right text-gray-500">{elecDelta} kWh</td>
-                        <td className="py-2 text-right text-gray-500">{waterDelta} m³</td>
+                        <td className="py-2 text-right text-gray-500">
+                          {elecDelta} kWh
+                          {elecCost && <div className="text-[9px] text-amber-500">{elecCost} SAR</div>}
+                        </td>
+                        <td className="py-2 text-right text-gray-500">
+                          {waterDelta} m³
+                          {waterCost && <div className="text-[9px] text-blue-500">{waterCost} SAR</div>}
+                        </td>
                       </tr>
                     );
                   })}

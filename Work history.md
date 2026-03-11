@@ -2,6 +2,110 @@
 
 ---
 
+## Session: 2026-03-11 — Admin Room Reservation, Command Debounce, Consumption Dashboard
+
+### Summary
+This session covered five areas:
+1. **Admin room reservation from modal** — staff can create reservations directly from the RoomModal for vacant rooms
+2. **Doorlock UX improvements** — visual feedback and safety controls for door unlock flow
+3. **DND/MUR mutual exclusivity** — activating DND auto-cancels MUR and vice versa, enforced on both client and server
+4. **Command feedback & debounce system** — UI updates instantly but actual server RPC calls are debounced by 500ms to prevent command failures from rapid interactions
+5. **Consumption dashboard** — utility cost configuration, total hotel consumption view, and per-room cost calculations in the Finance panel
+
+---
+
+### Changes Made
+
+#### 1. Reserve Room from RoomModal (`client/src/components/RoomModal.jsx`, `client/src/pages/DashboardPage.jsx`)
+**Change:** When a staff member opens a RoomModal for a VACANT room with no active reservation, a "Reserve Room" button is shown. Clicking it closes the modal and navigates to the PMS tab with the room number pre-filled.
+
+- Added `onReserveRoom` callback prop to RoomModal
+- DashboardPage passes a handler that switches to the PMS tab and sets `prefillRoom` state
+- PMSPanel receives `prefillRoom` prop and auto-populates the room field in the reservation form
+
+#### 2. Doorlock UX & "Sent!" Confirmation (`client/src/components/RoomModal.jsx`)
+**Change:** After pressing the door unlock button:
+- Button shows countdown text: "Sent — locking in Xs"
+- A green "Sent!" confirmation banner with checkmark appears for 2.5 seconds
+- Auto-lock fires after 5 seconds if door is still closed
+
+#### 3. DND/MUR Mutual Exclusivity (`server/index.js`, `client/src/components/RoomModal.jsx`, `client/src/store/hotelStore.js`)
+**Change:** Activating DND automatically clears MUR, and vice versa. Enforced at three levels:
+- **Server** (`controlToTelemetry`): if `dndService=true`, sets `murService=false` and vice versa
+- **Client optimistic update** (`applyOptimistic` in RoomModal + `applyLocal` in hotelStore): same logic
+- **Guest path**: same logic in the guest optimistic update
+
+#### 4. Command Feedback System — Server Verification (`server/index.js`)
+**Change:** After `sendControl()` writes shared attributes to ThingsBoard, a non-blocking 2-second timer verifies that the device received the values by reading back shared attributes. Result is broadcast as an SSE `command-ack` event:
+```json
+{ "room": "101", "method": "setAC", "success": true, "message": "confirmed" }
+```
+- Client stores acks in `commandAcks` array in hotelStore (auto-removed after 4 seconds)
+- SSE listener added for `command-ack` events
+
+#### 5. Command Debounce System — 500ms (`client/src/components/RoomModal.jsx`)
+**Change:** Replaced direct `rpc()` / `api()` calls in `send()` with a debounced architecture:
+- **Optimistic UI updates** fire immediately via `applyOptimistic()` — user sees changes in real-time
+- **Server RPC calls** are debounced by 500ms per method type (`setLines`, `setAC`, `setCurtainsBlinds`, `setService`)
+- Params are **merged** across rapid calls — e.g., dragging a dimmer from 0→80 sends one final call with `dimmer1: 80`
+- **Immediate methods** (not debounced): `setDoorUnlock`, `setDoorLock`, `resetServices`, `setRoomStatus`, `setPDMode`
+- Pending commands are **flushed on unmount** so nothing is lost when the modal closes
+
+#### 6. Utility Costs & Consumption Dashboard (`server/index.js`, `server/db.js`, `client/src/components/FinancePanel.jsx`)
+**Change:** Added utility cost management and hotel-wide consumption tracking:
+- **DB**: new `utility_costs` table with `hotel_id`, `cost_type` (kwh/m3), `cost_per_unit`, `updated_by`
+- **API**: `GET/PUT /api/finance/utility-costs` — owner can set cost per kWh and cost per m³
+- **API**: `GET /api/hotel/consumption` — returns total kWh, total m³, cost rates, and calculated total costs summed from all room meters in the in-memory cache
+- **FinancePanel**: new "Consumption" section showing total electricity (kWh), total water (m³), per-unit costs (editable), and total estimated costs in SAR
+
+#### 7. KPI Row Consumption Display (`client/src/components/KPIRow.jsx`)
+**Change:** Added total electricity and water consumption KPI cards to the dashboard header, visible to owner and admin roles. Values are summed from all rooms in the store.
+
+#### 8. i18n Updates (`client/src/i18n.js`)
+Added translation keys: `rm_reserve_room` (AR: حجز الغرفة), `rm_reserve_room_num` (AR: حجز الغرفة {room}).
+
+---
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `56b09c1` | feat: room reservation from modal, doorlock UX, DND/MUR exclusivity, command feedback, consumption dashboard |
+| `711dd7d` | Add command debounce system for room controls (500ms) |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/index.js` | DND/MUR exclusivity in `controlToTelemetry`; command-ack verification timer in `sendControl`; utility costs CRUD endpoints; hotel consumption endpoint |
+| `server/db.js` | `utility_costs` table schema |
+| `client/src/components/RoomModal.jsx` | Reserve button for vacant rooms; doorlock sent confirmation; debounce system with `fireRpc`, `applyOptimistic`, merged pending params; DND/MUR exclusivity |
+| `client/src/components/PMSPanel.jsx` | `prefillRoom` prop to auto-populate room field |
+| `client/src/components/FinancePanel.jsx` | Consumption section with utility cost editor and hotel-wide totals |
+| `client/src/components/KPIRow.jsx` | Electricity and water consumption KPI cards |
+| `client/src/pages/DashboardPage.jsx` | `onReserveRoom` handler; `prefillRoom` state wired to PMSPanel |
+| `client/src/store/hotelStore.js` | `commandAcks` state; `command-ack` SSE listener; DND/MUR exclusivity in `applyLocal` |
+| `client/src/i18n.js` | `rm_reserve_room`, `rm_reserve_room_num` keys |
+
+---
+
+### Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Debounce per method, not per control | Merging all params for the same method (e.g., multiple `setLines` calls) into one server call avoids race conditions and reduces load |
+| Flush on unmount | User closing the modal should not discard their last adjustment — always send the final state |
+| 500ms debounce interval | Fast enough that the user doesn't notice delay; slow enough to batch rapid slider drags into a single command |
+| DND/MUR exclusivity at 3 levels | Server is the source of truth, but client-side enforcement gives instant feedback without waiting for server roundtrip |
+| Command-ack via SSE | Non-blocking verification — doesn't slow down the control flow; UI can optionally show confirmation/warning badges |
+| Utility costs in separate table | Decoupled from room rates; per-hotel scoping; easy to extend with more cost types later |
+
+---
+
+---
+
 ## Session: 2026-02-28 (Part 2) — Security Hardening, Room Automation, UX Polish
 
 ### Summary

@@ -43,7 +43,7 @@ export default function DashboardPage() {
   const { lang, setLang } = useLangStore();
   const T = (key) => t(key, lang);
   const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk') };
-  const { startPolling, stopPolling, connectSSE, alerts, dismissAlert, todayCheckouts } = useHotelStore();
+  const { startPolling, stopPolling, connectSSE, alerts, dismissAlert, todayCheckouts, commandAcks, dismissCommandAck } = useHotelStore();
   const rooms = useHotelStore(s => s.rooms);
   const [tab, setTab] = useState('rooms');
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [resettingAll, setResettingAll] = useState(false);
   const [roomSearch, setRoomSearch] = useState('');
   const [showRoomSearch, setShowRoomSearch] = useState(false);
+  const [pmsAutoFillRoom, setPmsAutoFillRoom] = useState(null);
   const roomSearchRef = useRef(null);
   const [heatmapCols, setHeatmapCols] = useState(() => {
     const saved = localStorage.getItem('heatmapCols');
@@ -227,7 +228,7 @@ export default function DashboardPage() {
             <RoomTable onSelectRoom={setSelectedRoom} role={role} />
           </>
         )}
-        {tab === 'pms'       && <PMSPanel />}
+        {tab === 'pms'       && <PMSPanel autoFillRoom={pmsAutoFillRoom} onAutoFillConsumed={() => setPmsAutoFillRoom(null)} />}
         {tab === 'logs'      && <LogsPanel />}
         {tab === 'finance'   && <FinancePanel />}
         {tab === 'users'     && <UsersPanel />}
@@ -238,13 +239,33 @@ export default function DashboardPage() {
 
       {/* Room Modal */}
       {selectedRoom && (
-        <RoomModal roomId={selectedRoom} onClose={() => setSelectedRoom(null)} role={role} />
+        <RoomModal roomId={selectedRoom} onClose={() => setSelectedRoom(null)} role={role}
+          onReserveRoom={(roomNum) => {
+            setPmsAutoFillRoom(roomNum);
+            setTab('pms');
+          }}
+        />
       )}
 
       {/* Alert Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
         {alerts.map((a, i) => (
           <AlertToast key={`${a.ts}-${i}`} alert={a} onDismiss={() => dismissAlert(i)} />
+        ))}
+        {/* Command acknowledgement toasts */}
+        {commandAcks.map(ack => (
+          <div key={ack.ts}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg text-xs font-semibold border cursor-pointer transition-all ${
+              ack.success
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}
+            onClick={() => dismissCommandAck(ack.ts)}>
+            <span>{ack.success ? '✓' : '⚠'}</span>
+            <span>{lang === 'ar' ? 'غرفة' : 'Rm'} {ack.room}</span>
+            <span className="text-gray-400">·</span>
+            <span>{ack.success ? (lang === 'ar' ? 'تم التنفيذ' : 'Confirmed') : (lang === 'ar' ? 'لم يتم التأكيد' : 'Unconfirmed')}</span>
+          </div>
         ))}
       </div>
 

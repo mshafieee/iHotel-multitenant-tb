@@ -32,7 +32,7 @@ function CopyBtn({ text, lang }) {
   );
 }
 
-export default function PMSPanel() {
+export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
   const { reservations, fetchReservations } = useHotelStore();
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
@@ -50,6 +50,18 @@ export default function PMSPanel() {
 
   const today = new Date().toISOString().split('T')[0];
   const defaultCo = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+
+  // Auto-fill room from RoomModal "Reserve" button
+  React.useEffect(() => {
+    if (autoFillRoom) {
+      setShowForm(true);
+      setResult(null);
+      setShowQR(null);
+      setExtendId(null);
+      setForm({ room: autoFillRoom, guestName: '', checkIn: today, checkOut: defaultCo, paymentMethod: 'pending', ratePerNight: '' });
+      if (onAutoFillConsumed) onAutoFillConsumed();
+    }
+  }, [autoFillRoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getGuestUrl = (reservationToken) => `${GUEST_HOST}/guest?token=${encodeURIComponent(reservationToken)}`;
 

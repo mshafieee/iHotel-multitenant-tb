@@ -521,6 +521,9 @@ function controlToTelemetry(method, params) {
     if ('dndService' in params) data.dndService = !!params.dndService;
     if ('murService' in params) data.murService = !!params.murService;
     if ('sosService' in params) data.sosService = !!params.sosService;
+    // DND/MUR mutual exclusivity: activating one auto-cancels the other
+    if (data.dndService === true) data.murService = false;
+    else if (data.murService === true) data.dndService = false;
   } else if (method === 'resetServices') {
     (params.services || []).forEach(s => { data[s] = false; });
   } else if (method === 'setPowerDown') {
@@ -705,6 +708,35 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   tb.saveTelemetry(deviceId, telemetry).catch(e => console.error('TB telemetry write failed:', e.message));
   if (Object.keys(sharedAttrs).length) {
     tb.saveAttributes(deviceId, sharedAttrs).catch(e => console.error('TB attr write failed:', e.message));
+  }
+
+  // ── Command feedback: verify device updated after a short delay ─────────────
+  // Non-blocking: check after 2s that the shared attributes match what we sent.
+  const verifyKeys = Object.keys(sharedAttrs);
+  if (verifyKeys.length > 0) {
+    setTimeout(async () => {
+      try {
+        const attrs = await tb.getSharedAttributes(deviceId, verifyKeys);
+        const attrMap = {};
+        (attrs || []).forEach(a => { attrMap[a.key] = a.value; });
+        let allOk = true;
+        for (const k of verifyKeys) {
+          if (attrMap[k] !== undefined && String(attrMap[k]) !== String(sharedAttrs[k])) {
+            allOk = false;
+            break;
+          }
+        }
+        sseBroadcast(hotelId, 'command-ack', {
+          room: roomNum, deviceId, method, success: allOk,
+          message: allOk ? 'confirmed' : 'mismatch'
+        });
+      } catch (e) {
+        sseBroadcast(hotelId, 'command-ack', {
+          room: roomNum, deviceId, method, success: false,
+          message: `verify failed: ${e.message}`
+        });
+      }
+    }, 2000);
   }
 
   return { success: true, written: telemetry };
@@ -1827,6 +1859,54 @@ app.get('/api/finance/summary', authenticate, requireRole('owner', 'admin'), (re
   const byPayment = db.prepare('SELECT payment_method, COUNT(*) as count, SUM(total_amount) as amount FROM income_log WHERE hotel_id=? GROUP BY payment_method').all(hotelId);
   const total    = db.prepare('SELECT SUM(total_amount) as total FROM income_log WHERE hotel_id=?').get(hotelId);
   res.json({ byType, byPayment, total: total.total || 0 });
+});
+
+// ═══ UTILITY COSTS & TOTAL CONSUMPTION ═══
+
+// Get utility cost settings (cost per kWh, cost per m³)
+app.get('/api/finance/utility-costs', authenticate, requireRole('owner'), (req, res) => {
+  const rows = db.prepare('SELECT cost_type, cost_per_unit FROM utility_costs WHERE hotel_id=?').all(req.user.hotelId);
+  const costs = {};
+  rows.forEach(r => { costs[r.cost_type] = r.cost_per_unit; });
+  res.json({ costPerKwh: costs.kwh || 0, costPerM3: costs.m3 || 0 });
+});
+
+// Update utility cost settings
+app.put('/api/finance/utility-costs', authenticate, requireRole('owner'), (req, res) => {
+  const { costPerKwh, costPerM3 } = req.body;
+  const hotelId = req.user.hotelId;
+  const upsert = db.prepare(
+    'INSERT INTO utility_costs (hotel_id, cost_type, cost_per_unit, updated_by) VALUES (?,?,?,?) ON CONFLICT(hotel_id, cost_type) DO UPDATE SET cost_per_unit=?, updated_by=?, updated_at=datetime(\'now\')'
+  );
+  if (costPerKwh !== undefined) upsert.run(hotelId, 'kwh', parseFloat(costPerKwh) || 0, req.user.username, parseFloat(costPerKwh) || 0, req.user.username);
+  if (costPerM3 !== undefined)  upsert.run(hotelId, 'm3',  parseFloat(costPerM3)  || 0, req.user.username, parseFloat(costPerM3)  || 0, req.user.username);
+  res.json({ success: true });
+});
+
+// Get total hotel consumption (sum of all room meters from in-memory cache)
+app.get('/api/hotel/consumption', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const lastOverview = getLastOverviewRooms(hotelId);
+  let totalKwh = 0, totalM3 = 0;
+  for (const room of Object.values(lastOverview)) {
+    totalKwh += room.elecConsumption || 0;
+    totalM3  += room.waterConsumption || 0;
+  }
+  // Get cost rates
+  const rows = db.prepare('SELECT cost_type, cost_per_unit FROM utility_costs WHERE hotel_id=?').all(hotelId);
+  const costs = {};
+  rows.forEach(r => { costs[r.cost_type] = r.cost_per_unit; });
+  const costPerKwh = costs.kwh || 0;
+  const costPerM3  = costs.m3  || 0;
+
+  res.json({
+    totalKwh: Math.round(totalKwh * 100) / 100,
+    totalM3: Math.round(totalM3 * 1000) / 1000,
+    costPerKwh, costPerM3,
+    totalElecCost: Math.round(totalKwh * costPerKwh * 100) / 100,
+    totalWaterCost: Math.round(totalM3 * costPerM3 * 100) / 100,
+    roomCount: Object.keys(lastOverview).length
+  });
 });
 
 // ═══ SHIFT ACCOUNTING ═══

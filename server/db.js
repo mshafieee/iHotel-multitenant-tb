@@ -338,6 +338,19 @@ function initDB() {
     markMigration('016_scenes_is_shared');
   }
 
+  // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS utility_costs (
+      hotel_id TEXT NOT NULL,
+      cost_type TEXT NOT NULL,
+      cost_per_unit REAL NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (hotel_id, cost_type),
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
   // ── Migration 015: add logo_url column to hotels ─────────────────────────
   if (!hasMigration('015_hotel_logo')) {
     const cols = db.pragma('table_info(hotels)').map(c => c.name);
