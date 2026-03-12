@@ -117,6 +117,7 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
 - **Users** — create/deactivate hotel users; owner can reset any user's password
 - **Shifts** — shift handover accounting with force-close modal (collects actual Cash and Visa amounts, compares to expected, flags discrepancies)
 - **Scenes** — create automation scenes triggered by time, status change, or sensor thresholds; apply a single scene to all rooms at once via "Apply to all rooms" checkbox
+- **Hotel Info** — owner-only tab to configure the hotel's public booking profile: description, location, phone, amenities, hero image, room type descriptions and photo galleries, check-in/out times, and online booking toggle
 - **Simulator** — inject mock telemetry from the browser for testing; works with any room number even without physical IoT hardware (virtual mode with SSE broadcast)
 - **Mobile-friendly tab bar** — scrollable tab navigation optimised for small screens
 
@@ -256,6 +257,44 @@ https://hotel.example.com/guest?room=101&hotel=hayat
 - Door unlock
 
 The guest portal shows the hotel name and room number in the header.
+
+---
+
+## Self-Booking (Online Reservations)
+
+Guests can book rooms directly without staff involvement via a public booking page:
+
+```
+https://hotel.example.com/book/hayat
+```
+
+### Setup (Owner)
+
+1. Go to **Hotel Info** tab in the staff dashboard
+2. Fill in hotel description, location, amenities, and upload a hero image
+3. For each room type, add description, photos, bed type, max guests
+4. Toggle **Online Booking** to ON
+5. Share the booking link `/book/{hotel-slug}` on your website or social media
+
+### Booking Flow (Guest)
+
+1. **Select dates** — check-in and check-out
+2. **Pick room type** — browse cards with photos, pricing, availability, and amenities
+3. **Enter details** — name (required), email, phone
+4. **Confirmation** — system auto-assigns an available room and displays:
+   - Room number and type
+   - 6-digit room code for the guest portal
+   - Direct link to guest portal for in-room controls
+   - Total cost breakdown
+
+### Key Features
+
+- Bilingual (English / Arabic) with toggle
+- Live room availability per type for the selected dates
+- Image carousel per room type
+- Rate-limited: 10 bookings per 15 minutes per IP
+- Payment status defaults to "pending" — compatible with future payment gateway integration
+- Same reservation pipeline as staff PMS (income log, room automation, scenes all fire normally)
 
 ---
 
@@ -533,6 +572,25 @@ iHotel/
 |--------|----------|------|-------------|
 | POST | `/api/simulator/inject` | owner/admin | Inject telemetry (virtual or hardware room) |
 
+### Self-Booking (Public)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/public/book/:slug` | — | Hotel profile, room types, rates, images for booking page |
+| GET | `/api/public/book/:slug/availability` | — | Room availability by type for date range |
+| POST | `/api/public/book/:slug` | — | Create self-booking reservation (rate-limited) |
+
+### Hotel Profile (Owner)
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/hotel/profile` | owner | Get hotel profile, room type info, and images |
+| PUT | `/api/hotel/profile` | owner | Update hotel public profile |
+| PUT | `/api/hotel/room-type-info/:type` | owner | Update room type descriptions and details |
+| POST | `/api/hotel/room-type-images/:type` | owner | Upload room type image |
+| DELETE | `/api/hotel/room-type-images/:id` | owner | Delete room type image |
+| POST | `/api/hotel/hero-image` | owner | Upload hotel hero/cover image |
+
 ### Guest
 
 | Method | Endpoint | Auth | Description |
@@ -599,3 +657,5 @@ iHotel/
 | Scene doesn't fire | Check that the scene is enabled and the trigger condition matches; verify in the audit log |
 | Commands fail when adjusting controls quickly | Update to latest — the command debounce system batches rapid changes into a single server call after 500ms of inactivity |
 | DND and MUR both active | Update to latest — DND/MUR are now mutually exclusive; activating one auto-cancels the other |
+| `/book/slug` shows "Booking Not Available" | Owner must enable online booking in the Hotel Info tab and save the profile |
+| Self-booking shows no room types | Rooms must be imported/discovered first in Platform Admin; room types come from `hotel_rooms` table |

@@ -20,6 +20,7 @@ const T = {
     heroSub: 'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and reduce energy costs — across all your properties.',
     stats: [{ v: '500+', l: 'Rooms Managed' }, { v: '~40%', l: 'Energy Savings' }, { v: '< 1s', l: 'Live Updates' }, { v: '99.9%', l: 'Uptime' }],
     getStarted: 'Get Started',
+    bookRoom: 'Book a Room',
     seeFeatures: 'See features',
     trustedBy: 'Trusted by hotels in',
     cities: ['Riyadh', 'Jeddah', 'Mecca', 'Medina', 'Dammam', 'Dubai'],
@@ -82,6 +83,7 @@ const T = {
     heroSub: 'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — عبر جميع فنادقك.',
     stats: [{ v: '+500', l: 'غرفة مُدارة' }, { v: '٪40~', l: 'توفير في الطاقة' }, { v: '< 1ث', l: 'تحديث فوري' }, { v: '٪99.9', l: 'وقت التشغيل' }],
     getStarted: 'ابدأ الآن',
+    bookRoom: 'احجز غرفة',
     seeFeatures: 'اكتشف المميزات',
     trustedBy: 'فنادق من مدن',
     cities: ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'دبي'],
@@ -440,6 +442,9 @@ export default function LandingPage() {
             <a href="#features" className="hidden md:block text-sm text-white/45 hover:text-white/75 transition">{t.nav.features}</a>
             <a href="#showcase" className="hidden md:block text-sm text-white/45 hover:text-white/75 transition">{t.nav.platform}</a>
             <a href="#testimonials" className="hidden md:block text-sm text-white/45 hover:text-white/75 transition">{t.nav.reviews}</a>
+            <Link to="/book" className="hidden md:flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300 font-medium transition">
+              <BedDouble size={13} />{t.bookRoom}
+            </Link>
             {/* Language toggle */}
             <button
               onClick={() => setLang(l => l === 'en' ? 'ar' : 'en')}
@@ -488,6 +493,11 @@ export default function LandingPage() {
                   {t.getStarted}
                   {isRTL ? <ChevronRight size={15} className="rotate-180" /> : <ArrowRight size={15} />}
                 </button>
+                <Link to="/book"
+                  className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-7 py-3 rounded-xl transition shadow-xl shadow-emerald-500/20 text-sm">
+                  <BedDouble size={15} />
+                  {t.bookRoom}
+                </Link>
                 <a href="#features" className="inline-flex items-center gap-1.5 text-white/45 hover:text-white/75 text-sm font-medium transition">
                   {t.seeFeatures}
                   {isRTL ? <ChevronRight size={13} className="rotate-180" /> : <ChevronRight size={13} />}

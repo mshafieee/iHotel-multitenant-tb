@@ -24,6 +24,7 @@ export default function HotelInfoPanel() {
   const [roomTypeInfo, setRoomTypeInfo] = useState([]);
   const [images, setImages] = useState([]);
   const [roomTypes, setRoomTypes] = useState([]);
+  const [hotelSlug, setHotelSlug] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(null);
@@ -48,6 +49,7 @@ export default function HotelInfoPanel() {
       }
       setRoomTypeInfo(data.roomTypeInfo || []);
       setImages(data.images || []);
+      if (data.slug) setHotelSlug(data.slug);
 
       // Fetch room types from overview
       const overview = await api('/api/hotel/overview');
@@ -113,8 +115,11 @@ export default function HotelInfoPanel() {
     finally { setUploading(null); }
   }
 
-  const bookingUrl = profile.bookingEnabled
-    ? `${window.location.origin}/book/${document.title.split(' — ')[0]?.toLowerCase().replace(/\s+/g, '-') || 'hotel'}`
+  const bookingUrl = profile.bookingEnabled && hotelSlug
+    ? `${window.location.origin}/book/${hotelSlug}`
+    : null;
+  const kioskUrl = profile.bookingEnabled && hotelSlug
+    ? `${window.location.origin}/kiosk/${hotelSlug}`
     : null;
 
   return (
@@ -136,11 +141,20 @@ export default function HotelInfoPanel() {
             <div className={`toggle-knob ${profile.bookingEnabled ? 'translate-x-5' : ''}`} />
           </button>
         </div>
-        {profile.bookingEnabled && (
-          <div className="mt-3 flex items-center gap-2 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg p-2">
-            <ExternalLink size={12} />
-            <span>{lang === 'ar' ? 'رابط الحجز:' : 'Booking link:'}</span>
-            <code className="bg-white px-2 py-0.5 rounded text-[10px] font-mono">/book/{'{slug}'}</code>
+        {profile.bookingEnabled && hotelSlug && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg p-2">
+              <ExternalLink size={12} />
+              <span>{lang === 'ar' ? 'رابط الحجز:' : 'Booking link:'}</span>
+              <code className="bg-white px-2 py-0.5 rounded text-[10px] font-mono flex-1">{bookingUrl}</code>
+              <button onClick={() => { navigator.clipboard.writeText(bookingUrl); }} className="text-emerald-600 hover:text-emerald-800 font-bold">Copy</button>
+            </div>
+            <div className="flex items-center gap-2 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg p-2">
+              <Globe size={12} />
+              <span>{lang === 'ar' ? 'شاشة الكشك:' : 'Kiosk/outdoor screen:'}</span>
+              <code className="bg-white px-2 py-0.5 rounded text-[10px] font-mono flex-1">{kioskUrl}</code>
+              <button onClick={() => { navigator.clipboard.writeText(kioskUrl); }} className="text-blue-600 hover:text-blue-800 font-bold">Copy</button>
+            </div>
           </div>
         )}
       </div>
