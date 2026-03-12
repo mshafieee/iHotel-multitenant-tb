@@ -2,6 +2,104 @@
 
 ---
 
+## Session: 2026-03-11 (Part 2) — Self-Booking System, Hotel Profile Management
+
+### Summary
+Added a complete guest self-booking system allowing guests to book rooms directly from a public page without staff involvement. Hotel owners can configure their public profile, upload room type images, and toggle online booking on/off.
+
+---
+
+### Changes Made
+
+#### 1. Database Schema (`server/db.js`)
+Added three new tables:
+- **`hotel_profiles`** — hotel public info: description (EN/AR), location (EN/AR), phone, email, website, amenities (JSON), check-in/out times, currency, booking toggle, booking terms, hero image URL
+- **`room_type_images`** — gallery images per room type with caption and sort order
+- **`room_type_info`** — room type descriptions (EN/AR), max guests, bed type, area (m²), amenities (JSON)
+
+#### 2. Public Booking APIs (`server/index.js`)
+- **`GET /api/public/book/:slug`** — returns hotel profile, room types with rates, images, and descriptions
+- **`GET /api/public/book/:slug/availability`** — checks room availability for a date range using interval overlap query
+- **`POST /api/public/book/:slug`** — creates a self-booking reservation (rate-limited: 10/15min per IP)
+  - Auto-assigns an available room of the requested type
+  - Creates reservation + income log entry
+  - Marks room NOT_OCCUPIED and fires checkIn event scenes
+  - Returns room code (6-digit), guest portal URL, and booking summary
+
+#### 3. Hotel Profile Management APIs (`server/index.js`)
+- **`GET /api/hotel/profile`** — owner fetches profile, room type info, and images
+- **`PUT /api/hotel/profile`** — owner updates hotel public information
+- **`PUT /api/hotel/room-type-info/:roomType`** — owner updates room type descriptions
+- **`POST /api/hotel/room-type-images/:roomType`** — owner uploads room type images (multer, 5MB max)
+- **`DELETE /api/hotel/room-type-images/:id`** — owner deletes room type image (removes file)
+- **`POST /api/hotel/hero-image`** — owner uploads hotel hero/cover image
+
+#### 4. HotelInfoPanel (`client/src/components/HotelInfoPanel.jsx`)
+New owner-only tab in the staff dashboard for managing:
+- Online booking toggle (disabled by default)
+- Hotel description, location, phone, email, website (bilingual EN/AR)
+- Amenity selector (WiFi, Pool, Gym, Spa, Restaurant, etc.)
+- Hero image upload with preview
+- Check-in/out times, currency, booking terms
+- Room type editor per type: description, bed type, max guests, area, image gallery
+
+#### 5. BookingPage (`client/src/pages/BookingPage.jsx`)
+Public page at `/book/:slug` with a 3-step booking wizard:
+1. **Date selection** — check-in/out date pickers with night count
+2. **Room type selection** — cards with image carousel, per-night pricing, amenity badges, bed type, area, live availability count
+3. **Guest information** — name (required), email, phone
+4. **Confirmation** — shows assigned room number, room code, guest portal link, total cost
+
+Features: bilingual EN/AR toggle, responsive layout, mobile-friendly.
+
+#### 6. Routing (`client/src/App.jsx`)
+Added public route: `<Route path="/book/:slug" element={<BookingPage />} />`
+
+#### 7. Dashboard Tab (`client/src/pages/DashboardPage.jsx`)
+Added "Hotel Info" tab (Hotel icon) visible to owner role only.
+
+#### 8. i18n (`client/src/i18n.js`)
+Added `tab_hotelinfo` key (AR: بيانات الفندق / EN: Hotel Info).
+
+---
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `1ed35da` | feat: self-booking system — public booking page, hotel profile management, room type images |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/db.js` | `hotel_profiles`, `room_type_images`, `room_type_info` table schemas |
+| `server/index.js` | Public booking APIs (3 endpoints); profile management APIs (6 endpoints); multer image upload |
+| `client/src/pages/BookingPage.jsx` | New: 3-step public booking wizard with image carousel and confirmation |
+| `client/src/components/HotelInfoPanel.jsx` | New: owner panel for hotel profile and room type management |
+| `client/src/pages/DashboardPage.jsx` | Added Hotel Info tab for owner role |
+| `client/src/App.jsx` | Added `/book/:slug` public route |
+| `client/src/i18n.js` | Added `tab_hotelinfo` translation key |
+
+---
+
+### Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Booking disabled by default | Owners must explicitly enable after configuring their profile — prevents incomplete public pages |
+| Rate-limited public booking endpoint | 10 requests per 15 min per IP prevents abuse without requiring CAPTCHA |
+| Auto room assignment | Guest picks room type, system assigns specific room — avoids conflicts and simplifies UX |
+| Separate tables for profile/images/info | Normalized schema allows multiple images per room type and independent updates |
+| Reuse existing reservation logic | Self-booking creates the same reservation + income_log rows as staff PMS — no separate booking system |
+| No payment gateway yet | Uses `payment_method: 'pending'` — can integrate Stripe/PayTabs/HyperPay later without schema changes |
+
+---
+
+---
+
 ## Session: 2026-03-11 — Admin Room Reservation, Command Debounce, Consumption Dashboard
 
 ### Summary

@@ -1334,6 +1334,53 @@ app.get('/api/public/hotel', (req, res) => {
 
 // ═══ SELF-BOOKING PUBLIC APIs ═══
 
+// List all hotels with online booking enabled (for /book directory page)
+app.get('/api/public/hotels', (req, res) => {
+  const hotels = db.prepare(`
+    SELECT h.name, h.slug, h.logo_url,
+           p.description, p.description_ar, p.location, p.location_ar,
+           p.hero_image_url, p.amenities, p.currency, p.check_in_time, p.check_out_time
+    FROM hotels h
+    JOIN hotel_profiles p ON p.hotel_id = h.id
+    WHERE h.active = 1 AND p.booking_enabled = 1
+    ORDER BY h.name
+  `).all();
+
+  const result = hotels.map(h => {
+    // Get cheapest rate for this hotel
+    const hotel = db.prepare('SELECT id FROM hotels WHERE slug=?').get(h.slug);
+    let minRate = null;
+    if (hotel) {
+      const rate = db.prepare('SELECT MIN(rate_per_night) as min_rate FROM night_rates WHERE hotel_id=?').get(hotel.id);
+      minRate = rate?.min_rate || null;
+    }
+    // Count room types
+    let roomTypeCount = 0;
+    if (hotel) {
+      const rtCount = db.prepare('SELECT COUNT(DISTINCT room_type) as cnt FROM hotel_rooms WHERE hotel_id=?').get(hotel.id);
+      roomTypeCount = rtCount?.cnt || 0;
+    }
+    return {
+      name: h.name,
+      slug: h.slug,
+      logoUrl: h.logo_url || null,
+      description: h.description || null,
+      descriptionAr: h.description_ar || null,
+      location: h.location || null,
+      locationAr: h.location_ar || null,
+      heroImageUrl: h.hero_image_url || null,
+      amenities: h.amenities ? JSON.parse(h.amenities) : [],
+      currency: h.currency || 'SAR',
+      checkInTime: h.check_in_time || '15:00',
+      checkOutTime: h.check_out_time || '12:00',
+      startingFrom: minRate,
+      roomTypeCount
+    };
+  });
+
+  res.json({ hotels: result });
+});
+
 // Public hotel profile for booking page — /book/:slug
 app.get('/api/public/book/:slug', (req, res) => {
   const slug = req.params.slug.toLowerCase();
@@ -1548,10 +1595,11 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
 // Get hotel profile
 app.get('/api/hotel/profile', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
+  const hotel = db.prepare('SELECT slug FROM hotels WHERE id=?').get(hotelId);
   const profile = db.prepare('SELECT * FROM hotel_profiles WHERE hotel_id=?').get(hotelId);
   const roomTypeInfo = db.prepare('SELECT * FROM room_type_info WHERE hotel_id=?').all(hotelId);
   const images = db.prepare('SELECT * FROM room_type_images WHERE hotel_id=? ORDER BY sort_order').all(hotelId);
-  res.json({ profile: profile || {}, roomTypeInfo, images });
+  res.json({ profile: profile || {}, roomTypeInfo, images, slug: hotel?.slug || '' });
 });
 
 // Update hotel profile
