@@ -1,9 +1,6 @@
 # Fly.io configuration for iHotel backend
-# Run `fly launch` inside the server/ directory to create your app,
-# then update the app name below to match.
-
-app = "ihotel-api"          # Change this to your actual app name after `fly launch`
-primary_region = "sin"      # Singapore — change to nearest region (e.g. lax, iad, fra)
+app = "ihotel"
+primary_region = "cdg"  # Paris, France
 
 [build]
   dockerfile = "Dockerfile"
@@ -11,10 +8,9 @@ primary_region = "sin"      # Singapore — change to nearest region (e.g. lax, 
 [env]
   PORT = "3000"
   NODE_ENV = "production"
+  DB_PATH = "/data/hilton.db"
   # Set secrets via CLI (never commit these):
-  #   fly secrets set JWT_SECRET=<value>
-  #   fly secrets set REFRESH_SECRET=<value>
-  #   fly secrets set CORS_ORIGIN=https://mshafieee.github.io
+  #   fly secrets set JWT_SECRET=<value> REFRESH_SECRET=<value> CORS_ORIGIN=https://mshafieee.github.io
 
 [http_service]
   internal_port = 3000
@@ -28,7 +24,6 @@ primary_region = "sin"      # Singapore — change to nearest region (e.g. lax, 
     hard_limit = 100
     soft_limit = 80
 
-# Persistent volume for SQLite database (run once: fly volumes create ihotel_data --size 1)
 [mounts]
-  source = "ihotel_data"
+  source = "data"
   destination = "/data"
