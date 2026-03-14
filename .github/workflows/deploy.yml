@@ -39,6 +39,8 @@ jobs:
 
       - name: Build frontend
         run: cd client && npm run build
+        env:
+          VITE_API_URL: https://ihotel.fly.dev
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4
