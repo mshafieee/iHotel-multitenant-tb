@@ -2,7 +2,7 @@
  * API client with JWT token management
  * Handles: login, auto-refresh on 401, secure token storage
  */
-const API_BASE = '';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 let accessToken = localStorage.getItem('accessToken');
 let refreshToken = localStorage.getItem('refreshToken');
