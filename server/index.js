@@ -71,6 +71,7 @@ const WATCHABLE_KEYS = ['roomStatus','pirMotionStatus','doorStatus','line1','lin
 
 // ═══ EXPRESS APP ═══
 const app = express();
+app.set('trust proxy', 1); // Required when running behind Fly.io / reverse proxy
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(s => s.trim());
@@ -2153,9 +2154,14 @@ app.post('/api/scenes/:id/push', authenticate, requireRole('owner', 'admin'), as
   }
 });
 
-// ═══ CATCH-ALL for SPA ═══
+// ═══ CATCH-ALL for SPA (only when client/dist is present locally) ═══
 app.get('*', (req, res) => {
-  res.sendFile(path.join(clientBuild, 'index.html'));
+  const indexPath = path.join(clientBuild, 'index.html');
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ error: 'Not found' });
+  }
 });
 
 // ═══ WEBSOCKET (TB proxy — per hotel) ═══
