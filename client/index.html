@@ -12,8 +12,9 @@
         var decoded = l.search.slice(1).split('&').map(function(s) {
           return s.replace(/~and~/g, '&');
         });
+        var base = '%BASE_URL%'.replace(/\/$/, '');
         window.history.replaceState(null, null,
-          decoded[0] + (decoded[1] ? '&' + decoded[1] : '') + l.hash
+          base + decoded[0] + (decoded[1] ? '&' + decoded[1] : '') + l.hash
         );
       }
     }(window.location));
