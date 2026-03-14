@@ -1,36 +1,68 @@
-name: Deploy to VPS
+name: Deploy Frontend to GitHub Pages
 
 on:
   push:
     branches:
       - main
 
+# Allow one concurrent deployment
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  deploy-frontend:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
-            cd /home/deploy/app
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
 
-            echo "→ Pulling latest code..."
-            git pull origin main
+      - name: Install client dependencies
+        run: cd client && npm ci
 
-            echo "→ Installing server dependencies..."
-            cd server && npm install --omit=dev && cd ..
+      - name: Build frontend
+        run: cd client && npm run build
+        env:
+          # Points to your Fly.io backend — update client/.env.production or set here
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-            echo "→ Building frontend..."
-            cd client && npm install && npm run build && cd ..
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
 
-            echo "→ Restarting API..."
-            pm2 restart hilton-api
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
 
-            echo "→ Done."
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Backend (Fly.io) — uncomment after running `fly launch` in server/
+  # ──────────────────────────────────────────────────────────────────────────
+  # deploy-backend:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: superfly/flyctl-actions/setup-flyctl@master
+  #     - run: cd server && fly deploy --remote-only
+  #       env:
+  #         FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
