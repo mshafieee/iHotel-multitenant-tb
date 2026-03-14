@@ -39,9 +39,6 @@ jobs:
 
       - name: Build frontend
         run: cd client && npm run build
-        env:
-          # Points to your Fly.io backend — update client/.env.production or set here
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4
