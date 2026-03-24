@@ -1,36 +1,20 @@
-name: Deploy to VPS
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
-            cd /home/deploy/app
-
-            echo "→ Pulling latest code..."
-            git pull origin main
-
-            echo "→ Installing server dependencies..."
-            cd server && npm install --omit=dev && cd ..
-
-            echo "→ Building frontend..."
-            cd client && npm install && npm run build && cd ..
-
-            echo "→ Restarting API..."
-            pm2 restart hilton-api
-
-            echo "→ Done."
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install & build client
+        run: cd client && npm ci && npm run build

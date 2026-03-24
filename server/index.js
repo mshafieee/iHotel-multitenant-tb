@@ -71,6 +71,7 @@ const WATCHABLE_KEYS = ['roomStatus','pirMotionStatus','doorStatus','line1','lin
 
 // ═══ EXPRESS APP ═══
 const app = express();
+app.set('trust proxy', 1); // Required when running behind Fly.io / reverse proxy
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(s => s.trim());
@@ -417,12 +418,15 @@ function detectAndLogChanges(hotelId, roomNum, t) {
   const prev          = lastTelemetry[roomNum];
   if (!prev) { lastTelemetry[roomNum] = { ...t }; return; }
 
-  // Guard: while the server has set NOT_OCCUPIED (snapshot exists), ignore the
-  // device's reported roomStatus unless it confirms 4.  The ESP32 keeps sending
-  // its own local roomStatus (=1 OCCUPIED) until it reads and applies our shared
-  // attribute command.  Without this, the first device packet after the timer fires
-  // overwrites roomStatus back to 1, deletes the snapshot, and breaks restore.
-  if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in t && t.roomStatus !== 4) {
+  // Guard: protect server-commanded NOT_OCCUPIED (4) from stale device telemetry.
+  // Covers two cases:
+  //  (a) Snapshot exists — NOT_OCCUPIED timer fired (returning guest path).
+  //  (b) No snapshot but server last set status to 4 — reservation created, first arrival.
+  // The ESP32 keeps reporting its own roomStatus (= 1 OCCUPIED) until it reads and
+  // applies the server's shared-attribute command.  Without this guard that stale value
+  // overwrites lastTelemetry[roomNum].roomStatus → curStatus resolves to 1 below →
+  // restoreOccupied / welcome scene never fires.
+  if ((getRoomStateSnapshots(hotelId)[roomNum] || prev.roomStatus === 4) && 'roomStatus' in t && t.roomStatus !== 4) {
     t = { ...t };
     delete t.roomStatus;
   }
@@ -439,14 +443,20 @@ function detectAndLogChanges(hotelId, roomNum, t) {
       // Discard restore snapshot when the room reaches a definitive state (not returning from NOT_OCCUPIED)
       if (to !== 4) delete getRoomStateSnapshots(hotelId)[roomNum];
       // not logged here — PMS/control/checkout routes log status changes directly
+
     }
     else if (key === 'doorStatus') {
       if (to === true) { msg = 'Door OPENED'; cat = 'sensor'; }  // log opens only
       const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
+      const roomOverview = getLastOverviewRooms(hotelId)[roomNum];
       if (to === true) {
-        if (curStatus === 0) {
+        const isReserved = curStatus === 0 || (roomOverview?.reservation && curStatus !== 1);
+        if (isReserved) {
           const devId = deviceRoomMap[roomNum];
-          if (devId) setImmediate(() => sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {}));
+          if (devId) setImmediate(async () => {
+            await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {});
+            checkEventScenes(hotelId, roomNum, { roomStatus: 1 }, { roomStatus: 0 });
+          });
         }
         if (curStatus === 1) startNotOccupiedTimer(hotelId, roomNum);
       } else {
@@ -490,6 +500,22 @@ function detectAndLogChanges(hotelId, roomNum, t) {
         (key === 'curtainsPosition' && to > 0)      ||
         (key === 'blindsPosition'   && to > 0);
       if (isActivity) setImmediate(() => restoreOccupied(hotelId, roomNum));
+    }
+
+    // Auto-set OCCUPIED on physical activity in a RESERVED room (lights, AC, curtains)
+    const roomOverview2 = getLastOverviewRooms(hotelId)[roomNum];
+    if (curStatus !== 1 && roomOverview2?.reservation) {
+      const isGuestActivity =
+        (key === 'line1' && to === true) ||
+        (key === 'line2' && to === true) ||
+        (key === 'line3' && to === true) ||
+        (key === 'acMode' && to > 0)    ||
+        (key === 'curtainsPosition' && to > 0) ||
+        (key === 'blindsPosition'   && to > 0);
+      if (isGuestActivity) {
+        const devId = deviceRoomMap[roomNum];
+        if (devId) setImmediate(() => sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {}));
+      }
     }
 
     if (msg) addLog(hotelId, cat, msg, { room: roomNum, source: 'gateway' });
@@ -628,8 +654,8 @@ async function restoreOccupied(hotelId, roomNum) {
 
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto');
 
-    // Restore device state from before the NOT_OCCUPIED transition
     if (snap) {
+      // Returning guest: restore room state from before the NOT_OCCUPIED transition
       await sendControl(hotelId, devId, 'setLines',
         { line1: snap.line1, line2: snap.line2, line3: snap.line3,
           dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
@@ -639,6 +665,9 @@ async function restoreOccupied(hotelId, roomNum) {
       await sendControl(hotelId, devId, 'setCurtainsBlinds',
         { curtainsPosition: snap.curtainsPosition,
           blindsPosition: snap.blindsPosition }, 'auto');
+    } else {
+      // First-time arrival: no saved state — fire the welcome scene immediately
+      checkEventScenes(hotelId, roomNum, { roomStatus: 1 }, { roomStatus: 4 });
     }
 
   } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
@@ -708,6 +737,21 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   tb.saveTelemetry(deviceId, telemetry).catch(e => console.error('TB telemetry write failed:', e.message));
   if (Object.keys(sharedAttrs).length) {
     tb.saveAttributes(deviceId, sharedAttrs).catch(e => console.error('TB attr write failed:', e.message));
+  }
+
+  // ── When room becomes Booked (NOT_OCCUPIED): apply power-save immediately ───
+  if (telemetry.roomStatus === 4) {
+    const BOOKED_POWER_SAVE = {
+      pdMode: true,
+      line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0,
+      acMode: 1, acTemperatureSet: 26, fanSpeed: 0
+    };
+    lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...BOOKED_POWER_SAVE };
+    if (lastOverviewCtl[roomNum]) Object.assign(lastOverviewCtl[roomNum], BOOKED_POWER_SAVE);
+    pdState[roomNum] = true;
+    sseBatchTelemetry(hotelId, roomNum, deviceId, BOOKED_POWER_SAVE);
+    tb.saveTelemetry(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save telemetry write failed:', e.message));
+    tb.saveAttributes(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save attr write failed:', e.message));
   }
 
   // ── Command feedback: verify device updated after a short delay ─────────────
@@ -1112,17 +1156,7 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
     password: plainPassword, guestUrl
   });
 
-  // Mark room NOT_OCCUPIED now that it has a reservation (non-blocking)
-  setImmediate(async () => {
-    const deviceRoomMap = getDeviceRoomMap(hotelId);
-    const devId = deviceRoomMap[room];
-    if (!devId) return;
-    try {
-      await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, req.user.username);
-    } catch (e) { console.error(`Failed to set room ${room} NOT_OCCUPIED after reservation:`, e.message); }
-    // Fire checkIn event scenes
-    checkEventScenes(hotelId, room, { checkIn: 1 });
-  });
+  // Room stays VACANT until guest physically arrives (door open → OCCUPIED)
 });
 
 app.get('/api/pms/export', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
@@ -1152,6 +1186,19 @@ app.delete('/api/pms/reservations/:id', authenticate, (req, res) => {
   addLog(hotelId, 'pms', 'Reservation cancelled', { room: existing.room, user: req.user.username });
   if (existing.room) sseBroadcast(hotelId, 'lockout', { room: existing.room });
   res.json({ success: true });
+
+  // If the room is still NOT_OCCUPIED (guest never arrived), immediately restore it to VACANT
+  if (existing.room) setImmediate(async () => {
+    const devId = getDeviceRoomMap(hotelId)[existing.room];
+    if (!devId) return;
+    const roomData = getLastOverviewRooms(hotelId)[existing.room];
+    if (roomData?.roomStatus === 4) {
+      delete getRoomStateSnapshots(hotelId)[existing.room];
+      try {
+        await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
+      } catch (e) { console.error('Failed to vacate room after reservation cancel:', e.message); }
+    }
+  });
 });
 
 app.post('/api/pms/reservations/:id/extend', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
@@ -1228,8 +1275,31 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
   }
   sseBroadcast(hotelId, 'lockout', { room });
   addLog(hotelId, 'pms', `Room ${room} checked out → SERVICE`, { room, user: req.user.username });
-  // Fire checkOut event scenes
-  setImmediate(() => checkEventScenes(hotelId, room, { checkOut: 1 }));
+
+  // Reset all room appliances to default state (non-blocking)
+  setImmediate(async () => {
+    const CHECKOUT_RESET = {
+      pdMode: false, line1: false, line2: false, line3: false,
+      dimmer1: 0, dimmer2: 0, acMode: 0, fanSpeed: 0, acTemperatureSet: 26,
+      curtainsPosition: 0, blindsPosition: 0,
+      dndService: false, murService: false, sosService: false
+    };
+    const lt = getLastKnownTelemetry(hotelId);
+    const lo = getLastOverviewRooms(hotelId);
+    lt[room] = { ...(lt[room] || {}), ...CHECKOUT_RESET };
+    if (lo[room]) Object.assign(lo[room], CHECKOUT_RESET);
+    if (devId) {
+      sseBatchTelemetry(hotelId, room, devId, CHECKOUT_RESET);
+      const tb = getHotelTB(hotelId);
+      try {
+        await tb.saveTelemetry(devId, CHECKOUT_RESET);
+        await tb.saveAttributes(devId, CHECKOUT_RESET);
+      } catch (e) { console.error(`Reset TB write at checkout room ${room}:`, e.message); }
+    }
+    // Fire checkOut event scenes after reset
+    checkEventScenes(hotelId, room, { checkOut: 1 });
+  });
+
   res.json({ success: true });
 });
 
@@ -1508,8 +1578,8 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
   if (ciDate < today) return res.status(400).json({ error: 'Check-in date cannot be in the past' });
   if (coDate <= ciDate) return res.status(400).json({ error: 'Check-out must be after check-in' });
 
-  // Find an available room of the requested type
-  const allRooms = db.prepare('SELECT room_number FROM hotel_rooms WHERE hotel_id=? AND room_type=?')
+  // Find an available room of the requested type — lowest floor first
+  const allRooms = db.prepare('SELECT room_number FROM hotel_rooms WHERE hotel_id=? AND room_type=? ORDER BY CAST(room_number AS INTEGER)')
     .all(hotel.id, roomType);
   if (!allRooms.length) return res.status(400).json({ error: `No rooms of type ${roomType} exist` });
 
@@ -1562,16 +1632,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
   const guestBase = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
   const guestUrl = `${guestBase}/guest?token=${encodeURIComponent(token)}`;
 
-  // Mark room NOT_OCCUPIED (non-blocking)
-  setImmediate(async () => {
-    const deviceRoomMap = getDeviceRoomMap(hotel.id);
-    const devId = deviceRoomMap[room];
-    if (!devId) return;
-    try {
-      await sendControl(hotel.id, devId, 'setRoomStatus', { roomStatus: 4 }, 'self-booking');
-    } catch (e) { console.error(`Failed to set room ${room} NOT_OCCUPIED after self-booking:`, e.message); }
-    checkEventScenes(hotel.id, room, { checkIn: 1 });
-  });
+  // Room stays VACANT until guest physically arrives (door open → OCCUPIED)
 
   res.json({
     success: true,
@@ -1897,7 +1958,28 @@ app.post('/api/guest/rpc', authenticate, async (req, res) => {
 
   const roomData = lastOverview[r.room];
   if (roomData && roomData.roomStatus === 4) {
+    // Claim snapshot before sendControl clears it on status change
+    const snapshots = getRoomStateSnapshots(hotelId);
+    const snap = snapshots[r.room];
+    if (snap) delete snapshots[r.room];
     try { await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, `guest:${r.guest_name}`); } catch {}
+    if (snap) {
+      // Returning guest: restore saved room state (lights, AC, curtains)
+      try {
+        await sendControl(hotelId, devId, 'setLines',
+          { line1: snap.line1, line2: snap.line2, line3: snap.line3,
+            dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
+        await sendControl(hotelId, devId, 'setAC',
+          { acMode: snap.acMode, acTemperatureSet: snap.acTemperatureSet,
+            fanSpeed: snap.fanSpeed }, 'auto');
+        await sendControl(hotelId, devId, 'setCurtainsBlinds',
+          { curtainsPosition: snap.curtainsPosition,
+            blindsPosition: snap.blindsPosition }, 'auto');
+      } catch {}
+    } else {
+      // First-time arrival: no saved state — fire the welcome scene
+      checkEventScenes(hotelId, r.room, { roomStatus: 1 }, { roomStatus: 4 });
+    }
   }
   sendControl(hotelId, devId, method, params || {}, req.user.username)
     .then(d => res.json(d))
@@ -2067,6 +2149,10 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
     await sendControl(hotelId, devId, 'resetServices', { services: ['dndService', 'murService', 'sosService'] }, req.user.username);
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
     await sendControl(hotelId, devId, 'resetMeters', {}, req.user.username);
+    // Cancel any active reservation for this room
+    db.prepare('UPDATE reservations SET active=0 WHERE hotel_id=? AND room=? AND active=1').run(hotelId, room);
+    sseBroadcast(hotelId, 'lockout', { room });
+    addLog(hotelId, 'pms', `Reservation cancelled (room reset) Rm${room}`, { room, user: req.user.username });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2530,9 +2616,14 @@ app.post('/api/scenes/:id/push', authenticate, requireRole('owner', 'admin'), as
   }
 });
 
-// ═══ CATCH-ALL for SPA ═══
+// ═══ CATCH-ALL for SPA (only when client/dist is present locally) ═══
 app.get('*', (req, res) => {
-  res.sendFile(path.join(clientBuild, 'index.html'));
+  const indexPath = path.join(clientBuild, 'index.html');
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ error: 'Not found' });
+  }
 });
 
 // ═══ WEBSOCKET (TB proxy — per hotel) ═══

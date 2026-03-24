@@ -7,8 +7,9 @@ import { t } from '../i18n';
 
 const AC_MODES = ['OFF', 'COOL', 'HEAT', 'FAN', 'AUTO'];
 const FAN_SPEEDS = ['LOW', 'MED', 'HIGH', 'AUTO'];
-const STATUSES = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
-const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
+const STATUSES = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED', 'RESERVED'];
+const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6', '#0891B2'];
+const effectiveStatusIdx = (r) => (r?.roomStatus === 0 && r?.reservation) ? 5 : (r?.roomStatus ?? 0);
 const MODE_COLORS = ['#6B7280', '#2563EB', '#DC2626', '#06B6D4', '#16A34A'];
 
 // ── Smart Bulb Component ──────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const can = role === 'owner' || role === 'admin';
   const isStaff = can || role === 'frontdesk';
   const isGuest = role === 'guest';
-  const statusIdx = Math.min(r.roomStatus ?? 0, STATUSES.length - 1);
+  const statusIdx = Math.min(effectiveStatusIdx(r), STATUSES.length - 1);
   const sc = SCOL[statusIdx] ?? SCOL[0];
 
   // Fire the actual server RPC (no debounce)
@@ -572,16 +573,26 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
                 {isGuest ? `${T('rm_room')} ${r.room}` : `Room ${r.room}`}
               </h2>
               {!isGuest && (
-                <div className="flex gap-1.5 mt-1">
+                <div className="flex gap-1.5 mt-1 flex-wrap">
                   <span className="badge" style={{ background: sc + '18', color: sc }}>{STATUSES[statusIdx]}</span>
                   {r.pdMode && <span className="badge bg-red-50 text-red-600">⚡ PD</span>}
                   <span className="badge bg-gray-100 text-gray-500">{r.type}</span>
                   <span className="badge bg-gray-100 text-gray-500">F{r.floor}</span>
                   {r.reservation && <span className="badge bg-blue-50 text-blue-600">👤 {r.reservation.guestName}</span>}
+                  {r.reservation?.checkOut && r.roomStatus !== 3 && (
+                    <span className="badge bg-amber-50 text-amber-700">
+                      {lang === 'ar' ? `تسجيل الخروج: ${r.reservation.checkOut}` : `Checkout: ${r.reservation.checkOut}`}
+                    </span>
+                  )}
                 </div>
               )}
               {isGuest && r.reservation && (
                 <div className="text-xs text-blue-200">{r.reservation.guestName}</div>
+              )}
+              {isGuest && r.reservation?.checkOut && r.roomStatus !== 3 && (
+                <div className="text-xs text-blue-200 mt-0.5">
+                  {lang === 'ar' ? `تسجيل الخروج: ${r.reservation.checkOut}` : `Checkout: ${r.reservation.checkOut}`}
+                </div>
               )}
             </div>
           </div>

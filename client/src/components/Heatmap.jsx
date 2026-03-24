@@ -1,9 +1,12 @@
 import { useState, useMemo, memo } from 'react';
 import useHotelStore from '../store/hotelStore';
 
-// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED
-const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
-const STATUS_FULL   = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Reserved'];
+// 0=VACANT 1=OCCUPIED 2=SERVICE 3=MAINTENANCE 4=NOT_OCCUPIED 5=RESERVED(display only)
+const STATUS_COLORS = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6', '#0891B2'];
+const STATUS_FULL   = ['Vacant', 'Occupied', 'Service', 'Maintenance', 'Not Occupied', 'Reserved'];
+
+// Returns display status index — VACANT rooms with a reservation show as RESERVED (5)
+const effectiveStatus = (r) => (r?.roomStatus === 0 && r?.reservation) ? 5 : (r?.roomStatus ?? 0);
 const TYPE_ABBR     = { STANDARD: 'Std', DELUXE: 'Dlx', SUITE: 'Ste', VIP: 'VIP' };
 const TYPE_KEYS     = ['STANDARD', 'DELUXE', 'SUITE', 'VIP'];
 
@@ -92,7 +95,7 @@ const FloorBox = memo(function FloorBox({ floorNum, stats, isExpanded, onClick }
 // ── Room card (individual cell) — receives single room object, wrapped with memo
 // Only re-renders when THIS room's data or hover state changes.
 const RoomCell = memo(function RoomCell({ rn, r, onSelectRoom, hoveredRoom, setHoveredRoom }) {
-  const status   = r ? (r.roomStatus ?? 0) : 0;
+  const status   = r ? effectiveStatus(r) : 0;
   const isSOS    = r ? !!r.sosService : false;
   const isMUR    = r ? !!r.murService : false;
   const isDND    = r ? !!r.dndService : false;
@@ -103,7 +106,7 @@ const RoomCell = memo(function RoomCell({ rn, r, onSelectRoom, hoveredRoom, setH
   const temp     = r?.temperature ?? null;
 
   const bgColor = r
-    ? (isSOS ? '#DC2626' : isPD ? '#1E293B' : STATUS_COLORS[Math.min(status, 4)])
+    ? (isSOS ? '#DC2626' : isPD ? '#1E293B' : STATUS_COLORS[Math.min(status, STATUS_COLORS.length - 1)])
     : '#E5E7EB';
   const isHov = hoveredRoom === rn;
 
@@ -276,8 +279,8 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                 <div className="mt-3 px-3 py-2 rounded-xl border border-gray-100 bg-white flex flex-wrap items-center gap-3 text-xs text-gray-600">
                   <span className="font-bold text-gray-800">Room {hoveredRoom}</span>
                   <span className="text-gray-400">{hovered.roomType}</span>
-                  <span className="font-semibold" style={{ color: STATUS_COLORS[hovered.roomStatus ?? 0] }}>
-                    {STATUS_FULL[hovered.roomStatus ?? 0]}
+                  <span className="font-semibold" style={{ color: STATUS_COLORS[effectiveStatus(hovered)] }}>
+                    {STATUS_FULL[effectiveStatus(hovered)]}
                   </span>
                   {hovered.temperature != null && <span>🌡 {hovered.temperature}°C</span>}
                   {hovered.humidity    != null && <span>💧 {hovered.humidity}%</span>}
@@ -332,8 +335,8 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                 <span className="font-bold text-gray-800 text-sm">Room {hoveredRoom}</span>
                 <span>Floor {hovered.floor}</span>
                 <span className="text-gray-400">{hovered.roomType}</span>
-                <span className="font-semibold" style={{ color: STATUS_COLORS[hovered.roomStatus ?? 0] }}>
-                  {STATUS_FULL[hovered.roomStatus ?? 0]}
+                <span className="font-semibold" style={{ color: STATUS_COLORS[effectiveStatus(hovered)] }}>
+                  {STATUS_FULL[effectiveStatus(hovered)]}
                 </span>
                 {hovered.temperature != null && <span>🌡 {hovered.temperature}°C</span>}
                 {hovered.humidity    != null && <span>💧 {hovered.humidity}%</span>}
