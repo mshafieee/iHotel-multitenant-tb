@@ -579,7 +579,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
                   <span className="badge bg-gray-100 text-gray-500">{r.type}</span>
                   <span className="badge bg-gray-100 text-gray-500">F{r.floor}</span>
                   {r.reservation && <span className="badge bg-blue-50 text-blue-600">👤 {r.reservation.guestName}</span>}
-                  {r.reservation?.checkOut && r.roomStatus !== 0 && r.roomStatus !== 3 && (
+                  {r.reservation?.checkOut && r.roomStatus !== 3 && (
                     <span className="badge bg-amber-50 text-amber-700">
                       {lang === 'ar' ? `تسجيل الخروج: ${r.reservation.checkOut}` : `Checkout: ${r.reservation.checkOut}`}
                     </span>
@@ -589,7 +589,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               {isGuest && r.reservation && (
                 <div className="text-xs text-blue-200">{r.reservation.guestName}</div>
               )}
-              {isGuest && r.reservation?.checkOut && r.roomStatus !== 0 && r.roomStatus !== 3 && (
+              {isGuest && r.reservation?.checkOut && r.roomStatus !== 3 && (
                 <div className="text-xs text-blue-200 mt-0.5">
                   {lang === 'ar' ? `تسجيل الخروج: ${r.reservation.checkOut}` : `Checkout: ${r.reservation.checkOut}`}
                 </div>

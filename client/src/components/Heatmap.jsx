@@ -292,6 +292,9 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                   {hovered.reservation && (
                     <span className="text-brand-500 font-semibold">👤 {hovered.reservation.guestName}</span>
                   )}
+                  {hovered.reservation?.checkOut && hovered.roomStatus !== 3 && (
+                    <span className="text-amber-600 font-semibold">↩ {hovered.reservation.checkOut}</span>
+                  )}
                 </div>
               )}
             </div>
@@ -347,6 +350,9 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
                 </span>
                 {hovered.reservation && (
                   <span className="text-brand-500 font-semibold">👤 {hovered.reservation.guestName}</span>
+                )}
+                {hovered.reservation?.checkOut && hovered.roomStatus !== 3 && (
+                  <span className="text-amber-600 font-semibold">↩ {hovered.reservation.checkOut}</span>
                 )}
               </>
             ) : null}
