@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel } from 'lucide-react';
+import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel, BedDouble } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import useHotelStore from '../store/hotelStore';
 import useLangStore from '../store/langStore';
@@ -18,6 +18,7 @@ import ShiftsPanel from '../components/ShiftsPanel';
 import SimulatorPanel from '../components/SimulatorPanel';
 import ScenesPanel from '../components/ScenesPanel';
 import HotelInfoPanel from '../components/HotelInfoPanel';
+import HousekeepingPanel from '../components/HousekeepingPanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
 function beep(freq, duration, volume = 0.6) {
@@ -43,18 +44,25 @@ export default function DashboardPage() {
   const { user, logout } = useAuthStore();
   const { lang, setLang } = useLangStore();
   const T = (key) => t(key, lang);
-  const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk') };
-  const { startPolling, stopPolling, connectSSE, alerts, dismissAlert, todayCheckouts, commandAcks, dismissCommandAck } = useHotelStore();
+  const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk'), housekeeper: 'Housekeeper' };
+  const {
+    startPolling, stopPolling, connectSSE,
+    alerts, dismissAlert,
+    todayCheckouts, commandAcks, dismissCommandAck,
+    hkAssignments, hkNotifications, dismissHKNotification,
+    fetchHKQueue, fetchHKAssignments,
+  } = useHotelStore();
   const rooms = useHotelStore(s => s.rooms);
   const [tab, setTab] = useState('rooms');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [clock, setClock] = useState('');
   const seenAlerts = useRef(new Set());
 
-  const role = user?.role;
-  const isOwner = role === 'owner';
-  const isAdmin = role === 'admin';
-  const isFrontdesk = role === 'frontdesk';
+  const role          = user?.role;
+  const isOwner       = role === 'owner';
+  const isAdmin       = role === 'admin';
+  const isFrontdesk   = role === 'frontdesk';
+  const isHousekeeper = role === 'housekeeper';
   const [resettingAll, setResettingAll] = useState(false);
   const [roomSearch, setRoomSearch] = useState('');
   const [showRoomSearch, setShowRoomSearch] = useState(false);
@@ -79,23 +87,31 @@ export default function DashboardPage() {
     } catch (e) { alert('Reset failed: ' + e.message); }
     finally { setResettingAll(false); }
   };
-  const canSeeRooms = true;
-  const canSeePMS = isOwner || isAdmin || isFrontdesk;
-  const canSeeLogs = isOwner || isAdmin;
-  const canSeeFinance = isOwner;
-  const canSeeUsers = isOwner;
-  const canSeeShifts = isOwner || isAdmin || isFrontdesk;
+  const canSeeRooms        = !isHousekeeper; // Housekeepers go straight to their task list
+  const canSeePMS          = isOwner || isAdmin || isFrontdesk;
+  const canSeeLogs         = isOwner || isAdmin;
+  const canSeeFinance      = isOwner;
+  const canSeeUsers        = isOwner;
+  const canSeeShifts       = isOwner || isAdmin || isFrontdesk;
+  // Housekeeping tab: managers assign rooms; housekeepers see their own tasks
+  const canSeeHousekeeping = isOwner || isAdmin || isFrontdesk || isHousekeeper;
+
+  // Pending housekeeping assignments for the tab badge (manager view only)
+  const hkPendingCount = isHousekeeper
+    ? hkAssignments.filter(a => a.status === 'pending').length
+    : hkAssignments.filter(a => ['pending', 'in_progress'].includes(a.status)).length;
 
   const TABS = [
-    { id: 'rooms',     label: T('tab_rooms'),     icon: LayoutGrid,    visible: canSeeRooms },
-    { id: 'pms',       label: T('tab_pms'),        icon: BookOpen,      visible: canSeePMS,      badge: todayCheckouts?.length },
-    { id: 'logs',      label: T('tab_logs'),       icon: ScrollText,    visible: canSeeLogs },
-    { id: 'finance',   label: T('tab_finance'),    icon: DollarSign,    visible: canSeeFinance },
-    { id: 'users',     label: T('tab_users'),      icon: Users,         visible: canSeeUsers },
-    { id: 'shifts',    label: T('tab_shifts'),     icon: Clock,         visible: canSeeShifts },
-    { id: 'scenes',    label: T('tab_scenes'),     icon: Zap,           visible: isOwner || isAdmin },
-    { id: 'hotelinfo', label: T('tab_hotelinfo'),  icon: Hotel,         visible: isOwner },
-    { id: 'simulator', label: T('tab_simulator'),  icon: FlaskConical,  visible: isOwner || isAdmin },
+    { id: 'rooms',        label: T('tab_rooms'),      icon: LayoutGrid,  visible: canSeeRooms },
+    { id: 'pms',          label: T('tab_pms'),         icon: BookOpen,    visible: canSeePMS,          badge: todayCheckouts?.length },
+    { id: 'housekeeping', label: 'Housekeeping',       icon: BedDouble,   visible: canSeeHousekeeping, badge: hkPendingCount },
+    { id: 'logs',         label: T('tab_logs'),        icon: ScrollText,  visible: canSeeLogs },
+    { id: 'finance',      label: T('tab_finance'),     icon: DollarSign,  visible: canSeeFinance },
+    { id: 'users',        label: T('tab_users'),       icon: Users,       visible: canSeeUsers },
+    { id: 'shifts',       label: T('tab_shifts'),      icon: Clock,       visible: canSeeShifts },
+    { id: 'scenes',       label: T('tab_scenes'),      icon: Zap,         visible: isOwner || isAdmin },
+    { id: 'hotelinfo',    label: T('tab_hotelinfo'),   icon: Hotel,       visible: isOwner },
+    { id: 'simulator',    label: T('tab_simulator'),   icon: FlaskConical,visible: isOwner || isAdmin },
   ].filter(tb => tb.visible);
 
   useEffect(() => {
@@ -103,8 +119,15 @@ export default function DashboardPage() {
   }, [user?.hotelName]);
 
   useEffect(() => {
+    // Housekeepers land directly on their task list; other roles start on rooms
+    if (isHousekeeper) setTab('housekeeping');
     startPolling();
     connectSSE();
+    // Load housekeeping data for everyone who can see the tab
+    if (canSeeHousekeeping) {
+      fetchHKQueue();
+      fetchHKAssignments();
+    }
     const t = setInterval(() => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })), 1000);
     return () => { stopPolling(); clearInterval(t); };
   }, []);
@@ -230,14 +253,15 @@ export default function DashboardPage() {
             <RoomTable onSelectRoom={setSelectedRoom} role={role} />
           </>
         )}
-        {tab === 'pms'       && <PMSPanel autoFillRoom={pmsAutoFillRoom} onAutoFillConsumed={() => setPmsAutoFillRoom(null)} />}
-        {tab === 'logs'      && <LogsPanel />}
-        {tab === 'finance'   && <FinancePanel />}
-        {tab === 'users'     && <UsersPanel />}
-        {tab === 'shifts'    && <ShiftsPanel />}
-        {tab === 'scenes'    && <ScenesPanel />}
-        {tab === 'hotelinfo' && <HotelInfoPanel />}
-        {tab === 'simulator' && <SimulatorPanel />}
+        {tab === 'pms'          && <PMSPanel autoFillRoom={pmsAutoFillRoom} onAutoFillConsumed={() => setPmsAutoFillRoom(null)} />}
+        {tab === 'housekeeping' && <HousekeepingPanel />}
+        {tab === 'logs'         && <LogsPanel />}
+        {tab === 'finance'      && <FinancePanel />}
+        {tab === 'users'        && <UsersPanel />}
+        {tab === 'shifts'       && <ShiftsPanel />}
+        {tab === 'scenes'       && <ScenesPanel />}
+        {tab === 'hotelinfo'    && <HotelInfoPanel />}
+        {tab === 'simulator'    && <SimulatorPanel />}
       </main>
 
       {/* Room Modal */}
@@ -254,6 +278,27 @@ export default function DashboardPage() {
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
         {alerts.map((a, i) => (
           <AlertToast key={`${a.ts}-${i}`} alert={a} onDismiss={() => dismissAlert(i)} />
+        ))}
+
+        {/* Housekeeping assignment notifications — shown only to housekeepers */}
+        {hkNotifications.map(n => (
+          <div key={n.id}
+            className="flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg bg-amber-50 border border-amber-200 cursor-pointer"
+            onClick={() => { dismissHKNotification(n.id); setTab('housekeeping'); }}>
+            <span className="text-xl shrink-0">🧹</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-bold text-amber-800">New cleaning assignment</div>
+              <div className="text-[11px] text-amber-700 mt-0.5">
+                {n.assignments?.length === 1
+                  ? `Room ${n.assignments[0].room}`
+                  : `${n.assignments?.length} rooms`}
+                {n.notes ? ` — ${n.notes}` : ''}
+              </div>
+              <div className="text-[10px] text-amber-500 mt-0.5">from {n.assignedBy} · tap to view</div>
+            </div>
+            <button onClick={e => { e.stopPropagation(); dismissHKNotification(n.id); }}
+              className="text-amber-400 hover:text-amber-600 text-xs font-bold">✕</button>
+          </div>
         ))}
         {/* Command acknowledgement toasts */}
         {commandAcks.map(ack => (

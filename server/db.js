@@ -392,6 +392,34 @@ function initDB() {
     )
   `);
 
+  // ── Housekeeping assignments (hotel-scoped) ───────────────────────────────
+  // Tracks room cleaning tasks: who assigned, who cleans, timing, and status.
+  // status: 'pending' | 'in_progress' | 'done' | 'cancelled'
+  // One assignment record per room per cleaning cycle.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS housekeeping_assignments (
+      id TEXT PRIMARY KEY,
+      hotel_id TEXT NOT NULL,
+      room TEXT NOT NULL,
+      assigned_to TEXT NOT NULL,        -- username of the housekeeper
+      assigned_by TEXT NOT NULL,        -- username of manager who assigned
+      assigned_at INTEGER NOT NULL,     -- Unix ms timestamp
+      status TEXT NOT NULL DEFAULT 'pending',
+      started_at INTEGER,               -- when housekeeper tapped "Start"
+      completed_at INTEGER,             -- when housekeeper tapped "Done"
+      notes TEXT,                       -- optional manager note
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
+  // ── Migration 020: create housekeeping_assignments table ─────────────────
+  // This is a new table so no ALTER needed; the CREATE IF NOT EXISTS above
+  // handles first-run. We just mark the migration so we know it ran.
+  if (!hasMigration('020_housekeeping_assignments')) {
+    markMigration('020_housekeeping_assignments');
+    console.log('✓ Migration 020: housekeeping_assignments table ready');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (
