@@ -5,17 +5,19 @@ import useLangStore from '../store/langStore';
 import { t } from '../i18n';
 
 const ROOM_TYPES = ['STANDARD', 'DELUXE', 'SUITE', 'VIP'];
-const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6'];
+const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6', '#0891B2'];
+const effectiveStatusIdx = (r) => (r?.roomStatus === 0 && r?.reservation) ? 5 : (r?.roomStatus ?? 0);
 
 export default function RoomTable({ onSelectRoom, role }) {
   const rooms = useHotelStore(s => s.rooms);
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
 
-  const STATUSES = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
-  const STATUS_KEYS = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
+  const STATUSES = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied'), T('status_reserved')];
+  const STATUS_KEYS = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED', 'RESERVED'];
   const FILTERS = [
     ['all', T('all')],
+    ['reserved',     T('status_reserved')],
     ['vacant',       T('rt_vacant')],
     ['occupied',     T('rt_occupied')],
     ['service',      T('rt_service')],
@@ -41,7 +43,8 @@ export default function RoomTable({ onSelectRoom, role }) {
     if (floor) arr = arr.filter(r => r.floor === floor);
     const fmap = {
       occupied: r => r.roomStatus === 1,
-      vacant: r => r.roomStatus === 0,
+      vacant: r => r.roomStatus === 0 && !r.reservation,
+      reserved: r => r.roomStatus === 0 && !!r.reservation,
       service: r => r.roomStatus === 2,
       maintenance: r => r.roomStatus === 3,
       not_occupied: r => r.roomStatus === 4,
@@ -111,7 +114,7 @@ export default function RoomTable({ onSelectRoom, role }) {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {filtered.map(r => {
-              const statusIdx = Math.min(r.roomStatus ?? 0, STATUSES.length - 1);
+              const statusIdx = Math.min(effectiveStatusIdx(r), STATUSES.length - 1);
               const sc = r.sosService ? SCOL[3] : SCOL[statusIdx];
               const lines = [r.line1 && '1', r.line2 && '2', r.line3 && '3'].filter(Boolean).join(' ');
               const flags = [

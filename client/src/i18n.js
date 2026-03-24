@@ -49,7 +49,8 @@ const translations = {
   status_occupied:     { ar: 'مشغولة',          en: 'Occupied' },
   status_service:      { ar: 'خدمة',            en: 'Service' },
   status_maintenance:  { ar: 'صيانة',           en: 'Maintenance' },
-  status_not_occupied: { ar: 'محجوزة',          en: 'Reserved' },
+  status_not_occupied: { ar: 'غير مشغولة',      en: 'Not Occupied' },
+  status_reserved:     { ar: 'محجوزة',          en: 'Reserved' },
 
   // ── KPI ──────────────────────────────────────────────────────────────────
   kpi_occupancy:     { ar: 'الإشغال',           en: 'Occupancy' },
