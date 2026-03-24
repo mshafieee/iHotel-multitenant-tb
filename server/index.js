@@ -450,7 +450,7 @@ function detectAndLogChanges(hotelId, roomNum, t) {
       const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
       const roomOverview = getLastOverviewRooms(hotelId)[roomNum];
       if (to === true) {
-        const isReserved = curStatus === 0 || (roomOverview?.reservation && curStatus !== 1);
+        const isReserved = (curStatus === 0 || (roomOverview?.reservation && curStatus !== 1)) && curStatus !== 3;
         if (isReserved) {
           const devId = deviceRoomMap[roomNum];
           if (devId) setImmediate(async () => {
@@ -502,10 +502,12 @@ function detectAndLogChanges(hotelId, roomNum, t) {
       if (isActivity) setImmediate(() => restoreOccupied(hotelId, roomNum));
     }
 
-    // Auto-set OCCUPIED on physical activity in a RESERVED room (lights, AC, curtains)
+    // Auto-set OCCUPIED on physical activity in a RESERVED room (motion, lights, AC, curtains).
+    // Skip MAINTENANCE rooms (status 3) — physical activity there must never auto-flip to OCCUPIED.
     const roomOverview2 = getLastOverviewRooms(hotelId)[roomNum];
-    if (curStatus !== 1 && roomOverview2?.reservation) {
+    if (curStatus !== 1 && curStatus !== 3 && roomOverview2?.reservation) {
       const isGuestActivity =
+        (key === 'pirMotionStatus' && to === true) ||
         (key === 'line1' && to === true) ||
         (key === 'line2' && to === true) ||
         (key === 'line3' && to === true) ||
@@ -1156,6 +1158,16 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
     password: plainPassword, guestUrl
   });
 
+  // Update server-side overview cache with the new reservation immediately so
+  // pirMotionStatus / appliance activity telemetry can correctly trigger OCCUPIED
+  // before the 60-second background overview refresh runs.
+  const loNew = getLastOverviewRooms(hotelId);
+  if (loNew[String(room)]) {
+    loNew[String(room)].reservation = { id, guestName, checkIn, checkOut };
+    // Broadcast so all connected clients see the reservation badge without polling delay.
+    const devIdNew = getDeviceRoomMap(hotelId)[String(room)];
+    if (devIdNew) sseBroadcast(hotelId, 'telemetry', { room: String(room), deviceId: devIdNew, data: { reservation: { id, guestName, checkIn, checkOut } } });
+  }
   // Room stays VACANT until guest physically arrives (door open → OCCUPIED)
 });
 
@@ -1184,7 +1196,17 @@ app.delete('/api/pms/reservations/:id', authenticate, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Not found' });
   db.prepare('UPDATE reservations SET active=0 WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
   addLog(hotelId, 'pms', 'Reservation cancelled', { room: existing.room, user: req.user.username });
-  if (existing.room) sseBroadcast(hotelId, 'lockout', { room: existing.room });
+  if (existing.room) {
+    sseBroadcast(hotelId, 'lockout', { room: existing.room });
+    // Also clear the reservation from the server cache so door-open / motion
+    // logic no longer treats this room as reserved.
+    const loCx = getLastOverviewRooms(hotelId);
+    if (loCx[existing.room]) {
+      loCx[existing.room].reservation = null;
+      const devIdCx = getDeviceRoomMap(hotelId)[existing.room];
+      if (devIdCx) sseBroadcast(hotelId, 'telemetry', { room: existing.room, deviceId: devIdCx, data: { reservation: null } });
+    }
+  }
   res.json({ success: true });
 
   // If the room is still NOT_OCCUPIED (guest never arrived), immediately restore it to VACANT
@@ -1275,6 +1297,16 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
   }
   sseBroadcast(hotelId, 'lockout', { room });
   addLog(hotelId, 'pms', `Room ${room} checked out → SERVICE`, { room, user: req.user.username });
+
+  // Clear reservation from the server-side overview cache immediately.
+  // Without this, stale reservation data persists in memory and the door-open
+  // handler would see reservation !== null on the SERVICE room and wrongly
+  // flip it back to OCCUPIED when housekeeping enters.
+  const lo = getLastOverviewRooms(hotelId);
+  if (lo[room]) {
+    lo[room].reservation = null;
+    sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: { reservation: null } });
+  }
 
   // Reset all room appliances to default state (non-blocking)
   setImmediate(async () => {
