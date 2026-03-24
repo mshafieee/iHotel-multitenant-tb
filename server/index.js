@@ -648,8 +648,8 @@ async function restoreOccupied(hotelId, roomNum) {
 
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto');
 
-    // Restore device state from before the NOT_OCCUPIED transition
     if (snap) {
+      // Returning guest: restore room state from before the NOT_OCCUPIED transition
       await sendControl(hotelId, devId, 'setLines',
         { line1: snap.line1, line2: snap.line2, line3: snap.line3,
           dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
@@ -659,6 +659,9 @@ async function restoreOccupied(hotelId, roomNum) {
       await sendControl(hotelId, devId, 'setCurtainsBlinds',
         { curtainsPosition: snap.curtainsPosition,
           blindsPosition: snap.blindsPosition }, 'auto');
+    } else {
+      // First-time arrival: no saved state — fire the welcome scene immediately
+      checkEventScenes(hotelId, roomNum, { roomStatus: 1 }, { roomStatus: 4 });
     }
 
   } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
@@ -1177,6 +1180,19 @@ app.delete('/api/pms/reservations/:id', authenticate, (req, res) => {
   addLog(hotelId, 'pms', 'Reservation cancelled', { room: existing.room, user: req.user.username });
   if (existing.room) sseBroadcast(hotelId, 'lockout', { room: existing.room });
   res.json({ success: true });
+
+  // If the room is still NOT_OCCUPIED (guest never arrived), immediately restore it to VACANT
+  if (existing.room) setImmediate(async () => {
+    const devId = getDeviceRoomMap(hotelId)[existing.room];
+    if (!devId) return;
+    const roomData = getLastOverviewRooms(hotelId)[existing.room];
+    if (roomData?.roomStatus === 4) {
+      delete getRoomStateSnapshots(hotelId)[existing.room];
+      try {
+        await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
+      } catch (e) { console.error('Failed to vacate room after reservation cancel:', e.message); }
+    }
+  });
 });
 
 app.post('/api/pms/reservations/:id/extend', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
@@ -1936,7 +1952,28 @@ app.post('/api/guest/rpc', authenticate, async (req, res) => {
 
   const roomData = lastOverview[r.room];
   if (roomData && roomData.roomStatus === 4) {
+    // Claim snapshot before sendControl clears it on status change
+    const snapshots = getRoomStateSnapshots(hotelId);
+    const snap = snapshots[r.room];
+    if (snap) delete snapshots[r.room];
     try { await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, `guest:${r.guest_name}`); } catch {}
+    if (snap) {
+      // Returning guest: restore saved room state (lights, AC, curtains)
+      try {
+        await sendControl(hotelId, devId, 'setLines',
+          { line1: snap.line1, line2: snap.line2, line3: snap.line3,
+            dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
+        await sendControl(hotelId, devId, 'setAC',
+          { acMode: snap.acMode, acTemperatureSet: snap.acTemperatureSet,
+            fanSpeed: snap.fanSpeed }, 'auto');
+        await sendControl(hotelId, devId, 'setCurtainsBlinds',
+          { curtainsPosition: snap.curtainsPosition,
+            blindsPosition: snap.blindsPosition }, 'auto');
+      } catch {}
+    } else {
+      // First-time arrival: no saved state — fire the welcome scene
+      checkEventScenes(hotelId, r.room, { roomStatus: 1 }, { roomStatus: 4 });
+    }
   }
   sendControl(hotelId, devId, method, params || {}, req.user.username)
     .then(d => res.json(d))
