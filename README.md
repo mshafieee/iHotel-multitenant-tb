@@ -111,7 +111,7 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
   - Toggle between modes with the **⊞ Floors / ⊟ Rooms** button
 - **Room Table** — sortable list with floor/status/temperature/door/flag filters; inline status dropdown, checkout button, and guest name column
 - **Room Modal** — full room control: lights (3 circuits + dimmers), AC (mode/temperature/fan), curtains, blinds, door unlock, DND/MUR/SOS/PD services. Smart bulb SVG indicators show live light state. "Reserve Room" button for vacant rooms links directly to PMS. Door unlock shows "Sent!" confirmation with auto-lock countdown.
-- **PMS** — create reservations (auto-marks room NOT_OCCUPIED on creation), checkout, extend stay, export CSV, QR code generation
+- **PMS** — create reservations (room displays as Reserved; transitions to Occupied automatically when guest opens door or turns on lights), checkout, extend stay, export CSV, QR code generation
 - **Logs** — searchable audit trail: room, category, user, timestamp
 - **Finance** — income log, night rates management, revenue summary (owner only), utility cost configuration (cost per kWh / m³), hotel-wide consumption dashboard with total electricity and water costs
 - **Users** — create/deactivate hotel users; owner can reset any user's password
@@ -142,9 +142,10 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
 ## Room Status Flow
 
 ```
-VACANT (0) ──── PMS Reservation ────▶ NOT_OCCUPIED (4)
+VACANT (0) ──── PMS Reservation ────▶ RESERVED (display only, device stays VACANT)
                                            │
-                              Guest arrives, door opens
+                              Guest arrives — door opens
+                              OR lights/AC turned on
                                            │
                                            ▼
                                       OCCUPIED (1)
@@ -166,10 +167,11 @@ VACANT (0) ──── PMS Reservation ────▶ NOT_OCCUPIED (4)
 | Status | Color | Meaning |
 |--------|-------|---------|
 | VACANT | Green | Room empty, no reservation |
+| RESERVED | Cyan | Active reservation exists, guest not yet arrived (UI display only — device stays VACANT) |
 | OCCUPIED | Blue | Guest present |
 | SERVICE | Amber | Post-checkout, housekeeping in progress |
 | MAINTENANCE | Red | Room taken out of service |
-| NOT_OCCUPIED | Purple | Reserved (guest not yet arrived) or guest inactive 5 min |
+| NOT_OCCUPIED | Purple | Guest inactive for 5 min — automation cuts power |
 
 ---
 
@@ -180,7 +182,6 @@ VACANT (0) ──── PMS Reservation ────▶ NOT_OCCUPIED (4)
 Whenever a room transitions to status 0 (VACANT) or 4 (NOT_OCCUPIED) — whether by:
 - The 5-minute no-motion timer firing automatically
 - Staff manually setting the status dropdown
-- PMS reservation creation
 
 The server automatically sends these commands to the hardware:
 
@@ -200,9 +201,19 @@ This ensures rooms are always left in an energy-efficient state between guests.
 
 If any physical activity is detected (PIR motion, door open, lights turned on, AC set above OFF) while the room is NOT_OCCUPIED, it is automatically restored to OCCUPIED.
 
+### On Activity in a Reserved Room
+
+When a room has an active reservation and the guest arrives, the system automatically sets the room to OCCUPIED when:
+- The door is opened
+- Any light circuit is turned on
+- AC mode is set above OFF
+- Curtains or blinds are moved
+
+No manual status change is needed at check-in.
+
 ### PMS Reservation
 
-Creating a reservation in the PMS immediately sets the room to NOT_OCCUPIED. The full cleanup automation runs at this point.
+Creating a reservation keeps the room in VACANT state on the device. The room is displayed as **Reserved** (cyan) in the UI until the guest physically arrives.
 
 ---
 
@@ -532,7 +543,7 @@ iHotel/
 | Method | Endpoint | Role | Description |
 |--------|----------|------|-------------|
 | GET | `/api/pms/reservations` | any | List reservations |
-| POST | `/api/pms/reservations` | any | Create reservation (auto NOT_OCCUPIED) |
+| POST | `/api/pms/reservations` | any | Create reservation (room shows as Reserved in UI) |
 | PUT | `/api/pms/reservations/:id` | any | Update reservation |
 | GET | `/api/pms/export` | any | Export CSV |
 | GET | `/api/pms/night-rates` | any | Get night rates |
@@ -636,7 +647,7 @@ iHotel/
 | Security headers | Helmet.js (XSS, MIME sniffing, frameguard, etc.) |
 | CORS | Allowlist-only, configurable per deployment |
 | Audit log | Every control command, login, and PMS event is logged with user + timestamp |
-| NOT_OCCUPIED guard | Activity detected in a reserved-but-empty room automatically restores OCCUPIED status |
+| Reserved room guard | Door open or physical activity in a reserved room automatically transitions to OCCUPIED |
 
 ---
 

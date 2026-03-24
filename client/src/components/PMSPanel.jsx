@@ -4,8 +4,9 @@ import { api, getAccessToken } from '../utils/api';
 import useLangStore from '../store/langStore';
 import { t } from '../i18n';
 
-const { protocol, hostname, port } = window.location;
-const GUEST_HOST = `${protocol}//${hostname}${port ? ':' + port : ''}`;
+const { protocol, port } = window.location;
+const _hostname = import.meta.env.VITE_GUEST_HOST || window.location.hostname;
+const GUEST_HOST = `${protocol}//${_hostname}${port ? ':' + port : ''}`;
 
 function QRCode({ data, size = 200 }) {
   const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&margin=8&format=svg`;
