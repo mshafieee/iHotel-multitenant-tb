@@ -2,6 +2,120 @@
 
 ---
 
+## Session: 2026-03-24 — Bug Fixes + Housekeeping Workflow
+
+### Summary
+Two separate work packages delivered in this session:
+
+**Part 1 — Bug fixes (branch: `claude/fix-room-status-checkout-I2xY6`)**
+Four bugs found during a full codebase review and fixed before merging to main.
+
+**Part 2 — Housekeeping workflow feature (branch: `claude/feat-housekeeping-workflow`)**
+Full end-to-end housekeeping system: new `housekeeper` role, room assignment by managers,
+real-time SSE notifications, start/done flow with automatic room reset.
+
+---
+
+### Part 1 — Bug Fixes
+
+#### Bug 1 — Checkout date hidden on RESERVED rooms
+`client/src/components/RoomModal.jsx` lines 582 & 592 had an `r.roomStatus !== 0` guard that
+blocked the checkout-date badge whenever a room was in RESERVED state (roomStatus=0 + active
+reservation). The guard was redundant — `r.reservation?.checkOut` already implies a reservation.
+Removed from both the staff badge and the guest header. Also added checkout date to both Heatmap
+hover tooltips which never showed it at all.
+
+#### Bug 2 — Sensor/appliance activity not correctly triggering OCCUPIED
+Three sub-bugs in `server/index.js → detectAndLogChanges()`:
+- **Door-open → OCCUPIED**: MAINTENANCE rooms (status 3) with a reservation were being auto-flipped
+  to OCCUPIED when a worker opened the door. Fixed with `&& curStatus !== 3`.
+- **pirMotionStatus missing**: Motion was not wired into the reserved-room guest-activity block.
+  Door, lights, AC, curtains already worked; motion was silently dropped. Added.
+- **Appliance block maintenance gap**: same `curStatus !== 3` guard added there too.
+
+#### Bug 3 — Stale reservation in server cache after checkout / cancellation
+After checkout or reservation deletion, `lastOverviewRooms[room].reservation` was never cleared.
+Housekeeping entering a SERVICE room would pass the `reservation !== null` check and auto-flip the
+room back to OCCUPIED. Fixed by nulling the cache entry and broadcasting `{ reservation: null }`
+via SSE immediately in both the checkout and reservation-deletion endpoints.
+
+#### Bug 4 — Server cache not updated after reservation creation
+After `POST /api/pms/reservations`, the overview cache kept `reservation: null` for up to 60 seconds.
+Any pirMotionStatus or appliance event in that window would miss the reservation guard and never
+trigger OCCUPIED. Also caused the checkout-date badge to be invisible for up to a minute. Fixed by
+updating the cache and broadcasting via SSE immediately after the INSERT.
+
+---
+
+### Part 2 — Housekeeping Workflow
+
+#### 1. Database (`server/db.js`)
+- New table `housekeeping_assignments`:
+  `id, hotel_id, room, assigned_to, assigned_by, assigned_at, status, started_at, completed_at, notes`
+  Status lifecycle: `pending → in_progress → done` (or `cancelled` by manager).
+- Migration `020_housekeeping_assignments` marks the table as applied.
+
+#### 2. Server (`server/index.js`)
+
+**New SSE helper**
+- `sseBroadcastUser(hotelId, username, event, data)` — targets a single staff member's live
+  connection. Requires `username` to be stored in the SSE client metadata (added to `sseConnect`).
+
+**`housekeeper` role**
+- Added `'housekeeper'` to the allowed-roles list in `POST /api/users` and `PUT /api/users/:id`.
+
+**New endpoints (all under `/api/housekeeping/`)**
+
+| Method | Path | Roles | Description |
+|--------|------|-------|-------------|
+| GET | `/queue` | manager + housekeeper | Managers: unassigned SERVICE rooms. Housekeepers: their own pending/in_progress tasks. |
+| GET | `/assignments` | manager + housekeeper | Active assignments. Managers see all; housekeepers see only their own. |
+| GET | `/housekeepers` | manager | List active housekeeper accounts (for assignment dropdown). |
+| POST | `/assign` | manager | Bulk-assign rooms to one housekeeper. Sends `housekeeping_assign` SSE to that user. |
+| POST | `/assignments/:id/start` | manager + housekeeper | pending → in_progress. |
+| POST | `/assignments/:id/complete` | manager + housekeeper | in_progress → done. Resets appliances + sets VACANT. Does **not** cancel reservations or reset meters. |
+| DELETE | `/assignments/:id` | manager | Cancel — sends `housekeeping_cancel` SSE to the housekeeper. |
+
+**Room reset on complete**
+Calls `sendControl` in sequence: `setPDMode(false)` → `setLines(off)` → `setAC(0, 26°C)` →
+`setCurtainsBlinds(0)` → `resetServices` → `setRoomStatus(0)`.
+`setRoomStatus(0)` auto-writes `lastCleanedTime` (existing behaviour in `controlToTelemetry`).
+
+#### 3. Store (`client/src/store/hotelStore.js`)
+New state: `hkQueue`, `hkAssignments`, `hkHousekeepers`, `hkNotifications`.
+New actions: `fetchHKQueue`, `fetchHKAssignments`, `fetchHKHousekeepers`, `hkAssign`, `hkStart`,
+`hkComplete`, `hkCancel`, `dismissHKNotification`.
+New SSE listeners in `connectSSE`: `housekeeping_update`, `housekeeping_assign`, `housekeeping_cancel`.
+
+#### 4. HousekeepingPanel (`client/src/components/HousekeepingPanel.jsx`) — NEW
+Dual-mode component:
+
+**Manager view** — two inner tabs:
+- *Dirty Rooms*: grid of unassigned SERVICE rooms. Click to multi-select → pick housekeeper
+  from dropdown → optional note → Assign button.
+- *Active Assignments*: table of all pending/in_progress tasks with status badges and Cancel button.
+
+**Housekeeper view**:
+- Personal task list (pending + in_progress) shown as card-based UI.
+- "🧹 Start" button → in_progress. "✅ Mark Done" button → complete + reset + VACANT.
+- Confirmation dialog on "Mark Done" explains the room will be reset.
+
+#### 5. DashboardPage (`client/src/pages/DashboardPage.jsx`)
+- Imports `HousekeepingPanel` and `BedDouble` icon.
+- New "Housekeeping" tab visible to all staff roles including `housekeeper`.
+- Housekeepers land directly on the housekeeping tab (redirected by `useEffect`).
+- Tab badge: pending count for managers; own-pending count for housekeepers.
+- Real-time assignment notification toasts: amber card at top-right with room info, manager name,
+  and note. Clicking navigates to the housekeeping tab.
+- `roleLabels` updated to include `'housekeeper': 'Housekeeper'`.
+
+#### 6. UsersPanel (`client/src/components/UsersPanel.jsx`)
+- Added `housekeeper` to `ROLE_LABELS` and `ROLE_COLORS` (amber badge).
+- Added "Housekeeper" option to the role dropdown in the create-user form.
+- Default new-user role changed to `housekeeper` (most common new account type).
+
+---
+
 ## Session: 2026-03-11 (Part 2) — Self-Booking System, Hotel Profile Management
 
 ### Summary

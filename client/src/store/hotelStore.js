@@ -14,6 +14,16 @@ const useHotelStore = create((set, get) => ({
   sse: null,
   pollTimer: null,
 
+  // ── Housekeeping state ───────────────────────────────────────────────────
+  // hkQueue        : dirty rooms with no active assignment (for manager view)
+  // hkAssignments  : active assignments (managers see all; housekeepers see own)
+  // hkHousekeepers : list of housekeeper accounts (for assignment dropdown)
+  // hkNotifications: incoming assignment alerts for the logged-in housekeeper
+  hkQueue:         [],
+  hkAssignments:   [],
+  hkHousekeepers:  [],
+  hkNotifications: [],  // { rooms, assignedBy, notes, ts } — desktop toast payloads
+
   // Fetch overview — server always responds instantly with cached snapshot.
   // If data was stale, a background TB fetch runs on the server and delivers
   // fresh data via SSE 'snapshot'. So we always update from HTTP here, and
@@ -157,6 +167,39 @@ const useHotelStore = create((set, get) => ({
       } catch {}
     });
 
+    // ── Housekeeping SSE events ────────────────────────────────────────────
+
+    // Manager view: a queue/assignment list changed (assign, start, complete, cancel)
+    es2.addEventListener('housekeeping_update', (ev) => {
+      try {
+        // Re-fetch both queue and assignments to stay in sync
+        get().fetchHKQueue();
+        get().fetchHKAssignments();
+      } catch {}
+    });
+
+    // Housekeeper personal notification: new rooms assigned to them
+    es2.addEventListener('housekeeping_assign', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        // Append notification (shown as a toast) and refresh their assignment list
+        const note = { ...d, id: Date.now() };
+        set({ hkNotifications: [note, ...get().hkNotifications].slice(0, 10) });
+        get().fetchHKAssignments();
+        get().fetchHKQueue();
+      } catch {}
+    });
+
+    // Housekeeper personal notification: one of their assignments was cancelled
+    es2.addEventListener('housekeeping_cancel', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        // Remove the cancelled assignment from local state immediately
+        set({ hkAssignments: get().hkAssignments.filter(a => a.id !== d.id) });
+        get().fetchHKQueue();
+      } catch {}
+    });
+
     es2.onerror = () => {
       setTimeout(() => get().connectSSE(), 5000);
     };
@@ -276,6 +319,82 @@ const useHotelStore = create((set, get) => ({
 
   pushScene: async (id) => {
     return api(`/api/scenes/${id}/push`, { method: 'POST' });
+  },
+
+  // ── Housekeeping actions ─────────────────────────────────────────────────
+
+  // Fetch dirty rooms with no active assignment (manager: unassigned queue)
+  // or own assignments (housekeeper: personal queue).
+  fetchHKQueue: async () => {
+    try {
+      const data = await api('/api/housekeeping/queue');
+      set({ hkQueue: data });
+    } catch {}
+  },
+
+  // Fetch all active assignments (managers: all; housekeepers: own).
+  fetchHKAssignments: async () => {
+    try {
+      const data = await api('/api/housekeeping/assignments');
+      set({ hkAssignments: data });
+    } catch {}
+  },
+
+  // Fetch list of housekeeper accounts for the assignment dropdown.
+  fetchHKHousekeepers: async () => {
+    try {
+      const data = await api('/api/housekeeping/housekeepers');
+      set({ hkHousekeepers: data });
+    } catch {}
+  },
+
+  // Manager: assign a list of rooms to a housekeeper.
+  hkAssign: async (rooms, assignedTo, notes = '') => {
+    const result = await api('/api/housekeeping/assign', {
+      method: 'POST',
+      body: JSON.stringify({ rooms, assignedTo, notes }),
+    });
+    // Refresh both lists so the UI is up to date immediately
+    await get().fetchHKQueue();
+    await get().fetchHKAssignments();
+    return result;
+  },
+
+  // Housekeeper (or manager): mark a task as in_progress.
+  hkStart: async (assignmentId) => {
+    await api(`/api/housekeeping/assignments/${assignmentId}/start`, { method: 'POST' });
+    // Optimistic update
+    set({
+      hkAssignments: get().hkAssignments.map(a =>
+        a.id === assignmentId ? { ...a, status: 'in_progress', started_at: Date.now() } : a
+      ),
+    });
+  },
+
+  // Housekeeper (or manager): mark cleaning done and reset the room.
+  hkComplete: async (assignmentId) => {
+    await api(`/api/housekeeping/assignments/${assignmentId}/complete`, { method: 'POST' });
+    // Remove from local assignment list; the room telemetry update (roomStatus→0)
+    // arrives via SSE and refreshes the rooms map automatically.
+    set({
+      hkAssignments: get().hkAssignments.filter(a => a.id !== assignmentId),
+    });
+    await get().fetchHKQueue();
+  },
+
+  // Manager: cancel an assignment.
+  hkCancel: async (assignmentId) => {
+    await api(`/api/housekeeping/assignments/${assignmentId}`, { method: 'DELETE' });
+    set({
+      hkAssignments: get().hkAssignments.filter(a => a.id !== assignmentId),
+    });
+    await get().fetchHKQueue();
+    await get().fetchHKAssignments();
+  },
+
+  // Dismiss a housekeeping notification toast.
+  dismissHKNotification: (id) => {
+    set({ hkNotifications: get().hkNotifications.filter(n => n.id !== id) });
   },
 
   updateRoomType: async (room, roomType) => {

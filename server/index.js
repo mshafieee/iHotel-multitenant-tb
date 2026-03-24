@@ -216,7 +216,8 @@ function sseConnect(req, res) {
     Connection: 'keep-alive'
   });
   res.write(':\n\n');
-  sseClients.set(res, { userId: req.user?.id, role: req.user?.role, hotelId: req.user?.hotelId, room: req.user?.room || null });
+  // Store username so sseBroadcastUser can target a specific staff member.
+  sseClients.set(res, { userId: req.user?.id, username: req.user?.username, role: req.user?.role, hotelId: req.user?.hotelId, room: req.user?.room || null });
   req.on('close', () => sseClients.delete(res));
 }
 
@@ -253,6 +254,18 @@ function sseBroadcastRoles(hotelId, event, data, roles) {
   for (const [c, meta] of sseClients) {
     if (meta.hotelId !== hotelId) continue;
     if (!roles.includes(meta.role)) continue;
+    try { c.write(msg); } catch {}
+  }
+}
+
+// Send an SSE event to one specific staff member (identified by username).
+// Used for housekeeping assignment notifications so only the assigned
+// housekeeper sees the alert, not everyone on the floor.
+function sseBroadcastUser(hotelId, username, event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const [c, meta] of sseClients) {
+    if (meta.hotelId !== hotelId) continue;
+    if (meta.username !== username) continue;
     try { c.write(msg); } catch {}
   }
 }
@@ -2476,7 +2489,7 @@ app.post('/api/users', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const { username, password, role, fullName } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: 'Required: username, password, role' });
-  if (!['owner', 'admin', 'frontdesk'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (!['owner', 'admin', 'frontdesk', 'housekeeper'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   try {
     const hash = bcrypt.hashSync(password, 10);
     db.prepare('INSERT INTO hotel_users (hotel_id, username, password_hash, role, full_name) VALUES (?,?,?,?,?)').run(hotelId, username, hash, role, fullName || null);
@@ -2520,6 +2533,261 @@ app.delete('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.id === req.user.id) return res.status(400).json({ error: 'Cannot deactivate your own account' });
   db.prepare('UPDATE hotel_users SET active=0 WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
+  res.json({ success: true });
+});
+
+// ═══ HOUSEKEEPING WORKFLOW ═══
+//
+// Role access summary:
+//   GET  /api/housekeeping/queue         — managers see all dirty rooms; housekeepers see theirs
+//   GET  /api/housekeeping/assignments   — managers see all; housekeepers see own active ones
+//   GET  /api/housekeeping/housekeepers  — managers only; list housekeeper accounts for assignment dropdown
+//   POST /api/housekeeping/assign        — managers only; bulk-assign rooms to one housekeeper
+//   POST /api/housekeeping/assignments/:id/start    — housekeeper or manager; pending → in_progress
+//   POST /api/housekeeping/assignments/:id/complete — housekeeper or manager; in_progress → done
+//                                                     also resets room appliances and sets VACANT
+//   DELETE /api/housekeeping/assignments/:id        — managers only; cancel an assignment
+
+// ── GET /api/housekeeping/queue ───────────────────────────────────────────
+// Returns SERVICE-status rooms that have no active (pending/in_progress) assignment.
+// Managers see all; housekeepers see the rooms already assigned to them.
+app.get('/api/housekeeping/queue', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+  const hotelId    = req.user.hotelId;
+  const isManager  = ['owner', 'admin', 'frontdesk'].includes(req.user.role);
+  const lastOverview = getLastOverviewRooms(hotelId);
+
+  // Build set of rooms that already have an active assignment
+  const activeRooms = new Set(
+    db.prepare(
+      "SELECT room FROM housekeeping_assignments WHERE hotel_id=? AND status IN ('pending','in_progress')"
+    ).all(hotelId).map(r => r.room)
+  );
+
+  // For managers: SERVICE rooms with no active assignment (the "unassigned dirty" queue)
+  if (isManager) {
+    const dirty = Object.values(lastOverview)
+      .filter(r => r.roomStatus === 2 && !activeRooms.has(String(r.room)))
+      .map(r => ({ room: r.room, floor: r.floor, type: r.type, guestName: r.reservation?.guestName || null }));
+    return res.json(dirty);
+  }
+
+  // For housekeepers: their own pending/in_progress assignments
+  const myAssignments = db.prepare(
+    "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND assigned_to=? AND status IN ('pending','in_progress') ORDER BY assigned_at ASC"
+  ).all(hotelId, req.user.username);
+  const enriched = myAssignments.map(a => ({
+    ...a,
+    floor: lastOverview[a.room]?.floor ?? null,
+    type:  lastOverview[a.room]?.type  ?? null,
+  }));
+  res.json(enriched);
+});
+
+// ── GET /api/housekeeping/assignments ─────────────────────────────────────
+// Managers get all active assignments. Housekeepers get only their own.
+app.get('/api/housekeeping/assignments', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+  const hotelId   = req.user.hotelId;
+  const isManager = ['owner', 'admin', 'frontdesk'].includes(req.user.role);
+  const lastOverview = getLastOverviewRooms(hotelId);
+
+  let rows;
+  if (isManager) {
+    rows = db.prepare(
+      "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND status != 'cancelled' ORDER BY assigned_at DESC LIMIT 200"
+    ).all(hotelId);
+  } else {
+    rows = db.prepare(
+      "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND assigned_to=? AND status IN ('pending','in_progress') ORDER BY assigned_at ASC"
+    ).all(hotelId, req.user.username);
+  }
+
+  const enriched = rows.map(a => ({
+    ...a,
+    floor: lastOverview[a.room]?.floor ?? null,
+    type:  lastOverview[a.room]?.type  ?? null,
+  }));
+  res.json(enriched);
+});
+
+// ── GET /api/housekeeping/housekeepers ────────────────────────────────────
+// List active housekeeper accounts for the assignment dropdown.
+app.get('/api/housekeeping/housekeepers', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const list = db.prepare(
+    "SELECT id, username, full_name FROM hotel_users WHERE hotel_id=? AND role='housekeeper' AND active=1 ORDER BY full_name, username"
+  ).all(hotelId);
+  res.json(list);
+});
+
+// ── POST /api/housekeeping/assign ─────────────────────────────────────────
+// Body: { rooms: ['101','102'], assignedTo: 'housekeeper_username', notes: '' }
+// Creates one assignment record per room, then notifies the housekeeper via SSE.
+app.post('/api/housekeeping/assign', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId              = req.user.hotelId;
+  const { rooms, assignedTo, notes } = req.body;
+
+  if (!rooms?.length || !assignedTo) {
+    return res.status(400).json({ error: 'rooms (array) and assignedTo (username) are required' });
+  }
+
+  // Verify housekeeper belongs to this hotel
+  const hkUser = db.prepare(
+    "SELECT username, full_name FROM hotel_users WHERE hotel_id=? AND username=? AND role='housekeeper' AND active=1"
+  ).get(hotelId, assignedTo);
+  if (!hkUser) return res.status(404).json({ error: 'Housekeeper not found or inactive' });
+
+  const now    = Date.now();
+  const crypto = require('crypto');
+  const created = [];
+
+  for (const room of rooms) {
+    // Prevent duplicate active assignments for the same room
+    const existing = db.prepare(
+      "SELECT id FROM housekeeping_assignments WHERE hotel_id=? AND room=? AND status IN ('pending','in_progress')"
+    ).get(hotelId, String(room));
+    if (existing) continue; // skip rooms already assigned
+
+    const id = crypto.randomUUID();
+    db.prepare(
+      `INSERT INTO housekeeping_assignments
+         (id, hotel_id, room, assigned_to, assigned_by, assigned_at, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`
+    ).run(id, hotelId, String(room), assignedTo, req.user.username, now, notes || null);
+
+    created.push({ id, room: String(room) });
+  }
+
+  if (!created.length) {
+    return res.status(409).json({ error: 'All selected rooms already have active assignments' });
+  }
+
+  addLog(hotelId, 'housekeeping',
+    `${created.length} room(s) assigned to ${hkUser.full_name || assignedTo} by ${req.user.username}`,
+    { user: req.user.username }
+  );
+
+  // Notify the housekeeper in real-time via their personal SSE channel
+  sseBroadcastUser(hotelId, assignedTo, 'housekeeping_assign', {
+    assignments: created,
+    assignedBy: req.user.username,
+    notes: notes || null,
+    ts: now,
+  });
+
+  // Also update the manager view for everyone with manager roles
+  sseBroadcastRoles(hotelId, 'housekeeping_update', { action: 'assigned', assignments: created, assignedTo }, ['owner', 'admin', 'frontdesk']);
+
+  res.json({ success: true, assigned: created.length, skipped: rooms.length - created.length });
+});
+
+// ── POST /api/housekeeping/assignments/:id/start ──────────────────────────
+// Housekeeper (or manager) marks a task as in_progress.
+app.post('/api/housekeeping/assignments/:id/start', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), async (req, res) => {
+  const hotelId = req.user.hotelId;
+  const row     = db.prepare('SELECT * FROM housekeeping_assignments WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+
+  if (!row) return res.status(404).json({ error: 'Assignment not found' });
+  if (row.status !== 'pending') return res.status(400).json({ error: `Cannot start — current status is '${row.status}'` });
+
+  // Housekeepers can only operate on their own assignments
+  if (req.user.role === 'housekeeper' && row.assigned_to !== req.user.username) {
+    return res.status(403).json({ error: 'Not your assignment' });
+  }
+
+  db.prepare(
+    "UPDATE housekeeping_assignments SET status='in_progress', started_at=? WHERE id=?"
+  ).run(Date.now(), row.id);
+
+  addLog(hotelId, 'housekeeping', `Rm${row.room} cleaning started by ${req.user.username}`, { room: row.room, user: req.user.username });
+
+  sseBroadcastRoles(hotelId, 'housekeeping_update',
+    { action: 'started', id: row.id, room: row.room, assignedTo: row.assigned_to },
+    ['owner', 'admin', 'frontdesk']
+  );
+
+  res.json({ success: true });
+});
+
+// ── POST /api/housekeeping/assignments/:id/complete ───────────────────────
+// Housekeeper (or manager) marks cleaning as done.
+// Resets all room appliances (lights off, AC off 26°C, curtains closed, services cleared)
+// and sets room status to VACANT (0), which also writes lastCleanedTime automatically.
+app.post('/api/housekeeping/assignments/:id/complete', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), async (req, res) => {
+  const hotelId = req.user.hotelId;
+  const row     = db.prepare('SELECT * FROM housekeeping_assignments WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+
+  if (!row) return res.status(404).json({ error: 'Assignment not found' });
+  if (row.status === 'done')      return res.status(400).json({ error: 'Already completed' });
+  if (row.status === 'cancelled') return res.status(400).json({ error: 'Assignment was cancelled' });
+
+  // Housekeepers can only complete their own assignments
+  if (req.user.role === 'housekeeper' && row.assigned_to !== req.user.username) {
+    return res.status(403).json({ error: 'Not your assignment' });
+  }
+
+  db.prepare(
+    "UPDATE housekeeping_assignments SET status='done', completed_at=? WHERE id=?"
+  ).run(Date.now(), row.id);
+
+  // ── Reset room appliances (housekeeping-safe: no reservation cancel, no meter reset) ──
+  const deviceRoomMap = getDeviceRoomMap(hotelId);
+  const devId         = deviceRoomMap[row.room];
+
+  if (devId) {
+    try {
+      // Disable power-down mode first so the device wakes up
+      await sendControl(hotelId, devId, 'setPDMode',         { pdMode: false }, req.user.username);
+      // Lights off (dimmers also zeroed)
+      await sendControl(hotelId, devId, 'setLines',          { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, req.user.username);
+      // AC off, 26°C standby, fan off
+      await sendControl(hotelId, devId, 'setAC',             { acMode: 0, fanSpeed: 0, acTemperatureSet: 26 }, req.user.username);
+      // Curtains and blinds closed
+      await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, req.user.username);
+      // Clear all service flags (DND / MUR / SOS)
+      await sendControl(hotelId, devId, 'resetServices',     { services: ['dndService', 'murService', 'sosService'] }, req.user.username);
+      // Set VACANT — also auto-writes lastCleanedTime (see controlToTelemetry)
+      await sendControl(hotelId, devId, 'setRoomStatus',     { roomStatus: 0 }, req.user.username);
+    } catch (e) {
+      console.error(`Housekeeping reset failed for room ${row.room}:`, e.message);
+      // Don't fail the HTTP response — DB is already marked done
+    }
+  }
+
+  addLog(hotelId, 'housekeeping',
+    `Rm${row.room} cleaned by ${req.user.username} → VACANT`,
+    { room: row.room, user: req.user.username }
+  );
+
+  // Notify all managers that a room is now clean and back in inventory
+  sseBroadcastRoles(hotelId, 'housekeeping_update',
+    { action: 'completed', id: row.id, room: row.room, assignedTo: row.assigned_to },
+    ['owner', 'admin', 'frontdesk']
+  );
+
+  res.json({ success: true });
+});
+
+// ── DELETE /api/housekeeping/assignments/:id ──────────────────────────────
+// Managers cancel an assignment (e.g. wrong room, re-assignment needed).
+app.delete('/api/housekeeping/assignments/:id', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const row     = db.prepare('SELECT * FROM housekeeping_assignments WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+
+  if (!row) return res.status(404).json({ error: 'Assignment not found' });
+  if (['done', 'cancelled'].includes(row.status)) {
+    return res.status(400).json({ error: `Cannot cancel — status is already '${row.status}'` });
+  }
+
+  db.prepare("UPDATE housekeeping_assignments SET status='cancelled' WHERE id=?").run(row.id);
+  addLog(hotelId, 'housekeeping', `Rm${row.room} assignment cancelled by ${req.user.username}`, { room: row.room, user: req.user.username });
+
+  // Notify the housekeeper their task was removed
+  sseBroadcastUser(hotelId, row.assigned_to, 'housekeeping_cancel', { id: row.id, room: row.room });
+  sseBroadcastRoles(hotelId, 'housekeeping_update',
+    { action: 'cancelled', id: row.id, room: row.room },
+    ['owner', 'admin', 'frontdesk']
+  );
+
   res.json({ success: true });
 });
 

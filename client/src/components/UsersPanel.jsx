@@ -2,8 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import useAuthStore from '../store/authStore';
 import { api } from '../utils/api';
 
-const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', frontdesk: 'Front Desk' };
-const ROLE_COLORS = { owner: 'bg-purple-50 text-purple-600', admin: 'bg-blue-50 text-blue-600', frontdesk: 'bg-emerald-50 text-emerald-600' };
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', frontdesk: 'Front Desk', housekeeper: 'Housekeeper' };
+const ROLE_COLORS = { owner: 'bg-purple-50 text-purple-600', admin: 'bg-blue-50 text-blue-600', frontdesk: 'bg-emerald-50 text-emerald-600', housekeeper: 'bg-amber-50 text-amber-600' };
 
 export default function UsersPanel() {
   const { user: me } = useAuthStore();
@@ -11,7 +11,7 @@ export default function UsersPanel() {
 
   const [users, setUsers] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ username: '', password: '', role: 'frontdesk', fullName: '' });
+  const [createForm, setCreateForm] = useState({ username: '', password: '', role: 'housekeeper', fullName: '' });
   const [editPwd, setEditPwd] = useState(null); // { userId, username }
   const [pwdForm, setPwdForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [error, setError] = useState('');
@@ -35,7 +35,7 @@ export default function UsersPanel() {
       await api('/api/users', { method: 'POST', body: JSON.stringify(createForm) });
       flash('User created');
       setShowCreate(false);
-      setCreateForm({ username: '', password: '', role: 'frontdesk', fullName: '' });
+      setCreateForm({ username: '', password: '', role: 'housekeeper', fullName: '' });
       fetchUsers();
     } catch (e) { flash(e.message, true); }
   };
@@ -136,6 +136,7 @@ export default function UsersPanel() {
               <div>
                 <label className="text-[9px] text-gray-400 uppercase">Role</label>
                 <select className="input" value={createForm.role} onChange={e => setCreateForm({ ...createForm, role: e.target.value })}>
+                  <option value="housekeeper">Housekeeper</option>
                   <option value="frontdesk">Front Desk</option>
                   <option value="admin">Admin</option>
                   <option value="owner">Owner</option>
