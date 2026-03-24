@@ -418,12 +418,15 @@ function detectAndLogChanges(hotelId, roomNum, t) {
   const prev          = lastTelemetry[roomNum];
   if (!prev) { lastTelemetry[roomNum] = { ...t }; return; }
 
-  // Guard: while the server has set NOT_OCCUPIED (snapshot exists), ignore the
-  // device's reported roomStatus unless it confirms 4.  The ESP32 keeps sending
-  // its own local roomStatus (=1 OCCUPIED) until it reads and applies our shared
-  // attribute command.  Without this, the first device packet after the timer fires
-  // overwrites roomStatus back to 1, deletes the snapshot, and breaks restore.
-  if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in t && t.roomStatus !== 4) {
+  // Guard: protect server-commanded NOT_OCCUPIED (4) from stale device telemetry.
+  // Covers two cases:
+  //  (a) Snapshot exists — NOT_OCCUPIED timer fired (returning guest path).
+  //  (b) No snapshot but server last set status to 4 — reservation created, first arrival.
+  // The ESP32 keeps reporting its own roomStatus (= 1 OCCUPIED) until it reads and
+  // applies the server's shared-attribute command.  Without this guard that stale value
+  // overwrites lastTelemetry[roomNum].roomStatus → curStatus resolves to 1 below →
+  // restoreOccupied / welcome scene never fires.
+  if ((getRoomStateSnapshots(hotelId)[roomNum] || prev.roomStatus === 4) && 'roomStatus' in t && t.roomStatus !== 4) {
     t = { ...t };
     delete t.roomStatus;
   }
@@ -447,7 +450,10 @@ function detectAndLogChanges(hotelId, roomNum, t) {
       if (to === true) {
         if (curStatus === 0) {
           const devId = deviceRoomMap[roomNum];
-          if (devId) setImmediate(() => sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {}));
+          if (devId) setImmediate(async () => {
+            await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {});
+            checkEventScenes(hotelId, roomNum, { roomStatus: 1 }, { roomStatus: 0 });
+          });
         }
         if (curStatus === 1) startNotOccupiedTimer(hotelId, roomNum);
       } else {
