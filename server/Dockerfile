@@ -1,18 +1,44 @@
-FROM node:22-slim
+# syntax = docker/dockerfile:1
 
-# Install build tools needed for better-sqlite3 (native module)
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+# Adjust NODE_VERSION as desired
+ARG NODE_VERSION=22.22.0
+FROM node:${NODE_VERSION}-slim AS base
 
+LABEL fly_launch_runtime="Node.js"
+
+# Node.js app lives here
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+# Set production environment
+ENV NODE_ENV="production"
 
+
+# Throw-away build stage to reduce size of final image
+FROM base AS build
+
+# Install packages needed to build node modules
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
+
+# Install node modules
+COPY package-lock.json package.json ./
+RUN npm ci
+
+# Copy application code
 COPY . .
 
-# SQLite database lives on a persistent Fly volume mounted at /data
-ENV DB_PATH=/data/hilton.db
 
+# Final stage for app image
+FROM base
+
+# Copy built application
+COPY --from=build /app /app
+
+# Setup sqlite3 on a separate volume
+RUN mkdir -p /data
+VOLUME /data
+
+# Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
-
-CMD ["node", "index.js"]
+ENV DATABASE_URL="file:///data/sqlite.db"
+CMD [ "npm", "run", "start" ]

@@ -1,29 +1,29 @@
-# Fly.io configuration for iHotel backend
-app = "ihotel"
-primary_region = "cdg"  # Paris, France
+# fly.toml app configuration file generated for ihotel on 2026-03-14T12:57:32+03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'ihotel'
+primary_region = 'cdg'
 
 [build]
-  dockerfile = "Dockerfile"
 
-[env]
-  PORT = "3000"
-  NODE_ENV = "production"
-  DB_PATH = "/data/hilton.db"
-  # Set secrets via CLI (never commit these):
-  #   fly secrets set JWT_SECRET=<value> REFRESH_SECRET=<value> CORS_ORIGIN=https://mshafieee.github.io
+[[mounts]]
+  source = 'data'
+  destination = '/data'
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = '1GB'
+  auto_extend_size_limit = '10GB'
 
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
+  processes = ['app']
 
-  [http_service.concurrency]
-    type = "connections"
-    hard_limit = 100
-    soft_limit = 80
-
-[mounts]
-  source = "data"
-  destination = "/data"
+[[vm]]
+  memory = '4gb'
+  cpus = 2
+  memory_mb = 4096
