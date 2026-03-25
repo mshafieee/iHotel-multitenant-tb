@@ -1,24 +1,189 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Eye, EyeOff, Wifi, Shield,
   Zap, BarChart3, BedDouble, Thermometer,
   Lightbulb, Lock, Moon, Cpu, Star,
-  Bell, Leaf, X, ArrowRight, ChevronRight,
+  Bell, Leaf, X, ArrowRight, ChevronRight, ChevronLeft,
   CheckCircle, TrendingUp, Users, Clock,
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
+
+// ── Scroll reveal hook ────────────────────────────────────────────────────────
+function useScrollReveal() {
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) entry.target.classList.add('visible');
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    );
+    const els = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  });
+}
+
+// ── Floating particles (stable — computed once, never random on render) ───────
+const PARTICLES = Array.from({ length: 22 }, (_, i) => ({
+  id: i,
+  size:     ((i * 7  + 3) % 5)  + 2,
+  x:        ((i * 19 + 5) % 100),
+  y:        ((i * 13 + 10) % 100),
+  duration: ((i * 3  + 8) % 10) + 8,
+  delay:     (i * 0.65) % 6,
+  opacity:  (((i * 11 + 5) % 4) * 0.09) + 0.08,
+}));
+
+function FloatingParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      {PARTICLES.map((p) => (
+        <div
+          key={p.id}
+          className="absolute rounded-full bg-blue-400"
+          style={{
+            width:     p.size,
+            height:    p.size,
+            left:      `${p.x}%`,
+            top:       `${p.y}%`,
+            opacity:   p.opacity,
+            animation: `particleFloat ${p.duration}s ${p.delay}s ease-in-out infinite`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Animated stat card (counts up on scroll into view) ───────────────────────
+function AnimatedStat({ value, label, sub, icon: Icon }) {
+  const ref        = useRef(null);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setOn(true); },
+      { threshold: 0.5 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="flex flex-col items-center gap-1">
+      <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center mb-2 backdrop-blur-sm
+                      transition-transform duration-500"
+           style={on ? { transform: 'scale(1)', opacity: 1 } : { transform: 'scale(0.7)', opacity: 0 }}>
+        <Icon size={20} className="text-white" />
+      </div>
+      <p
+        className="text-3xl font-extrabold leading-tight text-white"
+        style={on
+          ? { animation: 'counterFade 0.7s ease forwards' }
+          : { opacity: 0, transform: 'scale(0.6) translateY(10px)' }}
+      >
+        {value}
+      </p>
+      <p className="text-sm font-semibold text-white/90"
+         style={on ? { animation: 'fadeUp 0.7s 0.25s ease both' } : { opacity: 0 }}>
+        {label}
+      </p>
+      <p className="text-xs text-white/50"
+         style={on ? { animation: 'fadeUp 0.7s 0.4s ease both' } : { opacity: 0 }}>
+        {sub}
+      </p>
+    </div>
+  );
+}
+
+// ── Hero carousel slides (EN + AR) ───────────────────────────────────────────
+const HERO_SLIDES = {
+  en: [
+    {
+      badge:   '🟢 Live platform · Real-time IoT control',
+      line1:   'The Smartest Way to',
+      line2:   'Run Your Hotel',
+      sub:     'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and cut energy costs — all from a single dashboard.',
+      accent:  'from-blue-300 via-cyan-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-blue-400',
+    },
+    {
+      badge:   '🌟 Guest Experience · QR portal · No app needed',
+      line1:   'Unforgettable',
+      line2:   'Guest Experiences',
+      sub:     'Guests scan a QR code and instantly control their AC, lights, curtains, and scene presets from their phone — no app download required. DND, housekeeping requests, and reviews built in.',
+      accent:  'from-emerald-300 via-teal-300 to-cyan-400',
+      mockup:  'guest',
+      dot:     'bg-emerald-400',
+    },
+    {
+      badge:   '⚡ Energy AI · Automatic 30–38% savings',
+      line1:   'Cut Energy Costs,',
+      line2:   'Automatically',
+      sub:     'iHotel detects vacant rooms and shuts off AC and lights automatically. Motion sensors, departure automation, and smart scenes reduce your electricity bill by up to 38%.',
+      accent:  'from-amber-300 via-orange-300 to-yellow-300',
+      mockup:  'pms',
+      dot:     'bg-amber-400',
+    },
+    {
+      badge:   '🏨 Multi-Property · One platform, all your hotels',
+      line1:   'Manage Every',
+      line2:   'Property, Instantly',
+      sub:     'Switch between hotels with a single click. See every room live, trigger control commands remotely, and track revenue across your entire group — in one unified view.',
+      accent:  'from-violet-300 via-purple-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-violet-400',
+    },
+  ],
+  ar: [
+    {
+      badge:   '🟢 منصة فعلية · تحكم لحظي بأجهزة IoT',
+      line1:   'أذكى طريقة',
+      line2:   'لإدارة فندقك',
+      sub:     'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — كل شيء من لوحة تحكم واحدة.',
+      accent:  'from-blue-300 via-cyan-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-blue-400',
+    },
+    {
+      badge:   '🌟 تجربة الضيف · بوابة QR · بلا تطبيق',
+      line1:   'تجارب ضيوف',
+      line2:   'لا تُنسى',
+      sub:     'يمسح الضيف رمز QR ويتحكم فوراً في المكيف والإضاءة والستائر والسيناريوهات من هاتفه — دون تحميل أي تطبيق. عدم الإزعاج وطلبات التدبير والتقييمات كلها مدمجة.',
+      accent:  'from-emerald-300 via-teal-300 to-cyan-400',
+      mockup:  'guest',
+      dot:     'bg-emerald-400',
+    },
+    {
+      badge:   '⚡ ذكاء الطاقة · توفير تلقائي 30–38%',
+      line1:   'وفّر فاتورة الطاقة',
+      line2:   'بشكل تلقائي',
+      sub:     'تكتشف iHotel الغرف الفارغة وتُوقف المكيف والإضاءة تلقائياً. حساسات الحركة وأتمتة المغادرة والسيناريوهات الذكية تخفّض فاتورة كهربائك بما يصل إلى 38%.',
+      accent:  'from-amber-300 via-orange-300 to-yellow-300',
+      mockup:  'pms',
+      dot:     'bg-amber-400',
+    },
+    {
+      badge:   '🏨 فنادق متعددة · منصة واحدة لكل فنادقك',
+      line1:   'أدر كل فنادقك',
+      line2:   'بلحظة واحدة',
+      sub:     'انتقل بين الفنادق بنقرة واحدة. شاهد كل غرفة مباشرة، وأرسل أوامر التحكم عن بُعد، وتابع الإيرادات عبر مجموعتك كاملة — في عرض واحد.',
+      accent:  'from-violet-300 via-purple-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-violet-400',
+    },
+  ],
+};
 
 // ── Translations (idiomatic Arabic, not literal) ──────────────────────────────
 const T = {
   en: {
     langToggle: 'عربي',
     nav: { features: 'Features', platform: 'Platform', reviews: 'Reviews', signIn: 'Sign In' },
-    badge: '🟢 Live platform · Real-time IoT control',
-    heroLine1: 'The Smartest Way to',
-    heroLine2: 'Run Your Hotel',
-    heroLine3: '',
-    heroSub: 'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and cut energy costs — all from a single dashboard.',
     stats: [{ v: '500+', l: 'Rooms Managed' }, { v: '38%', l: 'Avg Energy Saved' }, { v: '< 1s', l: 'Live Updates' }, { v: '4.9★', l: 'Guest Rating' }],
     getStarted: 'Sign In to Your Hotel',
     bookRoom: 'Book a Room',
@@ -77,11 +242,6 @@ const T = {
   ar: {
     langToggle: 'English',
     nav: { features: 'المميزات', platform: 'المنصة', reviews: 'آراء العملاء', signIn: 'دخول' },
-    badge: '🟢 منصة فعلية · تحكم لحظي بأجهزة IoT',
-    heroLine1: 'أذكى طريقة',
-    heroLine2: 'لإدارة فندقك',
-    heroLine3: '',
-    heroSub: 'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — كل شيء من لوحة تحكم واحدة.',
     stats: [{ v: '+500', l: 'غرفة مُدارة' }, { v: '38%', l: 'متوسط توفير الطاقة' }, { v: '< 1ث', l: 'تحديث فوري' }, { v: '4.9★', l: 'تقييم الضيوف' }],
     getStarted: 'ادخل للوحة تحكم فندقك',
     bookRoom: 'احجز غرفة',
@@ -378,6 +538,108 @@ function HotelLoginModal({ onClose, t, isRTL }) {
   );
 }
 
+// ── Testimonials carousel ─────────────────────────────────────────────────────
+const PER_PAGE = 3;
+
+function TestimonialsCarousel({ t }) {
+  const testimonials = t.testimonials;
+  const pages        = Math.ceil(testimonials.length / PER_PAGE);
+  const [page, setPage] = useState(0);
+
+  // Auto-advance every 6 s
+  useEffect(() => {
+    const id = setInterval(() => setPage(p => (p + 1) % pages), 6000);
+    return () => clearInterval(id);
+  }, [pages]);
+
+  const current = testimonials.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+
+  return (
+    <section id="testimonials" className="py-24 px-6 bg-gray-50">
+      <div className="max-w-7xl mx-auto">
+
+        {/* Header */}
+        <div className="text-center mb-16 reveal">
+          <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-2">{t.reviewsTag}</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.reviewsTitle}</h2>
+          <p className="text-gray-400 text-sm">{t.reviewsSub}</p>
+        </div>
+
+        {/* Cards — key triggers fade + stagger on page change */}
+        <div
+          key={page}
+          className="grid md:grid-cols-3 gap-6"
+          style={{ animation: 'fadeIn 0.5s ease forwards' }}
+        >
+          {current.map((te, i) => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col hover:shadow-md hover:-translate-y-1 transition-all duration-200"
+              style={{ animation: `fadeUp 0.55s ${i * 0.12}s ease both` }}
+            >
+              <div className="flex gap-0.5 mb-4">
+                {[1,2,3,4,5].map(s => (
+                  <Star key={s} size={13} className={s <= te.stars ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />
+                ))}
+              </div>
+              <p className="text-gray-500 text-sm leading-relaxed flex-1 italic">{te.text}</p>
+              <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{te.name}</p>
+                  <p className="text-[10px] text-gray-400 truncate">{te.title} · {te.hotel}</p>
+                </div>
+                <span className="shrink-0 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center justify-center gap-4 mt-10">
+          <button
+            onClick={() => setPage(p => (p - 1 + pages) % pages)}
+            className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:border-gray-400 transition-all duration-200 shadow-sm"
+            aria-label="Previous"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <div className="flex items-center gap-2">
+            {Array.from({ length: pages }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                aria-label={`Page ${i + 1}`}
+                className={`rounded-full transition-all duration-300 ${
+                  i === page ? 'w-6 h-2 bg-blue-500' : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'
+                }`}
+              />
+            ))}
+          </div>
+
+          <button
+            onClick={() => setPage(p => (p + 1) % pages)}
+            className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:border-gray-400 transition-all duration-200 shadow-sm"
+            aria-label="Next"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-4 max-w-xs mx-auto h-px bg-gray-200 rounded-full overflow-hidden">
+          <div
+            key={`tprog-${page}`}
+            className="h-full bg-blue-400 rounded-full"
+            style={{ animation: 'progressBar 6s linear forwards' }}
+          />
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
 // ── SEO ───────────────────────────────────────────────────────────────────────
 function SEOMeta({ lang }) {
   useEffect(() => {
@@ -408,8 +670,22 @@ function SEOMeta({ lang }) {
 export default function LandingPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [lang, setLang]           = useState('ar');
-  const t     = T[lang];
-  const isRTL = lang === 'ar';
+  const [slideIdx, setSlideIdx]   = useState(0);
+  const t      = T[lang];
+  const isRTL  = lang === 'ar';
+  const slides = HERO_SLIDES[lang];
+  const slide  = slides[slideIdx];
+
+  useScrollReveal();
+
+  // Auto-advance hero slides every 5 s
+  useEffect(() => {
+    const id = setInterval(() => setSlideIdx(i => (i + 1) % slides.length), 5000);
+    return () => clearInterval(id);
+  }, [slides.length]);
+
+  // Reset slide index when language changes
+  useEffect(() => { setSlideIdx(0); }, [lang]);
 
   // Always preload Cairo font (Arabic is the default)
   useEffect(() => {
@@ -461,38 +737,60 @@ export default function LandingPage() {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="bg-gradient-to-br from-slate-950 via-[#0c1526] to-[#0f172a] pt-28 pb-24 px-6 relative overflow-hidden">
+      <section className="hero-bg pt-28 pb-20 px-6 relative overflow-hidden" style={{ minHeight: '92vh', display: 'flex', alignItems: 'center' }}>
+
+        {/* Subtle grid overlay */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px)`,
+          backgroundSize: '64px 64px',
+        }} />
+
+        {/* Floating particles */}
+        <FloatingParticles />
+
         {/* Ambient glow orbs */}
         <div className="absolute -top-40 start-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute top-20 -end-20 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-[500px] h-[400px] bg-violet-600/6 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto relative z-10">
+        <div className="max-w-7xl mx-auto relative z-10 w-full">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
-            <div>
+
+            {/* ── Slide content ── */}
+            <div key={slideIdx} style={{ animation: 'fadeUp 0.7s ease forwards' }}>
+
+              {/* Badge */}
               <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-3 py-1.5 mb-7">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-emerald-300 font-semibold">{t.badge}</span>
+                <span className="text-xs text-emerald-300 font-semibold">{slide.badge}</span>
               </div>
-              <h1 className={`font-extrabold text-white leading-[1.1] mb-6 ${isRTL ? 'text-5xl' : 'text-5xl'}`}>
-                {t.heroLine1}<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-300 to-indigo-300">
-                  {t.heroLine2}
+
+              {/* Headline */}
+              <h1 className="font-extrabold text-white leading-[1.1] mb-6 text-5xl">
+                {slide.line1}<br />
+                <span className={`text-transparent bg-clip-text bg-gradient-to-r ${slide.accent}`}>
+                  {slide.line2}
                 </span>
-                {t.heroLine3 && <><br />{t.heroLine3}</>}
               </h1>
-              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-md">{t.heroSub}</p>
+
+              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-md">{slide.sub}</p>
 
               {/* Stats strip */}
               <div className="grid grid-cols-4 gap-3 mb-10">
-                {t.stats.map(s => (
-                  <div key={s.l} className="bg-white/5 border border-white/8 rounded-xl px-3 py-3 text-center">
+                {t.stats.map((s, i) => (
+                  <div
+                    key={s.l}
+                    className="bg-white/5 border border-white/8 rounded-xl px-3 py-3 text-center hover:bg-white/8 transition-colors duration-200"
+                    style={{ animation: `fadeUp 0.6s ${0.1 + i * 0.08}s ease both` }}
+                  >
                     <p className="text-xl font-extrabold text-white leading-tight">{s.v}</p>
                     <p className="text-[10px] text-white/35 mt-1 leading-snug">{s.l}</p>
                   </div>
                 ))}
               </div>
 
+              {/* CTAs */}
               <div className="flex items-center gap-3 flex-wrap">
                 <button onClick={() => setShowLogin(true)}
                   className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-7 py-3 rounded-xl transition shadow-2xl shadow-blue-500/30 text-sm">
@@ -510,14 +808,63 @@ export default function LandingPage() {
                 </a>
               </div>
             </div>
-            <div className="relative hidden lg:block">
-              {/* Glow behind mockup */}
-              <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-3xl" />
-              <div className="relative">
-                <DashboardMockup />
-                <div className="absolute -end-5 -bottom-8 shadow-2xl"><RoomControlCard /></div>
+
+            {/* ── Mockup (desktop only) ── */}
+            <div key={`mock-${slideIdx}`} className="relative hidden lg:block"
+                 style={{ animation: 'slideLeft 0.75s ease forwards' }}>
+              <div className="absolute inset-0 bg-blue-500/8 blur-3xl rounded-3xl" />
+              <div className="relative float-card">
+                {slide.mockup === 'dashboard' && (
+                  <>
+                    <DashboardMockup />
+                    <div className="absolute -end-5 -bottom-8 shadow-2xl float-card-delay">
+                      <RoomControlCard />
+                    </div>
+                  </>
+                )}
+                {slide.mockup === 'guest' && (
+                  <div className="flex justify-center">
+                    <GuestPortalMockup />
+                  </div>
+                )}
+                {slide.mockup === 'pms' && <PMSMockup />}
               </div>
             </div>
+          </div>
+
+          {/* ── Slide controls ── */}
+          <div className="mt-14 flex items-center gap-5">
+            {/* Dot indicators */}
+            <div className="flex items-center gap-2">
+              {slides.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSlideIdx(i)}
+                  aria-label={`Slide ${i + 1}`}
+                  className={`rounded-full transition-all duration-300 ${
+                    i === slideIdx
+                      ? `w-6 h-2 ${s.dot}`
+                      : 'w-2 h-2 bg-white/20 hover:bg-white/45'
+                  }`}
+                />
+              ))}
+            </div>
+            {/* Progress bar */}
+            <div className="flex-1 h-px bg-white/10 rounded-full overflow-hidden">
+              <div
+                key={`prog-${slideIdx}`}
+                className="h-full bg-white/35 rounded-full"
+                style={{ animation: 'progressBar 5s linear forwards' }}
+              />
+            </div>
+            {/* Slide counter */}
+            <span
+              key={`cnt-${slideIdx}`}
+              className="text-[11px] text-white/25 font-mono tabular-nums"
+              style={{ animation: 'fadeIn 0.5s ease forwards' }}
+            >
+              {String(slideIdx + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}
+            </span>
           </div>
         </div>
       </section>
@@ -533,7 +880,7 @@ export default function LandingPage() {
       {/* ── Features ── */}
       <section id="features" className="py-24 px-6 bg-white">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-16 reveal">
             <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-2">{t.featuresTag}</p>
             <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.featuresTitle}</h2>
             <p className="text-gray-400 text-sm max-w-lg mx-auto">{t.featuresSub}</p>
@@ -543,8 +890,8 @@ export default function LandingPage() {
               const Icon = FEATURE_ICONS[i];
               const [bg, ic] = FEATURE_COLORS[i].split(' ');
               return (
-                <div key={i} className="group p-5 border border-gray-100 rounded-2xl hover:border-blue-100 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-default bg-white flex flex-col">
-                  <div className={`w-11 h-11 rounded-xl ${bg} flex items-center justify-center mb-4`}>
+                <div key={i} className={`reveal d${i + 1} group p-5 border border-gray-100 rounded-2xl hover:border-blue-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-default bg-white flex flex-col`}>
+                  <div className={`w-11 h-11 rounded-xl ${bg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200`}>
                     <Icon size={20} className={ic} />
                   </div>
                   <h3 className="font-bold text-gray-800 text-sm mb-2">{f.title}</h3>
@@ -565,28 +912,23 @@ export default function LandingPage() {
       </section>
 
       {/* ── Impact numbers strip ── */}
-      <section className="py-16 px-6 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
+      <section className="impact-bg py-20 px-6 relative overflow-hidden">
+        {/* Subtle glow overlay */}
+        <div className="absolute inset-0 bg-white/3 pointer-events-none" />
+        <div className="max-w-5xl mx-auto relative z-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {(isRTL ? [
-              { icon: TrendingUp, v: '38%',    l: 'متوسط توفير الطاقة', sub: 'في أول 3 أشهر' },
-              { icon: Clock,      v: '20 دقيقة', l: 'أسرع في تجهيز الغرف', sub: 'بعد كل مغادرة' },
-              { icon: Users,      v: '4.9★',    l: 'تقييم الضيوف', sub: 'بعد بوابة QR' },
-              { icon: Zap,        v: '< 1ث',    l: 'وقت الاستجابة', sub: 'تحديثات لحظية' },
+              { icon: TrendingUp, v: '38%',      l: 'متوسط توفير الطاقة',   sub: 'في أول 3 أشهر'    },
+              { icon: Clock,      v: '20 دقيقة', l: 'أسرع في تجهيز الغرف', sub: 'بعد كل مغادرة'    },
+              { icon: Users,      v: '4.9★',     l: 'تقييم الضيوف',         sub: 'بعد بوابة QR'     },
+              { icon: Zap,        v: '< 1ث',     l: 'وقت الاستجابة',        sub: 'تحديثات لحظية'   },
             ] : [
-              { icon: TrendingUp, v: '38%',     l: 'Avg Energy Saved', sub: 'In first 3 months' },
-              { icon: Clock,      v: '20 min',  l: 'Faster Room Turnover', sub: 'After each checkout' },
-              { icon: Users,      v: '4.9★',    l: 'Guest Satisfaction', sub: 'After QR portal' },
-              { icon: Zap,        v: '< 1s',    l: 'Response Time', sub: 'Live IoT updates' },
-            ]).map(({ icon: Icon, v, l, sub }) => (
-              <div key={l} className="flex flex-col items-center gap-1">
-                <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center mb-2">
-                  <Icon size={18} className="text-white" />
-                </div>
-                <p className="text-3xl font-extrabold leading-tight">{v}</p>
-                <p className="text-sm font-semibold text-white/90">{l}</p>
-                <p className="text-xs text-white/50">{sub}</p>
-              </div>
+              { icon: TrendingUp, v: '38%',     l: 'Avg Energy Saved',      sub: 'In first 3 months'  },
+              { icon: Clock,      v: '20 min',  l: 'Faster Room Turnover',  sub: 'After each checkout' },
+              { icon: Users,      v: '4.9★',    l: 'Guest Satisfaction',    sub: 'After QR portal'     },
+              { icon: Zap,        v: '< 1s',    l: 'Response Time',         sub: 'Live IoT updates'    },
+            ]).map(({ icon, v, l, sub }) => (
+              <AnimatedStat key={l} value={v} label={l} sub={sub} icon={icon} />
             ))}
           </div>
         </div>
@@ -595,60 +937,45 @@ export default function LandingPage() {
       {/* ── Showcase ── */}
       <section id="showcase" className="py-24 px-6 bg-slate-950">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-16 reveal">
             <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-2">{t.platformTag}</p>
             <h2 className="text-3xl font-bold text-white mb-3">{t.platformTitle}</h2>
             <p className="text-white/30 text-sm max-w-lg mx-auto">{t.platformSub}</p>
           </div>
           <div className="grid lg:grid-cols-3 gap-8">
-            <div><p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p><DashboardMockup /></div>
-            <div><p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p><PMSMockup /></div>
-            <div><p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p><div className="flex justify-center"><GuestPortalMockup /></div></div>
+            <div className="reveal-left d1">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p>
+              <DashboardMockup />
+            </div>
+            <div className="reveal d2">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p>
+              <PMSMockup />
+            </div>
+            <div className="reveal-right d3">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p>
+              <div className="flex justify-center"><GuestPortalMockup /></div>
+            </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-2 mt-12">
+          <div className="flex flex-wrap justify-center gap-2 mt-12 reveal">
             {(isRTL
               ? ['تحديث فوري', 'تسجيل دخول QR', 'تقارير الإيرادات', 'إدارة المناوبات', 'أتمتة الطاقة', 'سيناريوهات ذكية', 'عدم الإزعاج / SOS', 'فنادق متعددة', 'تحكم ذكي بالغرف', 'صلاحيات بالأدوار', 'بوابة الضيف']
               : ['Real-time telemetry', 'QR check-in', 'Revenue reports', 'Shift management', 'Energy automation', 'Scene presets', 'DND / SOS', 'Multi-property', 'Smart room control', 'Role-based access', 'Guest portal']
             ).map(pill => (
-              <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full">{pill}</span>
+              <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full hover:text-white/60 hover:bg-white/10 transition-colors duration-200">{pill}</span>
             ))}
           </div>
         </div>
       </section>
 
       {/* ── Testimonials ── */}
-      <section id="testimonials" className="py-24 px-6 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-2">{t.reviewsTag}</p>
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.reviewsTitle}</h2>
-            <p className="text-gray-400 text-sm">{t.reviewsSub}</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {t.testimonials.map((te, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col">
-                <div className="flex gap-0.5 mb-4">
-                  {[1,2,3,4,5].map(s => <Star key={s} size={13} className={s <= te.stars ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />)}
-                </div>
-                <p className="text-gray-500 text-sm leading-relaxed flex-1 italic">{te.text}</p>
-                <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">{te.name}</p>
-                    <p className="text-[10px] text-gray-400 truncate">{te.title} · {te.hotel}</p>
-                  </div>
-                  <span className="shrink-0 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <TestimonialsCarousel t={t} />
 
       {/* ── CTA ── */}
       <section className="py-28 px-6 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 relative overflow-hidden">
         <div className="absolute -top-40 -end-40 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-2xl mx-auto text-center relative z-10">
+
+        <div className="max-w-2xl mx-auto text-center relative z-10 reveal-scale">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-full px-4 py-1.5 mb-6">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs text-white/70 font-medium">{isRTL ? 'جاهز للبدء الفوري' : 'Ready to deploy today'}</span>
@@ -656,32 +983,39 @@ export default function LandingPage() {
           <h2 className="text-4xl font-extrabold text-white mb-5 leading-tight">{t.ctaTitle}</h2>
           <p className="text-white/50 text-base leading-relaxed mb-10 max-w-md mx-auto">{t.ctaSub}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-            <button onClick={() => setShowLogin(true)}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm transition shadow-2xl shadow-blue-500/30">
+            <button
+              onClick={() => setShowLogin(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm transition shadow-2xl shadow-blue-500/30 hover:scale-105 active:scale-95"
+            >
               {t.ctaBtn}
               {isRTL ? <ChevronRight size={16} className="rotate-180" /> : <ArrowRight size={16} />}
             </button>
-            <a href="#features"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition">
+            <a
+              href="#features"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition hover:scale-105 active:scale-95"
+            >
               {isRTL ? 'اكتشف المميزات' : 'See all features'}
             </a>
           </div>
           <p className="text-white/25 text-[11px] mt-8">
             {t.sysAdmin}{' '}
-            <Link to="/platform/login" className="text-white/40 hover:text-white/70 underline underline-offset-2">{t.platformLogin}</Link>
+            <Link to="/platform/login" className="text-white/40 hover:text-white/70 underline underline-offset-2 transition">{t.platformLogin}</Link>
           </p>
         </div>
       </section>
 
       {/* ── Footer ── */}
-      <footer className="bg-slate-950 px-6 py-8 border-t border-white/5">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-white/10 rounded"><LayoutDashboard size={12} className="text-white" /></div>
+      <footer className="bg-slate-950 px-6 py-10 relative" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        {/* Subtle top glow line */}
+        <div className="absolute top-0 start-0 end-0 h-px"
+             style={{ background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.4), rgba(59,130,246,0.4), transparent)' }} />
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 reveal">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-white/10 rounded-lg"><LayoutDashboard size={13} className="text-white" /></div>
             <span className="font-bold text-white text-sm">iHotel</span>
             <span className="text-white/20 text-xs">· {isRTL ? 'منصة إدارة الفنادق الذكية' : 'Smart Hotel IoT Platform'}</span>
           </div>
-          <p className="text-white/15 text-xs">{t.footer}</p>
+          <p className="text-white/15 text-xs tracking-wide">{t.footer}</p>
         </div>
       </footer>
 
