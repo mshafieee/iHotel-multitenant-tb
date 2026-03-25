@@ -5,6 +5,7 @@ import {
   Zap, BarChart3, BedDouble, Thermometer,
   Lightbulb, Lock, Moon, Cpu, Star,
   Bell, Leaf, X, ArrowRight, ChevronRight,
+  CheckCircle, TrendingUp, Users, Clock,
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
@@ -13,32 +14,32 @@ const T = {
   en: {
     langToggle: 'عربي',
     nav: { features: 'Features', platform: 'Platform', reviews: 'Reviews', signIn: 'Sign In' },
-    badge: 'Live platform · Real-time IoT control',
-    heroLine1: 'The Future of',
-    heroLine2: 'Hotel Management',
-    heroLine3: 'is Here',
-    heroSub: 'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and reduce energy costs — across all your properties.',
-    stats: [{ v: '500+', l: 'Rooms Managed' }, { v: '~40%', l: 'Energy Savings' }, { v: '< 1s', l: 'Live Updates' }, { v: '99.9%', l: 'Uptime' }],
-    getStarted: 'Get Started',
+    badge: '🟢 Live platform · Real-time IoT control',
+    heroLine1: 'The Smartest Way to',
+    heroLine2: 'Run Your Hotel',
+    heroLine3: '',
+    heroSub: 'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and cut energy costs — all from a single dashboard.',
+    stats: [{ v: '500+', l: 'Rooms Managed' }, { v: '38%', l: 'Avg Energy Saved' }, { v: '< 1s', l: 'Live Updates' }, { v: '4.9★', l: 'Guest Rating' }],
+    getStarted: 'Sign In to Your Hotel',
     bookRoom: 'Book a Room',
-    seeFeatures: 'See features',
-    trustedBy: 'Trusted by hotels in',
+    seeFeatures: 'Explore features',
+    trustedBy: 'Deployed in',
     cities: ['Riyadh', 'Jeddah', 'Mecca', 'Medina', 'Dammam', 'Dubai'],
-    featuresTag: 'Platform Features',
-    featuresTitle: 'Everything your hotel needs',
+    featuresTag: '✦ Platform Features',
+    featuresTitle: 'Everything your hotel needs — nothing it doesn\'t',
     featuresSub: 'Built for hotel operators who demand real-time visibility, energy intelligence, and outstanding guest experience — all from one platform.',
     features: [
-      { title: 'Real-time IoT Control',    desc: 'AC, lights, curtains, door locks, CO₂ and humidity — every room updated every second.' },
-      { title: 'PMS & Reservations',       desc: 'QR check-in, guest portal, room allocation, checkout automation — all built in.' },
-      { title: 'Revenue & Shift Tracking', desc: 'Live income logs, shift reconciliation, room-type pricing, and export to management.' },
-      { title: 'Enterprise Security',      desc: 'JWT auth, bcrypt encryption, per-hotel isolation, and rate limiting out of the box.' },
-      { title: 'Energy Intelligence',      desc: 'Auto-vacate on departure, motion-triggered AC and lights off — 30–40% energy reduction.' },
-      { title: 'Smart Automation Scenes',  desc: 'Welcome routines, departure cleanup, sleep presets, DND — all triggered automatically.' },
-      { title: 'Instant Staff Alerts',     desc: 'SOS, housekeeping requests, checkout reminders — instant notification to the right person.' },
-      { title: 'IoT Hardware Ready',        desc: 'Works with any smart room controller. Zero vendor lock-in.' },
+      { title: 'Real-time IoT Control',    desc: 'AC, lights, curtains, door locks, CO₂ and humidity — every room updated every second.', result: '< 1s response' },
+      { title: 'PMS & Reservations',       desc: 'QR check-in, guest portal, room allocation, checkout automation — all built in.', result: 'Zero paperwork' },
+      { title: 'Revenue & Shift Tracking', desc: 'Live income logs, shift reconciliation, room-type pricing, and export to management.', result: 'Full accountability' },
+      { title: 'Enterprise Security',      desc: 'JWT auth, bcrypt encryption, per-hotel isolation, and rate limiting out of the box.', result: 'Bank-grade security' },
+      { title: 'Energy Intelligence',      desc: 'Auto-vacate on departure, motion-triggered AC and lights off — 30–40% energy reduction.', result: '~38% saved' },
+      { title: 'Smart Automation Scenes',  desc: 'Welcome routines, departure cleanup, sleep presets, DND — all triggered automatically.', result: 'Fully hands-free' },
+      { title: 'Instant Staff Alerts',     desc: 'SOS, housekeeping requests, checkout reminders — instant notification to the right person.', result: '0 missed alerts' },
+      { title: 'IoT Hardware Ready',       desc: 'Works with any smart room controller. Bring your own hardware. Zero vendor lock-in.', result: 'Any hardware' },
     ],
-    platformTag: 'One Platform',
-    platformTitle: 'Every workflow covered',
+    platformTag: '✦ One Platform',
+    platformTitle: 'Every hotel workflow, covered',
     platformSub: 'From front desk to housekeeping, energy management to guest experience — iHotel handles it all in one place.',
     dashLabel: 'Live Room Dashboard',
     pmsLabel: 'PMS — Reservations',
@@ -76,32 +77,32 @@ const T = {
   ar: {
     langToggle: 'English',
     nav: { features: 'المميزات', platform: 'المنصة', reviews: 'آراء العملاء', signIn: 'دخول' },
-    badge: 'منصة فعلية · تحكم لحظي بأجهزة IoT',
-    heroLine1: 'مستقبل إدارة الفنادق',
-    heroLine2: 'أصبح واقعاً',
+    badge: '🟢 منصة فعلية · تحكم لحظي بأجهزة IoT',
+    heroLine1: 'أذكى طريقة',
+    heroLine2: 'لإدارة فندقك',
     heroLine3: '',
-    heroSub: 'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — عبر جميع فنادقك.',
-    stats: [{ v: '+500', l: 'غرفة مُدارة' }, { v: '٪40~', l: 'توفير في الطاقة' }, { v: '< 1ث', l: 'تحديث فوري' }, { v: '٪99.9', l: 'وقت التشغيل' }],
-    getStarted: 'ابدأ الآن',
+    heroSub: 'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — كل شيء من لوحة تحكم واحدة.',
+    stats: [{ v: '+500', l: 'غرفة مُدارة' }, { v: '38%', l: 'متوسط توفير الطاقة' }, { v: '< 1ث', l: 'تحديث فوري' }, { v: '4.9★', l: 'تقييم الضيوف' }],
+    getStarted: 'ادخل للوحة تحكم فندقك',
     bookRoom: 'احجز غرفة',
     seeFeatures: 'اكتشف المميزات',
-    trustedBy: 'فنادق من مدن',
+    trustedBy: '✦ فنادق نشطة في',
     cities: ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'دبي'],
-    featuresTag: 'مميزات المنصة',
-    featuresTitle: 'كل ما يحتاجه فندقك',
+    featuresTag: '✦ مميزات المنصة',
+    featuresTitle: 'كل ما يحتاجه فندقك — في مكان واحد',
     featuresSub: 'صُممت لمشغّلي الفنادق الذين يريدون الرؤية الفورية، وذكاء الطاقة، وتجربة ضيوف لا تُنسى — كل ذلك من منصة واحدة.',
     features: [
-      { title: 'تحكم لحظي بأجهزة IoT',    desc: 'مكيف، إضاءة، ستائر، أقفال الأبواب، CO₂ والرطوبة — كل غرفة محدّثة كل ثانية.' },
-      { title: 'الحجوزات وإدارة الفندق',   desc: 'تسجيل دخول بـ QR، بوابة الضيف، توزيع الغرف، وأتمتة المغادرة — كل شيء جاهز.' },
-      { title: 'الإيرادات والمناوبات',       desc: 'سجلات إيرادات فورية، مطابقة المناوبات، تسعير أنواع الغرف، والتصدير للإدارة.' },
-      { title: 'أمان المستوى المؤسسي',       desc: 'مصادقة JWT، تشفير bcrypt، عزل كل فندق، وحد معدل الطلبات — جاهز من البداية.' },
-      { title: 'ذكاء الطاقة',               desc: 'إيقاف تلقائي عند المغادرة، وإطفاء عند انعدام الحركة — وفّر من 30 إلى 40% من الطاقة.' },
-      { title: 'سيناريوهات الأتمتة الذكية', desc: 'روتين الاستقبال، تنظيف المغادرة، وضع النوم، عدم الإزعاج — كل شيء يعمل تلقائياً.' },
-      { title: 'تنبيهات فورية للموظفين',    desc: 'نداء الطوارئ، طلبات التدبير، تذكيرات المغادرة — إشعار فوري للشخص المناسب.' },
-      { title: 'جاهز للأجهزة الذكية',        desc: 'يعمل مع أي وحدة تحكم ذكية للغرف. لا قيود على الموردين.' },
+      { title: 'تحكم لحظي بأجهزة IoT',    desc: 'مكيف، إضاءة، ستائر، أقفال الأبواب، CO₂ والرطوبة — كل غرفة محدّثة كل ثانية.', result: 'استجابة أقل من ثانية' },
+      { title: 'الحجوزات وإدارة الفندق',   desc: 'تسجيل دخول بـ QR، بوابة الضيف، توزيع الغرف، وأتمتة المغادرة — كل شيء جاهز.', result: 'بلا ورق' },
+      { title: 'الإيرادات والمناوبات',       desc: 'سجلات إيرادات فورية، مطابقة المناوبات، تسعير أنواع الغرف، والتصدير للإدارة.', result: 'مساءلة كاملة' },
+      { title: 'أمان المستوى المؤسسي',       desc: 'مصادقة JWT، تشفير bcrypt، عزل كل فندق، وحد معدل الطلبات — جاهز من البداية.', result: 'حماية بنكية' },
+      { title: 'ذكاء الطاقة',               desc: 'إيقاف تلقائي عند المغادرة، وإطفاء عند انعدام الحركة — وفّر من 30 إلى 40% من الطاقة.', result: 'توفير ~38%' },
+      { title: 'سيناريوهات الأتمتة الذكية', desc: 'روتين الاستقبال، تنظيف المغادرة، وضع النوم، عدم الإزعاج — كل شيء يعمل تلقائياً.', result: 'تشغيل بالكامل آلياً' },
+      { title: 'تنبيهات فورية للموظفين',    desc: 'نداء الطوارئ، طلبات التدبير، تذكيرات المغادرة — إشعار فوري للشخص المناسب.', result: 'صفر تنبيهات فائتة' },
+      { title: 'جاهز لأي أجهزة ذكية',       desc: 'يعمل مع أي وحدة تحكم ذكية للغرف. جهازك أو أي جهاز. بلا قيود على الموردين.', result: 'أي جهاز' },
     ],
-    platformTag: 'منصة واحدة',
-    platformTitle: 'يغطي كل متطلباتك',
+    platformTag: '✦ منصة واحدة',
+    platformTitle: 'يغطي كل سير عمل في فندقك',
     platformSub: 'من مكتب الاستقبال إلى خدمة الغرف، ومن إدارة الطاقة إلى تجربة الضيف — iHotel يدير كل شيء من مكان واحد.',
     dashLabel: 'لوحة الغرف المباشرة',
     pmsLabel: 'نظام إدارة الفندق',
@@ -117,9 +118,9 @@ const T = {
       { stars: 5, text: '"قبل iHotel لم تكن لدينا أي رؤية على الطاقة المُهدرة. الآن نرى بدقة أي الغرف تستهلك كهرباء وهي فارغة، ونُفعّل وضع "غير مُشغّل" من لوحة التحكم مباشرة. انخفضت فاتورة الكهرباء بما يقارب الثلث في الربع الأول، وهذا التوفير وحده يغطّي تكلفة المنصة أضعافاً."', name: 'عبدالله الشهري', title: 'كبير المهندسين', hotel: 'فندق 250 غرفة، المدينة المنورة', stat: '32% توفير في الكهرباء' },
       { stars: 5, text: '"لوحة تحكم الفنادق المتعددة هي ما أقنعني. أنتقل بين فنادقنا الثلاثة بنقرة واحدة وأرى حالة كل غرفة مباشرة — مُشغّلة، فارغة، في الخدمة، غير مُشغّل. إذا لاحظت ما يستدعي التدخل، أرسل أمر التحكم فوراً. أصبحت iHotel الجهاز العصبي المركزي لمجموعة فنادقنا."', name: 'منى الحربي', title: 'مديرة مجموعة الفنادق', hotel: 'مجموعة فنادق، الدمام', stat: '3 فنادق، منصة واحدة' },
     ],
-    ctaTitle: 'هل أنت مستعد لتحويل فندقك؟',
-    ctaSub: 'انضم لمشغّلي الفنادق الذين يديرون منشآت أكثر ذكاءً وكفاءةً وربحيةً مع iHotel. IoT فوري. بوابة الضيف. تتبع الإيرادات. كل شيء في منصة واحدة.',
-    ctaBtn: 'دخول لوحة تحكم فندقك',
+    ctaTitle: 'فندقك يستحق أفضل من ذلك',
+    ctaSub: 'انضم لمشغّلي الفنادق الذين يديرون منشآت أكثر ذكاءً وكفاءةً وربحيةً. IoT فوري، بوابة ضيف، تتبع إيرادات، وأتمتة طاقة — كل ذلك في منصة iHotel الواحدة.',
+    ctaBtn: 'ادخل لوحة تحكم فندقك الآن',
     sysAdmin: 'مدير النظام؟',
     platformLogin: 'دخول المنصة',
     footer: 'صُنع لقطاع الضيافة',
@@ -406,13 +407,12 @@ function SEOMeta({ lang }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [showLogin, setShowLogin] = useState(false);
-  const [lang, setLang]           = useState('en');
+  const [lang, setLang]           = useState('ar');
   const t     = T[lang];
   const isRTL = lang === 'ar';
 
-  // Load Cairo font for Arabic
+  // Always preload Cairo font (Arabic is the default)
   useEffect(() => {
-    if (lang !== 'ar') return;
     const id = 'cairo-font';
     if (document.getElementById(id)) return;
     const link = document.createElement('link');
@@ -420,7 +420,7 @@ export default function LandingPage() {
     link.rel  = 'stylesheet';
     link.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap';
     document.head.appendChild(link);
-  }, [lang]);
+  }, []);
 
   return (
     <div
@@ -461,52 +461,62 @@ export default function LandingPage() {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 pt-28 pb-24 px-6 relative overflow-hidden">
-        <div className="absolute -top-60 -start-60 w-[700px] h-[700px] bg-blue-600/5 rounded-full blur-3xl pointer-events-none -z-10" />
-        <div className="absolute bottom-0 end-0 w-[500px] h-[500px] bg-indigo-600/5 rounded-full blur-3xl pointer-events-none -z-10" />
+      <section className="bg-gradient-to-br from-slate-950 via-[#0c1526] to-[#0f172a] pt-28 pb-24 px-6 relative overflow-hidden">
+        {/* Ambient glow orbs */}
+        <div className="absolute -top-40 start-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-20 -end-20 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 start-0 w-[500px] h-[400px] bg-violet-600/6 rounded-full blur-3xl pointer-events-none" />
+
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1.5 mb-7">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-3 py-1.5 mb-7">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-emerald-300 font-medium">{t.badge}</span>
+                <span className="text-xs text-emerald-300 font-semibold">{t.badge}</span>
               </div>
-              <h1 className="text-5xl font-bold text-white leading-tight mb-5">
+              <h1 className={`font-extrabold text-white leading-[1.1] mb-6 ${isRTL ? 'text-5xl' : 'text-5xl'}`}>
                 {t.heroLine1}<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-indigo-300 to-purple-300">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-300 to-indigo-300">
                   {t.heroLine2}
                 </span>
                 {t.heroLine3 && <><br />{t.heroLine3}</>}
               </h1>
-              <p className="text-white/50 text-base leading-relaxed mb-8 max-w-md">{t.heroSub}</p>
-              <div className="flex gap-8 mb-10 flex-wrap">
+              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-md">{t.heroSub}</p>
+
+              {/* Stats strip */}
+              <div className="grid grid-cols-4 gap-3 mb-10">
                 {t.stats.map(s => (
-                  <div key={s.l}>
-                    <p className="text-2xl font-bold text-white">{s.v}</p>
-                    <p className="text-[10px] text-white/30 uppercase tracking-wider mt-0.5">{s.l}</p>
+                  <div key={s.l} className="bg-white/5 border border-white/8 rounded-xl px-3 py-3 text-center">
+                    <p className="text-xl font-extrabold text-white leading-tight">{s.v}</p>
+                    <p className="text-[10px] text-white/35 mt-1 leading-snug">{s.l}</p>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-4 flex-wrap">
+
+              <div className="flex items-center gap-3 flex-wrap">
                 <button onClick={() => setShowLogin(true)}
-                  className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-7 py-3 rounded-xl transition shadow-xl shadow-blue-500/20 text-sm">
+                  className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-7 py-3 rounded-xl transition shadow-2xl shadow-blue-500/30 text-sm">
                   {t.getStarted}
                   {isRTL ? <ChevronRight size={15} className="rotate-180" /> : <ArrowRight size={15} />}
                 </button>
                 <Link to="/book"
-                  className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-7 py-3 rounded-xl transition shadow-xl shadow-emerald-500/20 text-sm">
+                  className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-7 py-3 rounded-xl transition shadow-xl shadow-emerald-500/20 text-sm">
                   <BedDouble size={15} />
                   {t.bookRoom}
                 </Link>
-                <a href="#features" className="inline-flex items-center gap-1.5 text-white/45 hover:text-white/75 text-sm font-medium transition">
+                <a href="#features" className="inline-flex items-center gap-1.5 text-white/40 hover:text-white/70 text-sm font-medium transition">
                   {t.seeFeatures}
                   {isRTL ? <ChevronRight size={13} className="rotate-180" /> : <ChevronRight size={13} />}
                 </a>
               </div>
             </div>
             <div className="relative hidden lg:block">
-              <DashboardMockup />
-              <div className="absolute -end-5 -bottom-8 shadow-2xl"><RoomControlCard /></div>
+              {/* Glow behind mockup */}
+              <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-3xl" />
+              <div className="relative">
+                <DashboardMockup />
+                <div className="absolute -end-5 -bottom-8 shadow-2xl"><RoomControlCard /></div>
+              </div>
             </div>
           </div>
         </div>
@@ -533,15 +543,51 @@ export default function LandingPage() {
               const Icon = FEATURE_ICONS[i];
               const [bg, ic] = FEATURE_COLORS[i].split(' ');
               return (
-                <div key={i} className="p-5 border border-gray-100 rounded-xl hover:border-gray-200 hover:shadow-md transition cursor-default">
-                  <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center mb-4`}>
-                    <Icon size={18} className={ic} />
+                <div key={i} className="group p-5 border border-gray-100 rounded-2xl hover:border-blue-100 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-default bg-white flex flex-col">
+                  <div className={`w-11 h-11 rounded-xl ${bg} flex items-center justify-center mb-4`}>
+                    <Icon size={20} className={ic} />
                   </div>
-                  <h3 className="font-semibold text-gray-800 text-sm mb-2">{f.title}</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed">{f.desc}</p>
+                  <h3 className="font-bold text-gray-800 text-sm mb-2">{f.title}</h3>
+                  <p className="text-xs text-gray-400 leading-relaxed flex-1">{f.desc}</p>
+                  {f.result && (
+                    <div className="mt-3 pt-3 border-t border-gray-50">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                        <CheckCircle size={10} className="shrink-0" />
+                        {f.result}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Impact numbers strip ── */}
+      <section className="py-16 px-6 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
+            {(isRTL ? [
+              { icon: TrendingUp, v: '38%',    l: 'متوسط توفير الطاقة', sub: 'في أول 3 أشهر' },
+              { icon: Clock,      v: '20 دقيقة', l: 'أسرع في تجهيز الغرف', sub: 'بعد كل مغادرة' },
+              { icon: Users,      v: '4.9★',    l: 'تقييم الضيوف', sub: 'بعد بوابة QR' },
+              { icon: Zap,        v: '< 1ث',    l: 'وقت الاستجابة', sub: 'تحديثات لحظية' },
+            ] : [
+              { icon: TrendingUp, v: '38%',     l: 'Avg Energy Saved', sub: 'In first 3 months' },
+              { icon: Clock,      v: '20 min',  l: 'Faster Room Turnover', sub: 'After each checkout' },
+              { icon: Users,      v: '4.9★',    l: 'Guest Satisfaction', sub: 'After QR portal' },
+              { icon: Zap,        v: '< 1s',    l: 'Response Time', sub: 'Live IoT updates' },
+            ]).map(({ icon: Icon, v, l, sub }) => (
+              <div key={l} className="flex flex-col items-center gap-1">
+                <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center mb-2">
+                  <Icon size={18} className="text-white" />
+                </div>
+                <p className="text-3xl font-extrabold leading-tight">{v}</p>
+                <p className="text-sm font-semibold text-white/90">{l}</p>
+                <p className="text-xs text-white/50">{sub}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -599,19 +645,30 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="py-24 px-6 bg-gradient-to-br from-blue-600 to-indigo-700 relative overflow-hidden">
-        <div className="absolute -top-40 -end-40 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-2xl mx-auto text-center relative">
-          <h2 className="text-4xl font-bold text-white mb-4">{t.ctaTitle}</h2>
-          <p className="text-blue-100 text-base leading-relaxed mb-10 max-w-md mx-auto">{t.ctaSub}</p>
-          <button onClick={() => setShowLogin(true)}
-            className="inline-flex items-center gap-2 bg-white text-blue-600 font-bold px-8 py-3.5 rounded-xl text-sm hover:bg-blue-50 transition shadow-xl">
-            {t.ctaBtn}
-            {isRTL ? <ChevronRight size={16} className="rotate-180" /> : <ArrowRight size={16} />}
-          </button>
-          <p className="text-blue-200/40 text-[11px] mt-7">
+      <section className="py-28 px-6 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 relative overflow-hidden">
+        <div className="absolute -top-40 -end-40 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 start-0 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
+        <div className="max-w-2xl mx-auto text-center relative z-10">
+          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-full px-4 py-1.5 mb-6">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs text-white/70 font-medium">{isRTL ? 'جاهز للبدء الفوري' : 'Ready to deploy today'}</span>
+          </div>
+          <h2 className="text-4xl font-extrabold text-white mb-5 leading-tight">{t.ctaTitle}</h2>
+          <p className="text-white/50 text-base leading-relaxed mb-10 max-w-md mx-auto">{t.ctaSub}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button onClick={() => setShowLogin(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm transition shadow-2xl shadow-blue-500/30">
+              {t.ctaBtn}
+              {isRTL ? <ChevronRight size={16} className="rotate-180" /> : <ArrowRight size={16} />}
+            </button>
+            <a href="#features"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition">
+              {isRTL ? 'اكتشف المميزات' : 'See all features'}
+            </a>
+          </div>
+          <p className="text-white/25 text-[11px] mt-8">
             {t.sysAdmin}{' '}
-            <Link to="/platform/login" className="text-blue-100/60 hover:text-blue-100 underline underline-offset-2">{t.platformLogin}</Link>
+            <Link to="/platform/login" className="text-white/40 hover:text-white/70 underline underline-offset-2">{t.platformLogin}</Link>
           </p>
         </div>
       </section>
