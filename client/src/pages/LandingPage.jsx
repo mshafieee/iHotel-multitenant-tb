@@ -493,7 +493,7 @@ function HotelLoginModal({ onClose, t, isRTL }) {
             <div className="p-1.5 bg-slate-800 rounded-lg"><LayoutDashboard size={14} className="text-white" /></div>
             <div>
               <h2 className="text-base font-bold text-gray-900 leading-tight">{t.loginTitle}</h2>
-              <p className="text-[11px] text-gray-400">{t.loginSub}</p>
+              <p className="text-xs text-gray-400">{t.loginSub}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-300 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition"><X size={16} /></button>
@@ -502,7 +502,7 @@ function HotelLoginModal({ onClose, t, isRTL }) {
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">{t.codeLabel}</label>
             <input className="input" value={hotelSlug} onChange={e => setHotelSlug(e.target.value)} placeholder={t.codePh} autoFocus required />
-            <p className="text-[10px] text-gray-400 mt-1">{t.codeHint}</p>
+            <p className="text-xs text-gray-400 mt-1">{t.codeHint}</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">{t.userLabel}</label>
@@ -526,9 +526,9 @@ function HotelLoginModal({ onClose, t, isRTL }) {
         <div className="px-6 pb-5 space-y-2 text-center">
           {forgotSent
             ? <p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">{t.forgotMsg}</p>
-            : <button onClick={() => setForgotSent(true)} className="text-[11px] text-gray-400 hover:text-gray-600 underline underline-offset-2 transition">{t.forgotPw}</button>
+            : <button onClick={() => setForgotSent(true)} className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 transition">{t.forgotPw}</button>
           }
-          <p className="text-[11px] text-gray-400">
+          <p className="text-xs text-gray-400">
             {t.sysAdmin}{' '}
             <Link to="/platform/login" className="text-gray-600 hover:text-gray-800 underline underline-offset-2 font-medium">{t.platformLogin}</Link>
           </p>
@@ -586,9 +586,9 @@ function TestimonialsCarousel({ t }) {
               <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800 truncate">{te.name}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{te.title} · {te.hotel}</p>
+                  <p className="text-xs text-gray-400 truncate">{te.title} · {te.hotel}</p>
                 </div>
-                <span className="shrink-0 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
+                <span className="shrink-0 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
               </div>
             </div>
           ))}
@@ -669,8 +669,10 @@ function SEOMeta({ lang }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [showLogin, setShowLogin] = useState(false);
-  const [lang, setLang]           = useState('ar');
-  const [slideIdx, setSlideIdx]   = useState(0);
+  const [lang, setLang]                   = useState('ar');
+  const [slideIdx, setSlideIdx]           = useState(0);
+  const [slideProgress, setSlideProgress] = useState(0);
+  const heroRef = useRef(null);
   const t      = T[lang];
   const isRTL  = lang === 'ar';
   const slides = HERO_SLIDES[lang];
@@ -678,14 +680,36 @@ export default function LandingPage() {
 
   useScrollReveal();
 
-  // Auto-advance hero slides every 5 s
+  // Scroll-driven hero carousel
   useEffect(() => {
-    const id = setInterval(() => setSlideIdx(i => (i + 1) % slides.length), 5000);
-    return () => clearInterval(id);
+    const onScroll = () => {
+      if (!heroRef.current) return;
+      const rect       = heroRef.current.getBoundingClientRect();
+      const scrollable = heroRef.current.offsetHeight - window.innerHeight;
+      if (scrollable <= 0) return;
+      const scrolled = Math.max(0, Math.min(scrollable, -rect.top));
+      const total    = scrolled / scrollable;                            // 0 → 1
+      const idx      = Math.min(slides.length - 1, Math.floor(total * slides.length));
+      const within   = (total - idx / slides.length) / (1 / slides.length); // 0 → 1
+      setSlideIdx(idx);
+      setSlideProgress(Math.min(100, Math.max(0, within * 100)));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, [slides.length]);
 
-  // Reset slide index when language changes
-  useEffect(() => { setSlideIdx(0); }, [lang]);
+  // Smooth-scroll hero to the chosen slide
+  const goToSlide = (i) => {
+    if (!heroRef.current) return;
+    const scrollable = heroRef.current.offsetHeight - window.innerHeight;
+    window.scrollTo({ top: heroRef.current.offsetTop + (i / slides.length) * scrollable, behavior: 'smooth' });
+  };
+
+  // Reset to slide 0 when language changes
+  useEffect(() => {
+    setSlideIdx(0);
+    setSlideProgress(0);
+  }, [lang]);
 
   // Always preload Cairo font (Arabic is the default)
   useEffect(() => {
@@ -736,8 +760,10 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── Hero ── */}
-      <section className="hero-bg pt-28 pb-20 px-6 relative overflow-hidden" style={{ minHeight: '92vh', display: 'flex', alignItems: 'center' }}>
+      {/* ── Hero (scroll-driven carousel — 4 × 100vh) ── */}
+      <section ref={heroRef} className="relative" style={{ height: '400vh' }}>
+        {/* Sticky visual layer — stays pinned while user scrolls through 400vh */}
+        <div className="sticky top-0 hero-bg overflow-hidden" style={{ height: '100vh' }}>
 
         {/* Subtle grid overlay */}
         <div className="absolute inset-0 pointer-events-none" style={{
@@ -754,7 +780,8 @@ export default function LandingPage() {
         <div className="absolute top-20 -end-20 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-[500px] h-[400px] bg-violet-600/6 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto relative z-10 w-full">
+        <div className="relative z-10 h-full flex items-center px-6" style={{ paddingTop: '5rem' }}>
+        <div className="max-w-7xl mx-auto w-full">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
 
             {/* ── Slide content ── */}
@@ -785,7 +812,7 @@ export default function LandingPage() {
                     style={{ animation: `fadeUp 0.6s ${0.1 + i * 0.08}s ease both` }}
                   >
                     <p className="text-xl font-extrabold text-white leading-tight">{s.v}</p>
-                    <p className="text-[10px] text-white/35 mt-1 leading-snug">{s.l}</p>
+                    <p className="text-xs text-white/45 mt-1 leading-snug">{s.l}</p>
                   </div>
                 ))}
               </div>
@@ -839,7 +866,7 @@ export default function LandingPage() {
               {slides.map((s, i) => (
                 <button
                   key={i}
-                  onClick={() => setSlideIdx(i)}
+                  onClick={() => goToSlide(i)}
                   aria-label={`Slide ${i + 1}`}
                   className={`rounded-full transition-all duration-300 ${
                     i === slideIdx
@@ -849,24 +876,21 @@ export default function LandingPage() {
                 />
               ))}
             </div>
-            {/* Progress bar */}
+            {/* Progress bar — width driven by scroll position */}
             <div className="flex-1 h-px bg-white/10 rounded-full overflow-hidden">
               <div
-                key={`prog-${slideIdx}`}
-                className="h-full bg-white/35 rounded-full"
-                style={{ animation: 'progressBar 5s linear forwards' }}
+                className="h-full bg-white/40 rounded-full transition-none"
+                style={{ width: `${slideProgress}%` }}
               />
             </div>
             {/* Slide counter */}
-            <span
-              key={`cnt-${slideIdx}`}
-              className="text-[11px] text-white/25 font-mono tabular-nums"
-              style={{ animation: 'fadeIn 0.5s ease forwards' }}
-            >
+            <span className="text-xs text-white/30 font-mono tabular-nums">
               {String(slideIdx + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}
             </span>
           </div>
-        </div>
+        </div>{/* end max-w-7xl */}
+        </div>{/* end flex items-center */}
+        </div>{/* end sticky */}
       </section>
 
       {/* ── Trusted by ── */}
@@ -898,8 +922,8 @@ export default function LandingPage() {
                   <p className="text-xs text-gray-400 leading-relaxed flex-1">{f.desc}</p>
                   {f.result && (
                     <div className="mt-3 pt-3 border-t border-gray-50">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                        <CheckCircle size={10} className="shrink-0" />
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+                        <CheckCircle size={12} className="shrink-0" />
                         {f.result}
                       </span>
                     </div>
@@ -944,15 +968,15 @@ export default function LandingPage() {
           </div>
           <div className="grid lg:grid-cols-3 gap-8">
             <div className="reveal-left d1">
-              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p>
+              <p className="text-xs text-white/45 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p>
               <DashboardMockup />
             </div>
             <div className="reveal d2">
-              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p>
+              <p className="text-xs text-white/45 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p>
               <PMSMockup />
             </div>
             <div className="reveal-right d3">
-              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p>
+              <p className="text-xs text-white/45 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p>
               <div className="flex justify-center"><GuestPortalMockup /></div>
             </div>
           </div>
@@ -961,7 +985,7 @@ export default function LandingPage() {
               ? ['تحديث فوري', 'تسجيل دخول QR', 'تقارير الإيرادات', 'إدارة المناوبات', 'أتمتة الطاقة', 'سيناريوهات ذكية', 'عدم الإزعاج / SOS', 'فنادق متعددة', 'تحكم ذكي بالغرف', 'صلاحيات بالأدوار', 'بوابة الضيف']
               : ['Real-time telemetry', 'QR check-in', 'Revenue reports', 'Shift management', 'Energy automation', 'Scene presets', 'DND / SOS', 'Multi-property', 'Smart room control', 'Role-based access', 'Guest portal']
             ).map(pill => (
-              <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full hover:text-white/60 hover:bg-white/10 transition-colors duration-200">{pill}</span>
+              <span key={pill} className="text-sm text-white/55 bg-white/5 border border-white/10 px-4 py-1.5 rounded-full hover:text-white/80 hover:bg-white/10 transition-colors duration-200">{pill}</span>
             ))}
           </div>
         </div>
