@@ -845,22 +845,31 @@ export default function LandingPage() {
       {/* ── Showcase ── */}
       <section id="showcase" className="py-24 px-6 bg-slate-950">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-16 reveal">
             <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-2">{t.platformTag}</p>
             <h2 className="text-3xl font-bold text-white mb-3">{t.platformTitle}</h2>
             <p className="text-white/30 text-sm max-w-lg mx-auto">{t.platformSub}</p>
           </div>
           <div className="grid lg:grid-cols-3 gap-8">
-            <div><p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p><DashboardMockup /></div>
-            <div><p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p><PMSMockup /></div>
-            <div><p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p><div className="flex justify-center"><GuestPortalMockup /></div></div>
+            <div className="reveal-left d1">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p>
+              <DashboardMockup />
+            </div>
+            <div className="reveal d2">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p>
+              <PMSMockup />
+            </div>
+            <div className="reveal-right d3">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p>
+              <div className="flex justify-center"><GuestPortalMockup /></div>
+            </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-2 mt-12">
+          <div className="flex flex-wrap justify-center gap-2 mt-12 reveal">
             {(isRTL
               ? ['تحديث فوري', 'تسجيل دخول QR', 'تقارير الإيرادات', 'إدارة المناوبات', 'أتمتة الطاقة', 'سيناريوهات ذكية', 'عدم الإزعاج / SOS', 'فنادق متعددة', 'تحكم ذكي بالغرف', 'صلاحيات بالأدوار', 'بوابة الضيف']
               : ['Real-time telemetry', 'QR check-in', 'Revenue reports', 'Shift management', 'Energy automation', 'Scene presets', 'DND / SOS', 'Multi-property', 'Smart room control', 'Role-based access', 'Guest portal']
             ).map(pill => (
-              <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full">{pill}</span>
+              <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full hover:text-white/60 hover:bg-white/10 transition-colors duration-200">{pill}</span>
             ))}
           </div>
         </div>
