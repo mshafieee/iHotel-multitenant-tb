@@ -27,3 +27,119 @@
 /* Pulse animation for SOS */
 @keyframes pulse-sos { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .animate-sos { animation: pulse-sos 1s ease-in-out infinite; }
+
+/* ── Landing page animations ─────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(48px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-48px); }
+  to   { opacity: 1; transform: translateX(0);     }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+
+@keyframes gradientShift {
+  0%,100% { background-position: 0%   50%; }
+  50%     { background-position: 100% 50%; }
+}
+
+@keyframes gradientFlow {
+  0%     { background-position: 0%   50%; }
+  50%    { background-position: 100% 50%; }
+  100%   { background-position: 0%   50%; }
+}
+
+@keyframes particleFloat {
+  0%,100% { transform: translateY(0px)   translateX(0px);   opacity: 0.5; }
+  33%     { transform: translateY(-22px) translateX(12px);  opacity: 0.8; }
+  66%     { transform: translateY(-38px) translateX(-10px); opacity: 0.3; }
+}
+
+@keyframes counterFade {
+  from { opacity: 0; transform: scale(0.6) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);    }
+}
+
+@keyframes progressBar {
+  from { width: 0%;   }
+  to   { width: 100%; }
+}
+
+@keyframes floatCard {
+  0%,100% { transform: translateY(0px);   }
+  50%     { transform: translateY(-10px); }
+}
+
+@keyframes shimmerText {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+/* Scroll-reveal base states */
+.reveal       { opacity: 0; transform: translateY(28px);   transition: opacity 0.65s ease, transform 0.65s ease; }
+.reveal-left  { opacity: 0; transform: translateX(-32px);  transition: opacity 0.65s ease, transform 0.65s ease; }
+.reveal-right { opacity: 0; transform: translateX(32px);   transition: opacity 0.65s ease, transform 0.65s ease; }
+.reveal-scale { opacity: 0; transform: scale(0.92);        transition: opacity 0.6s ease,  transform 0.6s ease;  }
+
+.reveal.visible,
+.reveal-left.visible,
+.reveal-right.visible,
+.reveal-scale.visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Stagger delays */
+.d1 { transition-delay: 0.08s; }
+.d2 { transition-delay: 0.16s; }
+.d3 { transition-delay: 0.24s; }
+.d4 { transition-delay: 0.32s; }
+.d5 { transition-delay: 0.40s; }
+.d6 { transition-delay: 0.48s; }
+.d7 { transition-delay: 0.56s; }
+.d8 { transition-delay: 0.64s; }
+
+/* Animated gradient text */
+.gradient-text-flow {
+  background: linear-gradient(90deg, #60a5fa, #a78bfa, #34d399, #fbbf24, #60a5fa);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradientFlow 5s ease infinite;
+}
+
+/* Hero animated background */
+.hero-bg {
+  background: linear-gradient(-45deg, #0f172a, #0c1526, #090e1f, #0f1930, #070d1a);
+  background-size: 400% 400%;
+  animation: gradientShift 18s ease infinite;
+}
+
+/* Impact section animated gradient */
+.impact-bg {
+  background: linear-gradient(135deg, #1d4ed8, #4f46e5, #7c3aed, #4f46e5, #1d4ed8);
+  background-size: 300% 300%;
+  animation: gradientFlow 8s ease infinite;
+}
+
+/* Floating card animation */
+.float-card       { animation: floatCard 5s ease-in-out infinite; }
+.float-card-delay { animation: floatCard 5s 1.5s ease-in-out infinite; }
