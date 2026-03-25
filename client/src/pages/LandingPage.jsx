@@ -184,11 +184,6 @@ const T = {
   en: {
     langToggle: 'عربي',
     nav: { features: 'Features', platform: 'Platform', reviews: 'Reviews', signIn: 'Sign In' },
-    badge: '🟢 Live platform · Real-time IoT control',
-    heroLine1: 'The Smartest Way to',
-    heroLine2: 'Run Your Hotel',
-    heroLine3: '',
-    heroSub: 'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and cut energy costs — all from a single dashboard.',
     stats: [{ v: '500+', l: 'Rooms Managed' }, { v: '38%', l: 'Avg Energy Saved' }, { v: '< 1s', l: 'Live Updates' }, { v: '4.9★', l: 'Guest Rating' }],
     getStarted: 'Sign In to Your Hotel',
     bookRoom: 'Book a Room',
@@ -247,11 +242,6 @@ const T = {
   ar: {
     langToggle: 'English',
     nav: { features: 'المميزات', platform: 'المنصة', reviews: 'آراء العملاء', signIn: 'دخول' },
-    badge: '🟢 منصة فعلية · تحكم لحظي بأجهزة IoT',
-    heroLine1: 'أذكى طريقة',
-    heroLine2: 'لإدارة فندقك',
-    heroLine3: '',
-    heroSub: 'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — كل شيء من لوحة تحكم واحدة.',
     stats: [{ v: '+500', l: 'غرفة مُدارة' }, { v: '38%', l: 'متوسط توفير الطاقة' }, { v: '< 1ث', l: 'تحديث فوري' }, { v: '4.9★', l: 'تقييم الضيوف' }],
     getStarted: 'ادخل للوحة تحكم فندقك',
     bookRoom: 'احجز غرفة',
