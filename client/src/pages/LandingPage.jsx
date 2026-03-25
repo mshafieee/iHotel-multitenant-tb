@@ -58,6 +58,47 @@ function FloatingParticles() {
   );
 }
 
+// ── Animated stat card (counts up on scroll into view) ───────────────────────
+function AnimatedStat({ value, label, sub, icon: Icon }) {
+  const ref        = useRef(null);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setOn(true); },
+      { threshold: 0.5 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="flex flex-col items-center gap-1">
+      <div className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center mb-2 backdrop-blur-sm
+                      transition-transform duration-500"
+           style={on ? { transform: 'scale(1)', opacity: 1 } : { transform: 'scale(0.7)', opacity: 0 }}>
+        <Icon size={20} className="text-white" />
+      </div>
+      <p
+        className="text-3xl font-extrabold leading-tight text-white"
+        style={on
+          ? { animation: 'counterFade 0.7s ease forwards' }
+          : { opacity: 0, transform: 'scale(0.6) translateY(10px)' }}
+      >
+        {value}
+      </p>
+      <p className="text-sm font-semibold text-white/90"
+         style={on ? { animation: 'fadeUp 0.7s 0.25s ease both' } : { opacity: 0 }}>
+        {label}
+      </p>
+      <p className="text-xs text-white/50"
+         style={on ? { animation: 'fadeUp 0.7s 0.4s ease both' } : { opacity: 0 }}>
+        {sub}
+      </p>
+    </div>
+  );
+}
+
 // ── Translations (idiomatic Arabic, not literal) ──────────────────────────────
 const T = {
   en: {
