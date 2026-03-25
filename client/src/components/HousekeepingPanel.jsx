@@ -28,6 +28,29 @@ import useHotelStore from '../store/hotelStore';
 import useAuthStore  from '../store/authStore';
 import useLangStore  from '../store/langStore';
 import { t }         from '../i18n';
+import { getAccessToken } from '../utils/api';
+
+// ── Web Push subscription helper ─────────────────────────────────────────────
+async function subscribeToPush(token) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const keyRes = await fetch('/api/push/vapid-key');
+    if (!keyRes.ok) return null;
+    const { publicKey } = await keyRes.json();
+    const raw    = atob(publicKey.replace(/-/g, '+').replace(/_/g, '/'));
+    const appKey = new Uint8Array([...raw].map(c => c.charCodeAt(0)));
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+    const j = sub.toJSON();
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } }),
+    });
+    return sub;
+  } catch { return null; }
+}
 
 // ── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLE = {
@@ -237,43 +260,46 @@ function ManagerView({ T }) {
         </div>
       )}
 
-      {/* ── ACTIVE ASSIGNMENTS TAB ── */}
+      {/* ── ACTIVE ASSIGNMENTS TAB — mobile-friendly cards ── */}
       {innerTab === 'active' && (
-        <div className="card overflow-hidden">
+        <div>
           {hkAssignments.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">{T('hk_no_active')}</div>
+            <div className="card p-8 text-center text-sm text-gray-400">{T('hk_no_active')}</div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  {[
-                    T('hk_col_room'), T('hk_col_hk'), T('hk_col_status'),
-                    T('hk_col_assigned'), T('hk_col_started'), T('hk_col_actions'),
-                  ].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {hkAssignments.map(a => (
-                  <tr key={a.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-bold font-mono">{a.room}</td>
-                    <td className="px-3 py-2 text-gray-600">{a.assigned_to}</td>
-                    <td className="px-3 py-2"><StatusBadge status={a.status} T={T} /></td>
-                    <td className="px-3 py-2 text-[11px] text-gray-400">{fmtTime(a.assigned_at)}</td>
-                    <td className="px-3 py-2 text-[11px] text-gray-400">{fmtTime(a.started_at)}</td>
-                    <td className="px-3 py-2">
-                      {['pending', 'in_progress'].includes(a.status) && (
-                        <button onClick={() => handleCancel(a.id, a.room)}
-                          className="text-[10px] font-bold text-red-400 hover:text-red-600 border border-red-100 hover:bg-red-50 rounded px-1.5 py-0.5 transition">
-                          {T('hk_cancel')}
-                        </button>
+            <div className="space-y-2">
+              {hkAssignments.map(a => (
+                <div key={a.id} className={`card p-3 border-l-4 ${
+                  a.status === 'in_progress' ? 'border-l-blue-400' :
+                  a.status === 'pending'     ? 'border-l-amber-400' :
+                  a.status === 'done'        ? 'border-l-emerald-400' : 'border-l-gray-200'
+                }`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold font-mono text-lg text-gray-800">{a.room}</span>
+                        <StatusBadge status={a.status} T={T} />
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5 truncate">{a.assigned_to}</div>
+                      {a.notes && (
+                        <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 inline-block max-w-full truncate">
+                          📋 {a.notes}
+                        </div>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div className="text-[10px] text-gray-400 mt-1 flex flex-wrap gap-x-3">
+                        <span>{T('hk_col_assigned')} {fmtTime(a.assigned_at)}</span>
+                        {a.started_at && <span>{T('hk_col_started')} {fmtTime(a.started_at)}</span>}
+                      </div>
+                    </div>
+                    {['pending', 'in_progress'].includes(a.status) && (
+                      <button onClick={() => handleCancel(a.id, a.room)}
+                        className="shrink-0 text-[10px] font-bold text-red-400 hover:text-red-600 border border-red-100 hover:bg-red-50 rounded px-2 py-1 transition">
+                        {T('hk_cancel')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -291,8 +317,9 @@ function HousekeeperView({ T }) {
     hkStart, hkComplete,
   } = useHotelStore();
 
-  const [busy, setBusy]   = useState(null);  // assignment id being processed
-  const [flash, setFlash] = useState(null);
+  const [busy, setBusy]           = useState(null);
+  const [flash, setFlash]         = useState(null);
+  const [pushState, setPushState] = useState('idle'); // 'idle'|'subscribing'|'on'|'unsupported'
 
   const showFlash = useCallback((type, msg) => {
     setFlash({ type, msg });
@@ -300,6 +327,23 @@ function HousekeeperView({ T }) {
   }, []);
 
   useEffect(() => { fetchHKAssignments(); }, [fetchHKAssignments]);
+
+  // Check existing push subscription on mount
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return; }
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(sub => setPushState(sub ? 'on' : 'idle'))
+      .catch(() => setPushState('unsupported'));
+  }, []);
+
+  const handleEnablePush = async () => {
+    setPushState('subscribing');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { setPushState('idle'); return; }
+    const sub = await subscribeToPush(getAccessToken());
+    setPushState(sub ? 'on' : 'idle');
+  };
 
   const handleStart = async (id, room) => {
     setBusy(id);
@@ -329,18 +373,39 @@ function HousekeeperView({ T }) {
   const pending    = hkAssignments.filter(a => a.status === 'pending');
   const inProgress = hkAssignments.filter(a => a.status === 'in_progress');
 
+  // Push notification banner
+  const PushBanner = () => {
+    if (pushState === 'unsupported') return null;
+    if (pushState === 'on') return (
+      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-700 font-semibold">
+        🔔 Push notifications enabled
+      </div>
+    );
+    return (
+      <button onClick={handleEnablePush} disabled={pushState === 'subscribing'}
+        className="w-full flex items-center justify-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-700 font-semibold hover:bg-blue-100 transition disabled:opacity-60">
+        {pushState === 'subscribing' ? '…' : '🔔 Enable push notifications (background alerts)'}
+      </button>
+    );
+  };
+
   if (hkAssignments.length === 0) {
     return (
-      <div className="card p-10 text-center">
-        <div className="text-4xl mb-3">✅</div>
-        <div className="text-sm font-semibold text-gray-600">{T('hk_empty_title')}</div>
-        <div className="text-xs text-gray-400 mt-1">{T('hk_empty_sub')}</div>
+      <div className="space-y-3">
+        <PushBanner />
+        <div className="card p-10 text-center">
+          <div className="text-4xl mb-3">✅</div>
+          <div className="text-sm font-semibold text-gray-600">{T('hk_empty_title')}</div>
+          <div className="text-xs text-gray-400 mt-1">{T('hk_empty_sub')}</div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+
+      <PushBanner />
 
       {flash && (
         <div className={`text-xs font-semibold rounded-lg px-3 py-2 ${flash.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>

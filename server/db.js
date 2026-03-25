@@ -420,6 +420,38 @@ function initDB() {
     console.log('✓ Migration 020: housekeeping_assignments table ready');
   }
 
+  // ── Web Push subscriptions (hotel-scoped, per user) ──────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      hotel_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      keys_p256dh TEXT NOT NULL,
+      keys_auth TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+    )
+  `);
+
+  // ── Platform-level config (VAPID keys, etc.) ──────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS platform_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
+  // ── Migration 021: add qr_login_token to hotel_users ────────────────────
+  if (!hasMigration('021_qr_login_token')) {
+    const cols = db.pragma('table_info(hotel_users)').map(c => c.name);
+    if (!cols.includes('qr_login_token')) {
+      db.exec('ALTER TABLE hotel_users ADD COLUMN qr_login_token TEXT');
+      console.log('✓ Migration 021: added qr_login_token to hotel_users');
+    }
+    markMigration('021_qr_login_token');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (
