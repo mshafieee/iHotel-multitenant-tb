@@ -2622,9 +2622,14 @@ app.delete('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const newToken = crypto.randomBytes(32).toString('hex');
+  // Replace the QR token so the old QR image can no longer be used to log in
   db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(newToken, user.id);
-  const base     = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
-  addLog(hotelId, 'auth', `QR token regenerated for ${user.username}`, { user: req.user.username });
+  // Invalidate all existing sessions that were established via the old QR code —
+  // this forces any device that scanned the old QR to re-authenticate.
+  db.prepare("DELETE FROM refresh_tokens WHERE user_id=? AND user_type='hotel'").run(user.id);
+
+  const base = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  addLog(hotelId, 'auth', `QR token revoked & sessions invalidated for ${user.username}`, { user: req.user.username });
   res.json({ success: true, token: newToken, loginUrl: `${base}/qr?t=${newToken}` });
 });
 
