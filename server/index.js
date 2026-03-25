@@ -370,6 +370,35 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   });
 });
 
+// ── POST /api/auth/qr-login ───────────────────────────────────────────────
+// Instant login using the per-user QR token (no password needed).
+app.post('/api/auth/qr-login', authLimiter, (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'QR token required' });
+
+  const row = db.prepare(`
+    SELECT hu.*, h.slug AS hotelSlug, h.name AS hotelName, h.logo_url AS logoUrl
+    FROM hotel_users hu
+    JOIN hotels h ON h.id = hu.hotel_id
+    WHERE hu.qr_login_token = ? AND hu.active = 1 AND h.active = 1
+  `).get(token);
+  if (!row) return res.status(401).json({ error: 'Invalid or revoked QR code' });
+
+  const accessToken  = generateAccessToken({ ...row, hotelId: row.hotel_id });
+  const refreshToken = generateRefreshToken(row);
+  const expiresAt    = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('INSERT INTO refresh_tokens (user_id, user_type, token, expires_at) VALUES (?,?,?,?)')
+    .run(row.id, 'hotel', refreshToken, expiresAt);
+  db.prepare("UPDATE hotel_users SET last_login = datetime('now') WHERE id = ?").run(row.id);
+
+  addLog(row.hotel_id, 'auth', `QR login: ${row.username}`, { user: row.username });
+  res.json({
+    accessToken, refreshToken,
+    user: { id: row.id, username: row.username, role: row.role, fullName: row.full_name,
+            hotelId: row.hotel_id, hotelSlug: row.hotelSlug, hotelName: row.hotelName, logoUrl: row.logoUrl || null }
+  });
+});
+
 app.post('/api/auth/refresh', (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
@@ -2511,7 +2540,7 @@ app.post('/api/users', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const { username, password, role, fullName } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: 'Required: username, password, role' });
-  if (!['owner', 'admin', 'frontdesk'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (!['owner', 'admin', 'frontdesk', 'housekeeper'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   try {
     const hash = bcrypt.hashSync(password, 10);
     db.prepare('INSERT INTO hotel_users (hotel_id, username, password_hash, role, full_name) VALUES (?,?,?,?,?)').run(hotelId, username, hash, role, fullName || null);
@@ -2556,6 +2585,40 @@ app.delete('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   if (user.id === req.user.id) return res.status(400).json({ error: 'Cannot deactivate your own account' });
   db.prepare('UPDATE hotel_users SET active=0 WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
   res.json({ success: true });
+});
+
+// ── GET /api/users/:id/qr-token ───────────────────────────────────────────
+// Returns (generating if needed) the stable QR login token + full login URL.
+app.get('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const user    = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=? AND active=1').get(req.params.id, hotelId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  let token = user.qr_login_token;
+  if (!token) {
+    token = crypto.randomBytes(32).toString('hex');
+    db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(token, user.id);
+  }
+
+  const base     = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  const loginUrl = `${base}/qr?t=${token}`;
+  res.json({ token, loginUrl, username: user.username, fullName: user.full_name, role: user.role });
+});
+
+// ── DELETE /api/users/:id/qr-token ────────────────────────────────────────
+// Revokes the current token and generates a fresh one.
+app.delete('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId  = req.user.hotelId;
+  const user     = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const newToken = crypto.randomBytes(32).toString('hex');
+  db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(newToken, user.id);
+
+  const base     = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  const loginUrl = `${base}/qr?t=${newToken}`;
+  addLog(hotelId, 'auth', `QR token regenerated for ${user.username}`, { user: req.user.username });
+  res.json({ success: true, token: newToken, loginUrl });
 });
 
 // ═══ HOUSEKEEPING WORKFLOW ═══

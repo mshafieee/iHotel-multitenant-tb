@@ -392,6 +392,16 @@ function initDB() {
     )
   `);
 
+  // ── Migration 021: add qr_login_token to hotel_users ────────────────────
+  if (!hasMigration('021_qr_login_token')) {
+    const cols = db.pragma('table_info(hotel_users)').map(c => c.name);
+    if (!cols.includes('qr_login_token')) {
+      db.exec('ALTER TABLE hotel_users ADD COLUMN qr_login_token TEXT');
+      console.log('✓ Migration 021: added qr_login_token to hotel_users');
+    }
+    markMigration('021_qr_login_token');
+  }
+
   // ── Web Push subscriptions (hotel-scoped, per user) ──────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
