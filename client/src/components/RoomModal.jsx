@@ -303,9 +303,9 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
       });
       const skipped = res.skipped ?? 0;
       if (skipped > 0) {
-        setHkFlash({ type: 'warn', msg: 'Room already has an active assignment.' });
+        setHkFlash({ type: 'warn', msg: T('hk_already_assigned') });
       } else {
-        setHkFlash({ type: 'ok', msg: `Assigned to ${username}` });
+        setHkFlash({ type: 'ok', msg: `${T('hk_assigned_ok')} ${username}` });
         setTimeout(() => setShowHKPicker(false), 1200);
       }
     } catch (e) {
@@ -669,13 +669,13 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               <button onClick={openHKPicker}
                 className="w-full py-2.5 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition flex items-center justify-center gap-2">
                 <BedDouble size={16} />
-                Assign to Housekeeper
+                {T('hk_room_assign_btn')}
               </button>
 
               {showHKPicker && (
                 <div className="mt-2 rounded-xl border border-amber-200 bg-white shadow-md overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border-b border-amber-100">
-                    <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Select Housekeeper</span>
+                    <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">{T('hk_picker_title')}</span>
                     <button onClick={() => setShowHKPicker(false)}
                       className="text-amber-400 hover:text-amber-600 text-lg leading-none">×</button>
                   </div>
@@ -689,9 +689,8 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
                   )}
 
                   {hkList.length === 0 ? (
-                    <div className="px-3 py-4 text-xs text-gray-400 text-center">
-                      No housekeeper accounts found.<br />
-                      <span className="text-gray-300">Create one in the Users tab.</span>
+                    <div className="px-3 py-4 text-xs text-gray-400 text-center whitespace-pre-line">
+                      {T('hk_picker_empty')}
                     </div>
                   ) : (
                     <ul className="divide-y divide-gray-50">

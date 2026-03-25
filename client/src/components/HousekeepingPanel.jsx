@@ -26,6 +26,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import useHotelStore from '../store/hotelStore';
 import useAuthStore  from '../store/authStore';
+import useLangStore  from '../store/langStore';
+import { t }         from '../i18n';
 
 // ── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLE = {
@@ -34,17 +36,17 @@ const STATUS_STYLE = {
   done:        'bg-emerald-50 text-emerald-700 border-emerald-200',
   cancelled:   'bg-gray-100  text-gray-400   border-gray-200',
 };
-const STATUS_LABEL = {
-  pending:     'Pending',
-  in_progress: 'In Progress',
-  done:        'Done',
-  cancelled:   'Cancelled',
-};
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, T }) {
+  const labelKey = {
+    pending:     'hk_status_pending',
+    in_progress: 'hk_status_inprogress',
+    done:        'hk_status_done',
+    cancelled:   'hk_status_cancelled',
+  }[status];
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_STYLE[status] || 'bg-gray-100 text-gray-400'}`}>
-      {STATUS_LABEL[status] || status}
+      {labelKey ? T(labelKey) : status}
     </span>
   );
 }
@@ -58,7 +60,7 @@ function fmtTime(ms) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MANAGER VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function ManagerView() {
+function ManagerView({ T }) {
   const {
     hkQueue, hkAssignments, hkHousekeepers,
     fetchHKQueue, fetchHKAssignments, fetchHKHousekeepers,
@@ -91,12 +93,12 @@ function ManagerView() {
   };
 
   const handleAssign = async () => {
-    if (!selectedRooms.length) return showFlash('err', 'Select at least one room');
-    if (!assignTo)             return showFlash('err', 'Select a housekeeper');
+    if (!selectedRooms.length) return showFlash('err', T('hk_select_placeholder'));
+    if (!assignTo)             return showFlash('err', T('hk_select_placeholder'));
     setSubmitting(true);
     try {
       const res = await hkAssign(selectedRooms, assignTo, note);
-      showFlash('ok', `${res.assigned} room(s) assigned${res.skipped ? ` (${res.skipped} skipped — already assigned)` : ''}`);
+      showFlash('ok', `${res.assigned} ${T('hk_btn_assign_rooms')}${res.skipped ? ` (${res.skipped} skipped)` : ''}`);
       setSelectedRooms([]);
       setNote('');
     } catch (e) {
@@ -107,10 +109,10 @@ function ManagerView() {
   };
 
   const handleCancel = async (id, room) => {
-    if (!confirm(`Cancel assignment for Room ${room}?`)) return;
+    if (!confirm(`${T('hk_confirm_cancel')} ${room}?`)) return;
     try {
       await hkCancel(id);
-      showFlash('ok', `Assignment for Room ${room} cancelled`);
+      showFlash('ok', `${T('hk_col_room')} ${room} — ${T('hk_cancel')}`);
     } catch (e) {
       showFlash('err', e.message || 'Cancel failed');
     }
@@ -132,14 +134,14 @@ function ManagerView() {
       {/* Inner tabs */}
       <div className="flex gap-2 border-b border-gray-100 pb-0">
         {[
-          { id: 'queue',  label: `Dirty Rooms (${hkQueue.length})` },
-          { id: 'active', label: `Active Assignments${activeCount ? ` (${activeCount})` : ''}` },
-        ].map(t => (
-          <button key={t.id} onClick={() => setInnerTab(t.id)}
+          { id: 'queue',  label: `${T('hk_tab_dirty')} (${hkQueue.length})` },
+          { id: 'active', label: `${T('hk_tab_active')}${activeCount ? ` (${activeCount})` : ''}` },
+        ].map(tb => (
+          <button key={tb.id} onClick={() => setInnerTab(tb.id)}
             className={`px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
-              innerTab === t.id ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+              innerTab === tb.id ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}>
-            {t.label}
+            {tb.label}
           </button>
         ))}
       </div>
@@ -151,14 +153,14 @@ function ManagerView() {
           {/* Assignment form */}
           <div className="card p-4 border border-gray-100">
             <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold mb-3">
-              Assign Rooms to Housekeeper
+              {T('hk_assign_section')}
             </div>
 
             {/* Housekeeper select */}
             <div className="mb-3">
-              <label className="text-[9px] text-gray-400 uppercase block mb-1">Housekeeper</label>
+              <label className="text-[9px] text-gray-400 uppercase block mb-1">{T('hk_select_hk')}</label>
               <select className="input text-sm" value={assignTo} onChange={e => setAssignTo(e.target.value)}>
-                <option value="">— Select housekeeper —</option>
+                <option value="">{T('hk_select_placeholder')}</option>
                 {hkHousekeepers.map(h => (
                   <option key={h.id} value={h.username}>
                     {h.full_name || h.username}
@@ -167,15 +169,15 @@ function ManagerView() {
               </select>
               {!hkHousekeepers.length && (
                 <p className="text-[10px] text-amber-500 mt-1">
-                  No housekeeper accounts found. Create one in the Users tab with the "Housekeeper" role.
+                  {T('hk_no_hk_accounts')}
                 </p>
               )}
             </div>
 
             {/* Note */}
             <div className="mb-3">
-              <label className="text-[9px] text-gray-400 uppercase block mb-1">Note (optional)</label>
-              <input className="input text-sm" placeholder="e.g. Deep clean — VIP arrival at 15:00"
+              <label className="text-[9px] text-gray-400 uppercase block mb-1">{T('hk_note_label')}</label>
+              <input className="input text-sm" placeholder={T('hk_note_placeholder')}
                 value={note} onChange={e => setNote(e.target.value)} />
             </div>
 
@@ -184,7 +186,7 @@ function ManagerView() {
               <div className="mb-3 flex flex-wrap gap-1">
                 {selectedRooms.map(r => (
                   <span key={r} className="text-[11px] bg-brand-50 text-brand-600 border border-brand-200 rounded-full px-2 py-0.5 font-bold">
-                    Rm {r}
+                    {T('hk_col_room')} {r}
                     <button onClick={() => toggleRoom(r)} className="ml-1 text-brand-300 hover:text-brand-500">×</button>
                   </span>
                 ))}
@@ -193,14 +195,16 @@ function ManagerView() {
 
             <button onClick={handleAssign} disabled={submitting || !selectedRooms.length || !assignTo}
               className="btn btn-primary text-xs disabled:opacity-50">
-              {submitting ? 'Assigning…' : `Assign ${selectedRooms.length || ''} Room${selectedRooms.length !== 1 ? 's' : ''}`}
+              {submitting
+                ? T('hk_btn_assigning')
+                : `${T('hk_btn_assign')} ${selectedRooms.length || ''} ${T('hk_btn_assign_rooms')}${selectedRooms.length !== 1 ? '' : ''}`}
             </button>
           </div>
 
           {/* Dirty room cards — click to toggle selection */}
           {hkQueue.length === 0 ? (
             <div className="card p-8 text-center text-sm text-gray-400">
-              ✅ No dirty rooms waiting — all rooms are clean
+              {T('hk_no_dirty')}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
@@ -216,14 +220,14 @@ function ManagerView() {
                     <div className="font-extrabold text-lg text-gray-800 font-mono leading-none">
                       {r.room}
                     </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">F{r.floor} · {r.type || '—'}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{T('hk_floor_prefix')}{r.floor} · {r.type || '—'}</div>
                     {r.guestName && (
                       <div className="text-[10px] text-amber-600 font-semibold mt-1 truncate">
                         ↩ {r.guestName}
                       </div>
                     )}
                     {selected && (
-                      <div className="text-[10px] text-brand-600 font-bold mt-1">✓ Selected</div>
+                      <div className="text-[10px] text-brand-600 font-bold mt-1">✓</div>
                     )}
                   </button>
                 );
@@ -237,12 +241,15 @@ function ManagerView() {
       {innerTab === 'active' && (
         <div className="card overflow-hidden">
           {hkAssignments.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">No active assignments</div>
+            <div className="p-8 text-center text-sm text-gray-400">{T('hk_no_active')}</div>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Room', 'Housekeeper', 'Status', 'Assigned', 'Started', 'Actions'].map(h => (
+                  {[
+                    T('hk_col_room'), T('hk_col_hk'), T('hk_col_status'),
+                    T('hk_col_assigned'), T('hk_col_started'), T('hk_col_actions'),
+                  ].map(h => (
                     <th key={h} className="px-3 py-2 text-left text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{h}</th>
                   ))}
                 </tr>
@@ -252,14 +259,14 @@ function ManagerView() {
                   <tr key={a.id} className="hover:bg-gray-50">
                     <td className="px-3 py-2 font-bold font-mono">{a.room}</td>
                     <td className="px-3 py-2 text-gray-600">{a.assigned_to}</td>
-                    <td className="px-3 py-2"><StatusBadge status={a.status} /></td>
+                    <td className="px-3 py-2"><StatusBadge status={a.status} T={T} /></td>
                     <td className="px-3 py-2 text-[11px] text-gray-400">{fmtTime(a.assigned_at)}</td>
                     <td className="px-3 py-2 text-[11px] text-gray-400">{fmtTime(a.started_at)}</td>
                     <td className="px-3 py-2">
                       {['pending', 'in_progress'].includes(a.status) && (
                         <button onClick={() => handleCancel(a.id, a.room)}
                           className="text-[10px] font-bold text-red-400 hover:text-red-600 border border-red-100 hover:bg-red-50 rounded px-1.5 py-0.5 transition">
-                          Cancel
+                          {T('hk_cancel')}
                         </button>
                       )}
                     </td>
@@ -277,7 +284,7 @@ function ManagerView() {
 // ─────────────────────────────────────────────────────────────────────────────
 // HOUSEKEEPER VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function HousekeeperView() {
+function HousekeeperView({ T }) {
   const {
     hkAssignments,
     fetchHKAssignments,
@@ -298,7 +305,7 @@ function HousekeeperView() {
     setBusy(id);
     try {
       await hkStart(id);
-      showFlash('ok', `Room ${room} — cleaning started`);
+      showFlash('ok', `${T('hk_col_room')} ${room} — ${T('hk_status_inprogress')}`);
     } catch (e) {
       showFlash('err', e.message || 'Failed to start');
     } finally {
@@ -307,11 +314,11 @@ function HousekeeperView() {
   };
 
   const handleDone = async (id, room) => {
-    if (!confirm(`Mark Room ${room} as clean?\nThis will reset lights, AC, curtains and set the room to VACANT.`)) return;
+    if (!confirm(`${T('hk_confirm_done').replace('Room', `${T('hk_col_room')} ${room}`)}`)) return;
     setBusy(id);
     try {
       await hkComplete(id);
-      showFlash('ok', `Room ${room} — marked clean ✓`);
+      showFlash('ok', `${T('hk_col_room')} ${room} — ${T('hk_status_done')} ✓`);
     } catch (e) {
       showFlash('err', e.message || 'Failed to complete');
     } finally {
@@ -319,15 +326,15 @@ function HousekeeperView() {
     }
   };
 
-  const pending     = hkAssignments.filter(a => a.status === 'pending');
-  const inProgress  = hkAssignments.filter(a => a.status === 'in_progress');
+  const pending    = hkAssignments.filter(a => a.status === 'pending');
+  const inProgress = hkAssignments.filter(a => a.status === 'in_progress');
 
   if (hkAssignments.length === 0) {
     return (
       <div className="card p-10 text-center">
         <div className="text-4xl mb-3">✅</div>
-        <div className="text-sm font-semibold text-gray-600">No rooms assigned to you right now</div>
-        <div className="text-xs text-gray-400 mt-1">Check back after the next checkout</div>
+        <div className="text-sm font-semibold text-gray-600">{T('hk_empty_title')}</div>
+        <div className="text-xs text-gray-400 mt-1">{T('hk_empty_sub')}</div>
       </div>
     );
   }
@@ -344,9 +351,9 @@ function HousekeeperView() {
       {/* In-Progress rooms first */}
       {inProgress.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Currently Cleaning</div>
+          <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('hk_section_cleaning')}</div>
           {inProgress.map(a => (
-            <RoomTaskCard key={a.id} a={a} busy={busy}
+            <RoomTaskCard key={a.id} a={a} busy={busy} T={T}
               onDone={() => handleDone(a.id, a.room)} />
           ))}
         </div>
@@ -355,9 +362,9 @@ function HousekeeperView() {
       {/* Pending rooms */}
       {pending.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Rooms to Clean</div>
+          <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('hk_section_todo')}</div>
           {pending.map(a => (
-            <RoomTaskCard key={a.id} a={a} busy={busy}
+            <RoomTaskCard key={a.id} a={a} busy={busy} T={T}
               onStart={() => handleStart(a.id, a.room)} />
           ))}
         </div>
@@ -367,7 +374,7 @@ function HousekeeperView() {
 }
 
 // ── Individual room task card (housekeeper view) ────────────────────────────
-function RoomTaskCard({ a, busy, onStart, onDone }) {
+function RoomTaskCard({ a, busy, onStart, onDone, T }) {
   const isInProgress = a.status === 'in_progress';
   const isBusy       = busy === a.id;
 
@@ -378,9 +385,9 @@ function RoomTaskCard({ a, busy, onStart, onDone }) {
           {/* Room number + floor/type */}
           <div className="flex items-center gap-2">
             <span className="text-2xl font-extrabold font-mono text-gray-800">{a.room}</span>
-            {a.floor && <span className="text-xs text-gray-400">Floor {a.floor}</span>}
+            {a.floor && <span className="text-xs text-gray-400">{T('hk_floor_prefix')}{a.floor}</span>}
             {a.type  && <span className="text-[10px] text-gray-400 bg-gray-100 rounded px-1">{a.type}</span>}
-            <StatusBadge status={a.status} />
+            <StatusBadge status={a.status} T={T} />
           </div>
 
           {/* Notes from manager */}
@@ -392,8 +399,8 @@ function RoomTaskCard({ a, busy, onStart, onDone }) {
 
           {/* Timing info */}
           <div className="text-[10px] text-gray-400 mt-1 space-x-3">
-            <span>Assigned {fmtTime(a.assigned_at)}</span>
-            {a.started_at && <span>· Started {fmtTime(a.started_at)}</span>}
+            <span>{T('hk_assigned_at')} {fmtTime(a.assigned_at)}</span>
+            {a.started_at && <span>{T('hk_started_at')} {fmtTime(a.started_at)}</span>}
           </div>
         </div>
 
@@ -402,13 +409,13 @@ function RoomTaskCard({ a, busy, onStart, onDone }) {
           {!isInProgress && onStart && (
             <button onClick={onStart} disabled={isBusy}
               className="px-4 py-2 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition disabled:opacity-50">
-              {isBusy ? '…' : '🧹 Start'}
+              {isBusy ? '…' : T('hk_btn_start')}
             </button>
           )}
           {isInProgress && onDone && (
             <button onClick={onDone} disabled={isBusy}
               className="px-4 py-2 rounded-xl font-bold text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition disabled:opacity-50">
-              {isBusy ? '…' : '✅ Mark Done'}
+              {isBusy ? '…' : T('hk_btn_done')}
             </button>
           )}
         </div>
@@ -422,6 +429,8 @@ function RoomTaskCard({ a, busy, onStart, onDone }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function HousekeepingPanel() {
   const { user } = useAuthStore();
+  const lang = useLangStore(s => s.lang);
+  const T = (key) => t(key, lang);
   const isManager = ['owner', 'admin', 'frontdesk'].includes(user?.role);
 
   return (
@@ -429,14 +438,14 @@ export default function HousekeepingPanel() {
       <div className="flex items-center gap-2">
         <span className="text-lg">🧹</span>
         <div>
-          <div className="font-bold text-gray-800">Housekeeping</div>
+          <div className="font-bold text-gray-800">{T('hk_title')}</div>
           <div className="text-[10px] text-gray-400">
-            {isManager ? 'Assign dirty rooms and track cleaning progress' : 'Your assigned rooms for today'}
+            {isManager ? T('hk_subtitle_mgr') : T('hk_subtitle_hk')}
           </div>
         </div>
       </div>
 
-      {isManager ? <ManagerView /> : <HousekeeperView />}
+      {isManager ? <ManagerView T={T} /> : <HousekeeperView T={T} />}
     </div>
   );
 }

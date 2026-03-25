@@ -21,35 +21,46 @@ import HotelInfoPanel from '../components/HotelInfoPanel';
 import HousekeepingPanel from '../components/HousekeepingPanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
-// A single shared AudioContext is reused across all beeps.
-// Browsers block audio until a user gesture has occurred, so we resume the
-// context on the first click/keydown anywhere on the page.
+// Browsers require a user gesture before AudioContext can play sound.
+// Strategy:
+//   1. A single shared context is created on first user gesture (click /
+//      keydown / touchstart) and immediately resumed inside that gesture.
+//   2. useUnlockAudio() registers those listeners on component mount so the
+//      context is ready well before any alert arrives.
+//   3. beep() is a no-op if the context is still suspended (nothing to do —
+//      the next alert after the first gesture will play fine).
 let _audioCtx = null;
-function getAudioCtx() {
-  if (!_audioCtx) {
-    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // Resume on any user gesture so subsequent automated beeps are allowed
-    const resume = () => { _audioCtx?.resume(); document.removeEventListener('click', resume); document.removeEventListener('keydown', resume); };
-    document.addEventListener('click', resume);
-    document.addEventListener('keydown', resume);
-  }
-  if (_audioCtx.state === 'suspended') _audioCtx.resume();
-  return _audioCtx;
+
+function unlockAudioCtx() {
+  try {
+    if (!_audioCtx) {
+      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch {}
+}
+
+function useUnlockAudio() {
+  useEffect(() => {
+    const events = ['click', 'keydown', 'touchstart', 'pointerdown'];
+    events.forEach(e => document.addEventListener(e, unlockAudioCtx, { passive: true }));
+    return () => events.forEach(e => document.removeEventListener(e, unlockAudioCtx));
+  }, []);
 }
 
 function beep(freq, duration, volume = 0.6) {
   try {
-    const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    if (!_audioCtx || _audioCtx.state !== 'running') return;
+    const osc  = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(_audioCtx.destination);
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, ctx.currentTime);
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration);
+    osc.frequency.setValueAtTime(freq, _audioCtx.currentTime);
+    gain.gain.setValueAtTime(volume, _audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + duration);
+    osc.start(_audioCtx.currentTime);
+    osc.stop(_audioCtx.currentTime + duration);
   } catch {}
 }
 function playSOS() { [0, 0.35, 0.7].forEach(t => setTimeout(() => beep(1100, 0.28, 0.9), t * 1000)); }
@@ -57,10 +68,11 @@ function playMUR() { [0, 0.4].forEach(t => setTimeout(() => beep(750, 0.35, 0.6)
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  useUnlockAudio();
   const { user, logout } = useAuthStore();
   const { lang, setLang } = useLangStore();
   const T = (key) => t(key, lang);
-  const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk'), housekeeper: 'Housekeeper' };
+  const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk'), housekeeper: T('role_housekeeper') };
   const {
     startPolling, stopPolling, connectSSE,
     alerts, dismissAlert,
@@ -120,7 +132,7 @@ export default function DashboardPage() {
   const TABS = [
     { id: 'rooms',        label: T('tab_rooms'),      icon: LayoutGrid,  visible: canSeeRooms },
     { id: 'pms',          label: T('tab_pms'),         icon: BookOpen,    visible: canSeePMS,          badge: todayCheckouts?.length },
-    { id: 'housekeeping', label: 'Housekeeping',       icon: BedDouble,   visible: canSeeHousekeeping, badge: hkPendingCount },
+    { id: 'housekeeping', label: T('tab_housekeeping'), icon: BedDouble,   visible: canSeeHousekeeping, badge: hkPendingCount },
     { id: 'logs',         label: T('tab_logs'),        icon: ScrollText,  visible: canSeeLogs },
     { id: 'finance',      label: T('tab_finance'),     icon: DollarSign,  visible: canSeeFinance },
     { id: 'users',        label: T('tab_users'),       icon: Users,       visible: canSeeUsers },
@@ -303,14 +315,14 @@ export default function DashboardPage() {
             onClick={() => { dismissHKNotification(n.id); setTab('housekeeping'); }}>
             <span className="text-xl shrink-0">🧹</span>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold text-amber-800">New cleaning assignment</div>
+              <div className="text-xs font-bold text-amber-800">{T('hk_notify_title')}</div>
               <div className="text-[11px] text-amber-700 mt-0.5">
                 {n.assignments?.length === 1
-                  ? `Room ${n.assignments[0].room}`
-                  : `${n.assignments?.length} rooms`}
+                  ? `${T('hk_col_room')} ${n.assignments[0].room}`
+                  : `${n.assignments?.length} ${T('hk_btn_assign_rooms')}`}
                 {n.notes ? ` — ${n.notes}` : ''}
               </div>
-              <div className="text-[10px] text-amber-500 mt-0.5">from {n.assignedBy} · tap to view</div>
+              <div className="text-[10px] text-amber-500 mt-0.5">{T('hk_notify_from')} {n.assignedBy} · {T('hk_notify_tap')}</div>
             </div>
             <button onClick={e => { e.stopPropagation(); dismissHKNotification(n.id); }}
               className="text-amber-400 hover:text-amber-600 text-xs font-bold">✕</button>
