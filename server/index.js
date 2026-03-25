@@ -17,12 +17,13 @@ const WebSocket = require('ws');
 
 const { initDB }                  = require('./db');
 const { ThingsBoardClientPool }   = require('./thingsboard');
-const { authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
+const { setDB, authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
 const nodemailer                  = require('nodemailer');
 const webpush                     = require('web-push');
 
 // ═══ INIT ═══
 const db     = initDB();
+setDB(db); // give authenticate middleware live DB access for session validation
 const tbPool = new ThingsBoardClientPool();
 
 // ── Web Push VAPID keys (generated once, stored in platform_config) ──────────
@@ -2646,8 +2647,21 @@ app.put('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   const user         = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (role && !['owner', 'admin', 'frontdesk', 'housekeeper'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+  const isDeactivating = active === false && user.active === 1;
+
   db.prepare('UPDATE hotel_users SET full_name=COALESCE(?,full_name), role=COALESCE(?,role), active=COALESCE(?,active) WHERE id=? AND hotel_id=?')
     .run(fullName ?? null, role ?? null, active != null ? (active ? 1 : 0) : null, req.params.id, hotelId);
+
+  // When deactivating: stamp tokens_valid_after so any currently-held access
+  // token is rejected by the authenticate middleware immediately on next call,
+  // and delete all refresh tokens so they cannot obtain a new access token.
+  if (isDeactivating) {
+    db.prepare("UPDATE hotel_users SET tokens_valid_after=datetime('now') WHERE id=?").run(user.id);
+    db.prepare("DELETE FROM refresh_tokens WHERE user_id=? AND user_type='hotel'").run(user.id);
+    addLog(hotelId, 'auth', `Account deactivated & all sessions terminated: ${user.username}`, { user: req.user.username });
+  }
+
   res.json({ success: true });
 });
 
@@ -2701,14 +2715,19 @@ app.delete('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const newToken = crypto.randomBytes(32).toString('hex');
-  // Replace the QR token so the old QR image can no longer be used to log in
-  db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(newToken, user.id);
-  // Invalidate all existing sessions that were established via the old QR code —
-  // this forces any device that scanned the old QR to re-authenticate.
+  // Replace the QR token (blocks new logins via old QR image) and stamp
+  // tokens_valid_after to NOW so any existing access token issued via the old
+  // QR is rejected by authenticate immediately — not just on next refresh.
+  // Also delete refresh tokens so the device cannot silently get a new one.
+  db.prepare(`
+    UPDATE hotel_users
+    SET qr_login_token=?, tokens_valid_after=datetime('now')
+    WHERE id=?
+  `).run(newToken, user.id);
   db.prepare("DELETE FROM refresh_tokens WHERE user_id=? AND user_type='hotel'").run(user.id);
 
   const base = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
-  addLog(hotelId, 'auth', `QR token revoked & sessions invalidated for ${user.username}`, { user: req.user.username });
+  addLog(hotelId, 'auth', `QR token revoked & all sessions force-terminated for ${user.username}`, { user: req.user.username });
   res.json({ success: true, token: newToken, loginUrl: `${base}/qr?t=${newToken}` });
 });
 

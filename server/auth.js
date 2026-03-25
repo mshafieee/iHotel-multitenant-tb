@@ -7,16 +7,46 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_ihotel_default';
 
+// DB reference injected by index.js after DB init so authenticate can do
+// live user-state checks without a circular dependency.
+let _db = null;
+function setDB(database) { _db = database; }
+
 // ── Hotel staff / guest authentication ────────────────────────────────────────
+// In addition to JWT signature/expiry, this checks the live DB state so that:
+//  • deactivated accounts are blocked immediately (active = 0)
+//  • revoked QR / forced sign-outs take effect immediately (tokens_valid_after)
+// Without these checks, the 8-hour access token would keep working even after
+// an account is deactivated or a session is force-invalidated.
 function authenticate(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
-    const token = header.split(' ')[1];
+    const token   = header.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { id, username, role, hotelId?, room? }
+
+    // Live DB check for hotel user tokens (superadmin tokens skip this).
+    if (_db && decoded.id && decoded.hotelId) {
+      const row = _db.prepare(
+        'SELECT active, tokens_valid_after FROM hotel_users WHERE id=?'
+      ).get(decoded.id);
+
+      if (!row || !row.active) {
+        return res.status(401).json({ error: 'Account deactivated', code: 'ACCOUNT_DEACTIVATED' });
+      }
+
+      if (row.tokens_valid_after) {
+        const validAfterMs  = new Date(row.tokens_valid_after).getTime();
+        const tokenIssuedMs = decoded.iat * 1000; // JWT iat is seconds
+        if (tokenIssuedMs < validAfterMs) {
+          return res.status(401).json({ error: 'Session revoked', code: 'SESSION_REVOKED' });
+        }
+      }
+    }
+
+    req.user = decoded;
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -139,6 +169,7 @@ function authenticateGroupUser(req, res, next) {
 }
 
 module.exports = {
+  setDB,
   authenticate,
   authenticatePlatformAdmin,
   authenticatePlatformAny,
