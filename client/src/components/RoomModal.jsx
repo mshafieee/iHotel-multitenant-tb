@@ -80,6 +80,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [reviewUrl, setReviewUrl] = useState(null); // shown after checkout
   const [showHKPicker, setShowHKPicker]   = useState(false);
   const [hkList, setHkList]               = useState([]);
   const [hkAssigning, setHkAssigning]     = useState(false);
@@ -278,8 +279,12 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const handleCheckout = async () => {
     if (!confirm(`Check out Room ${r.room}? This will cancel any reservations and set status to SERVICE.`)) return;
     setCheckingOut(true);
-    try { await checkout(r.room); onClose(); }
-    catch (e) { console.error('Checkout failed:', e.message); }
+    try {
+      const result = await checkout(r.room);
+      if (result?.reviewUrl) setReviewUrl(result.reviewUrl);
+      else onClose();
+    }
+    catch (e) { console.error('Checkout failed:', e.message); onClose(); }
     finally { setCheckingOut(false); }
   };
 
@@ -591,6 +596,23 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
       </div>
     </Section>
   );
+
+  // ── Review QR overlay shown right after checkout ─────────────────────────
+  if (reviewUrl) {
+    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(reviewUrl)}&margin=8`;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+          <div className="text-4xl mb-2">✅</div>
+          <h2 className="text-lg font-bold text-gray-800 mb-1">Check-out complete!</h2>
+          <p className="text-sm text-gray-500 mb-4">Show this QR to the guest to rate their stay</p>
+          <img src={qrSrc} alt="Review QR" className="w-48 h-48 mx-auto rounded-xl border border-gray-100 shadow-sm mb-3" />
+          <p className="text-[10px] text-gray-400 break-all mb-4">{reviewUrl}</p>
+          <button onClick={onClose} className="btn btn-primary w-full">Done</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`fixed inset-0 z-40 flex items-center justify-center ${isGuest ? '' : 'bg-black/40 backdrop-blur-sm p-4'}`}

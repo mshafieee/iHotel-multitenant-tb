@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel, BedDouble } from 'lucide-react';
+import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel, BedDouble, Star } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import useHotelStore from '../store/hotelStore';
 import useLangStore from '../store/langStore';
@@ -19,6 +19,7 @@ import SimulatorPanel from '../components/SimulatorPanel';
 import ScenesPanel from '../components/ScenesPanel';
 import HotelInfoPanel from '../components/HotelInfoPanel';
 import HousekeepingPanel from '../components/HousekeepingPanel';
+import ReviewsPanel from '../components/ReviewsPanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
 // Browsers require a user gesture before AudioContext can play sound.
@@ -143,6 +144,7 @@ export default function DashboardPage() {
     { id: 'finance',      label: T('tab_finance'),     icon: DollarSign,  visible: canSeeFinance },
     { id: 'users',        label: T('tab_users'),       icon: Users,       visible: canSeeUsers },
     { id: 'shifts',       label: T('tab_shifts'),      icon: Clock,       visible: canSeeShifts },
+    { id: 'reviews',      label: T('tab_reviews'),     icon: Star,        visible: isOwner || isAdmin },
     { id: 'scenes',       label: T('tab_scenes'),      icon: Zap,         visible: isOwner || isAdmin },
     { id: 'hotelinfo',    label: T('tab_hotelinfo'),   icon: Hotel,       visible: isOwner },
     { id: 'simulator',    label: T('tab_simulator'),   icon: FlaskConical,visible: isOwner || isAdmin },
@@ -302,6 +304,7 @@ export default function DashboardPage() {
         {tab === 'finance'      && <FinancePanel />}
         {tab === 'users'        && <UsersPanel />}
         {tab === 'shifts'       && <ShiftsPanel />}
+        {tab === 'reviews'      && <ReviewsPanel />}
         {tab === 'scenes'       && <ScenesPanel />}
         {tab === 'hotelinfo'    && <HotelInfoPanel />}
         {tab === 'simulator'    && <SimulatorPanel />}
