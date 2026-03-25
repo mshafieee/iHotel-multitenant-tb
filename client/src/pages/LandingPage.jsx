@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Eye, EyeOff, Wifi, Shield,
   Zap, BarChart3, BedDouble, Thermometer,
   Lightbulb, Lock, Moon, Cpu, Star,
-  Bell, Leaf, X, ArrowRight, ChevronRight,
+  Bell, Leaf, X, ArrowRight, ChevronRight, ChevronLeft,
   CheckCircle, TrendingUp, Users, Clock,
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
@@ -548,6 +548,108 @@ function HotelLoginModal({ onClose, t, isRTL }) {
   );
 }
 
+// ── Testimonials carousel ─────────────────────────────────────────────────────
+const PER_PAGE = 3;
+
+function TestimonialsCarousel({ t }) {
+  const testimonials = t.testimonials;
+  const pages        = Math.ceil(testimonials.length / PER_PAGE);
+  const [page, setPage] = useState(0);
+
+  // Auto-advance every 6 s
+  useEffect(() => {
+    const id = setInterval(() => setPage(p => (p + 1) % pages), 6000);
+    return () => clearInterval(id);
+  }, [pages]);
+
+  const current = testimonials.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+
+  return (
+    <section id="testimonials" className="py-24 px-6 bg-gray-50">
+      <div className="max-w-7xl mx-auto">
+
+        {/* Header */}
+        <div className="text-center mb-16 reveal">
+          <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-2">{t.reviewsTag}</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.reviewsTitle}</h2>
+          <p className="text-gray-400 text-sm">{t.reviewsSub}</p>
+        </div>
+
+        {/* Cards — key triggers fade + stagger on page change */}
+        <div
+          key={page}
+          className="grid md:grid-cols-3 gap-6"
+          style={{ animation: 'fadeIn 0.5s ease forwards' }}
+        >
+          {current.map((te, i) => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col hover:shadow-md hover:-translate-y-1 transition-all duration-200"
+              style={{ animation: `fadeUp 0.55s ${i * 0.12}s ease both` }}
+            >
+              <div className="flex gap-0.5 mb-4">
+                {[1,2,3,4,5].map(s => (
+                  <Star key={s} size={13} className={s <= te.stars ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />
+                ))}
+              </div>
+              <p className="text-gray-500 text-sm leading-relaxed flex-1 italic">{te.text}</p>
+              <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{te.name}</p>
+                  <p className="text-[10px] text-gray-400 truncate">{te.title} · {te.hotel}</p>
+                </div>
+                <span className="shrink-0 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center justify-center gap-4 mt-10">
+          <button
+            onClick={() => setPage(p => (p - 1 + pages) % pages)}
+            className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:border-gray-400 transition-all duration-200 shadow-sm"
+            aria-label="Previous"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <div className="flex items-center gap-2">
+            {Array.from({ length: pages }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                aria-label={`Page ${i + 1}`}
+                className={`rounded-full transition-all duration-300 ${
+                  i === page ? 'w-6 h-2 bg-blue-500' : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'
+                }`}
+              />
+            ))}
+          </div>
+
+          <button
+            onClick={() => setPage(p => (p + 1) % pages)}
+            className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:border-gray-400 transition-all duration-200 shadow-sm"
+            aria-label="Next"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-4 max-w-xs mx-auto h-px bg-gray-200 rounded-full overflow-hidden">
+          <div
+            key={`tprog-${page}`}
+            className="h-full bg-blue-400 rounded-full"
+            style={{ animation: 'progressBar 6s linear forwards' }}
+          />
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
 // ── SEO ───────────────────────────────────────────────────────────────────────
 function SEOMeta({ lang }) {
   useEffect(() => {
@@ -876,32 +978,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Testimonials ── */}
-      <section id="testimonials" className="py-24 px-6 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-2">{t.reviewsTag}</p>
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.reviewsTitle}</h2>
-            <p className="text-gray-400 text-sm">{t.reviewsSub}</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {t.testimonials.map((te, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex flex-col">
-                <div className="flex gap-0.5 mb-4">
-                  {[1,2,3,4,5].map(s => <Star key={s} size={13} className={s <= te.stars ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-200'} />)}
-                </div>
-                <p className="text-gray-500 text-sm leading-relaxed flex-1 italic">{te.text}</p>
-                <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">{te.name}</p>
-                    <p className="text-[10px] text-gray-400 truncate">{te.title} · {te.hotel}</p>
-                  </div>
-                  <span className="shrink-0 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <TestimonialsCarousel t={t} />
 
       {/* ── CTA ── */}
       <section className="py-28 px-6 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 relative overflow-hidden">
