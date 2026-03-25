@@ -75,8 +75,7 @@ router.post('/auth/login', platformAuthLimiter, (req, res) => {
 
     // Check superadmin first
     const admin = _db.prepare('SELECT * FROM platform_admins WHERE username = ? AND active = 1').get(username);
-    console.log('[LOGIN DEBUG] username:', username, '| admin found:', !!admin, '| hash match:', admin ? bcrypt.compareSync(password, admin.password_hash) : 'N/A');
-    if (admin && bcrypt.compareSync(password, admin.password_hash)) {
+if (admin && bcrypt.compareSync(password, admin.password_hash)) {
       const token = generatePlatformAdminToken(admin);
       return res.json({
         accessToken: token,
