@@ -65,6 +65,11 @@ function beep(freq, duration, volume = 0.6) {
 }
 function playSOS() { [0, 0.35, 0.7].forEach(t => setTimeout(() => beep(1100, 0.28, 0.9), t * 1000)); }
 function playMUR() { [0, 0.4].forEach(t => setTimeout(() => beep(750, 0.35, 0.6), t * 1000)); }
+// Two ascending chime tones — distinct from SOS/MUR, friendly but attention-grabbing
+function playHKAssign() {
+  beep(880, 0.18, 0.55);
+  setTimeout(() => beep(1320, 0.22, 0.55), 210);
+}
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -84,7 +89,8 @@ export default function DashboardPage() {
   const [tab, setTab] = useState('rooms');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [clock, setClock] = useState('');
-  const seenAlerts = useRef(new Set());
+  const seenAlerts   = useRef(new Set());
+  const seenHKNotifs = useRef(new Set());
 
   const role          = user?.role;
   const isOwner       = role === 'owner';
@@ -184,6 +190,15 @@ export default function DashboardPage() {
       else if (a.type === 'MUR') playMUR();
     });
   }, [alerts]);
+
+  // Play chime when a new housekeeping assignment notification arrives
+  useEffect(() => {
+    hkNotifications.forEach(n => {
+      if (seenHKNotifs.current.has(n.id)) return;
+      seenHKNotifs.current.add(n.id);
+      playHKAssign();
+    });
+  }, [hkNotifications]);
 
   return (
     <div className="min-h-screen bg-gray-50">
