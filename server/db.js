@@ -561,7 +561,7 @@ function initDB() {
 
   // ── Seed platform admin from env ───────────────────────────────────────────
   const adminUser = process.env.PLATFORM_ADMIN_USER || 'superadmin';
-  const adminPass = process.env.PLATFORM_ADMIN_PASS || 'iHotel2026!';
+  const adminPass = process.env.PLATFORM_ADMIN_PASS || 'iHotel2026';
   const existingAdmin = db.prepare('SELECT id, password_hash FROM platform_admins WHERE username = ?').get(adminUser);
   if (!existingAdmin) {
     db.prepare('INSERT INTO platform_admins (username, password_hash, full_name) VALUES (?, ?, ?)')
