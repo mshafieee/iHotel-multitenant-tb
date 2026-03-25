@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Eye, EyeOff, Wifi, Shield,
@@ -8,6 +8,55 @@ import {
   CheckCircle, TrendingUp, Users, Clock,
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
+
+// ── Scroll reveal hook ────────────────────────────────────────────────────────
+function useScrollReveal() {
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) entry.target.classList.add('visible');
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    );
+    const els = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  });
+}
+
+// ── Floating particles (stable — computed once, never random on render) ───────
+const PARTICLES = Array.from({ length: 22 }, (_, i) => ({
+  id: i,
+  size:     ((i * 7  + 3) % 5)  + 2,
+  x:        ((i * 19 + 5) % 100),
+  y:        ((i * 13 + 10) % 100),
+  duration: ((i * 3  + 8) % 10) + 8,
+  delay:     (i * 0.65) % 6,
+  opacity:  (((i * 11 + 5) % 4) * 0.09) + 0.08,
+}));
+
+function FloatingParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      {PARTICLES.map((p) => (
+        <div
+          key={p.id}
+          className="absolute rounded-full bg-blue-400"
+          style={{
+            width:     p.size,
+            height:    p.size,
+            left:      `${p.x}%`,
+            top:       `${p.y}%`,
+            opacity:   p.opacity,
+            animation: `particleFloat ${p.duration}s ${p.delay}s ease-in-out infinite`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 // ── Translations (idiomatic Arabic, not literal) ──────────────────────────────
 const T = {
