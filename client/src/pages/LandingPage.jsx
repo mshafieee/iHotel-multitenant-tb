@@ -820,28 +820,23 @@ export default function LandingPage() {
       </section>
 
       {/* ── Impact numbers strip ── */}
-      <section className="py-16 px-6 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
+      <section className="impact-bg py-20 px-6 relative overflow-hidden">
+        {/* Subtle glow overlay */}
+        <div className="absolute inset-0 bg-white/3 pointer-events-none" />
+        <div className="max-w-5xl mx-auto relative z-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {(isRTL ? [
-              { icon: TrendingUp, v: '38%',    l: 'متوسط توفير الطاقة', sub: 'في أول 3 أشهر' },
-              { icon: Clock,      v: '20 دقيقة', l: 'أسرع في تجهيز الغرف', sub: 'بعد كل مغادرة' },
-              { icon: Users,      v: '4.9★',    l: 'تقييم الضيوف', sub: 'بعد بوابة QR' },
-              { icon: Zap,        v: '< 1ث',    l: 'وقت الاستجابة', sub: 'تحديثات لحظية' },
+              { icon: TrendingUp, v: '38%',      l: 'متوسط توفير الطاقة',   sub: 'في أول 3 أشهر'    },
+              { icon: Clock,      v: '20 دقيقة', l: 'أسرع في تجهيز الغرف', sub: 'بعد كل مغادرة'    },
+              { icon: Users,      v: '4.9★',     l: 'تقييم الضيوف',         sub: 'بعد بوابة QR'     },
+              { icon: Zap,        v: '< 1ث',     l: 'وقت الاستجابة',        sub: 'تحديثات لحظية'   },
             ] : [
-              { icon: TrendingUp, v: '38%',     l: 'Avg Energy Saved', sub: 'In first 3 months' },
-              { icon: Clock,      v: '20 min',  l: 'Faster Room Turnover', sub: 'After each checkout' },
-              { icon: Users,      v: '4.9★',    l: 'Guest Satisfaction', sub: 'After QR portal' },
-              { icon: Zap,        v: '< 1s',    l: 'Response Time', sub: 'Live IoT updates' },
-            ]).map(({ icon: Icon, v, l, sub }) => (
-              <div key={l} className="flex flex-col items-center gap-1">
-                <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center mb-2">
-                  <Icon size={18} className="text-white" />
-                </div>
-                <p className="text-3xl font-extrabold leading-tight">{v}</p>
-                <p className="text-sm font-semibold text-white/90">{l}</p>
-                <p className="text-xs text-white/50">{sub}</p>
-              </div>
+              { icon: TrendingUp, v: '38%',     l: 'Avg Energy Saved',      sub: 'In first 3 months'  },
+              { icon: Clock,      v: '20 min',  l: 'Faster Room Turnover',  sub: 'After each checkout' },
+              { icon: Users,      v: '4.9★',    l: 'Guest Satisfaction',    sub: 'After QR portal'     },
+              { icon: Zap,        v: '< 1s',    l: 'Response Time',         sub: 'Live IoT updates'    },
+            ]).map(({ icon, v, l, sub }) => (
+              <AnimatedStat key={l} value={v} label={l} sub={sub} icon={icon} />
             ))}
           </div>
         </div>
