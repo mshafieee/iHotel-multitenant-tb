@@ -452,6 +452,15 @@ function initDB() {
     markMigration('021_qr_login_token');
   }
 
+  if (!hasMigration('022_tokens_valid_after')) {
+    const cols = db.pragma('table_info(hotel_users)').map(c => c.name);
+    if (!cols.includes('tokens_valid_after')) {
+      db.exec('ALTER TABLE hotel_users ADD COLUMN tokens_valid_after TEXT');
+      console.log('✓ Migration 022: added tokens_valid_after to hotel_users');
+    }
+    markMigration('022_tokens_valid_after');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (

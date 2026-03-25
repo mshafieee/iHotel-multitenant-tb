@@ -7,6 +7,10 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_ihotel_default';
 
+// db reference injected by index.js after DB init (needed for token validity check)
+let _db = null;
+function setDB(database) { _db = database; }
+
 // ── Hotel staff / guest authentication ────────────────────────────────────────
 function authenticate(req, res, next) {
   const header = req.headers.authorization;
@@ -14,8 +18,23 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
-    const token = header.split(' ')[1];
+    const token   = header.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // If this is a hotel user token, check that it was issued after the last
+    // forced sign-out (tokens_valid_after). This ensures QR revocation
+    // immediately invalidates all active sessions — not just on next refresh.
+    if (_db && decoded.id && decoded.hotelId) {
+      const row = _db.prepare('SELECT tokens_valid_after FROM hotel_users WHERE id=?').get(decoded.id);
+      if (row?.tokens_valid_after) {
+        const validAfterMs = new Date(row.tokens_valid_after).getTime();
+        const tokenIssuedMs = decoded.iat * 1000; // JWT iat is in seconds
+        if (tokenIssuedMs < validAfterMs) {
+          return res.status(401).json({ error: 'Session revoked', code: 'SESSION_REVOKED' });
+        }
+      }
+    }
+
     req.user = decoded; // { id, username, role, hotelId?, room? }
     next();
   } catch (err) {
@@ -139,6 +158,7 @@ function authenticateGroupUser(req, res, next) {
 }
 
 module.exports = {
+  setDB,
   authenticate,
   authenticatePlatformAdmin,
   authenticatePlatformAny,

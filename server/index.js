@@ -17,12 +17,13 @@ const WebSocket = require('ws');
 
 const { initDB }                  = require('./db');
 const { ThingsBoardClientPool }   = require('./thingsboard');
-const { authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
+const { setDB, authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
 const nodemailer                  = require('nodemailer');
 const webpush                     = require('web-push');
 
 // ═══ INIT ═══
 const db     = initDB();
+setDB(db); // give auth middleware access to DB for token validity checks
 const tbPool = new ThingsBoardClientPool();
 
 // ── Web Push VAPID keys (generated once, stored in platform_config) ──────────
@@ -2622,14 +2623,20 @@ app.delete('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const newToken = crypto.randomBytes(32).toString('hex');
-  // Replace the QR token so the old QR image can no longer be used to log in
-  db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(newToken, user.id);
-  // Invalidate all existing sessions that were established via the old QR code —
-  // this forces any device that scanned the old QR to re-authenticate.
+  // Replace the QR token so the old QR image can no longer be used to log in.
+  // Also stamp tokens_valid_after to NOW — any access token issued before this
+  // moment will be rejected by the authenticate middleware immediately, forcing
+  // an instant sign-out on every device that had logged in via the old QR.
+  db.prepare(`
+    UPDATE hotel_users
+    SET qr_login_token=?, tokens_valid_after=datetime('now')
+    WHERE id=?
+  `).run(newToken, user.id);
+  // Remove all refresh tokens so the user cannot silently obtain new access tokens.
   db.prepare("DELETE FROM refresh_tokens WHERE user_id=? AND user_type='hotel'").run(user.id);
 
   const base = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
-  addLog(hotelId, 'auth', `QR token revoked & sessions invalidated for ${user.username}`, { user: req.user.username });
+  addLog(hotelId, 'auth', `QR token revoked & all sessions force-signed-out for ${user.username}`, { user: req.user.username });
   res.json({ success: true, token: newToken, loginUrl: `${base}/qr?t=${newToken}` });
 });
 
