@@ -8,7 +8,7 @@ const Database = require('better-sqlite3');
 const bcrypt   = require('bcryptjs');
 const path     = require('path');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'hilton.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'ihotel.db');
 
 function initDB() {
   const db = new Database(DB_PATH);
