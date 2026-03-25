@@ -14,6 +14,43 @@ const useHotelStore = create((set, get) => ({
   sse: null,
   pollTimer: null,
 
+  // ── Housekeeping ──
+  hkQueue: [],
+  hkAssignments: [],
+  hkHousekeepers: [],
+  hkNotifications: [],
+
+  fetchHKQueue: async () => {
+    try { set({ hkQueue: await api('/api/housekeeping/queue') }); } catch {}
+  },
+  fetchHKAssignments: async () => {
+    try { set({ hkAssignments: await api('/api/housekeeping/assignments') }); } catch {}
+  },
+  fetchHKHousekeepers: async () => {
+    try { set({ hkHousekeepers: await api('/api/housekeeping/housekeepers') }); } catch {}
+  },
+  hkAssign: async (rooms, assignedTo, notes) => {
+    const res = await api('/api/housekeeping/assign', {
+      method: 'POST',
+      body: JSON.stringify({ rooms, assignedTo, notes }),
+    });
+    await get().fetchHKQueue();
+    await get().fetchHKAssignments();
+    return res;
+  },
+  hkCancel: async (id) => {
+    await api(`/api/housekeeping/assignments/${id}`, { method: 'DELETE' });
+    await get().fetchHKAssignments();
+  },
+  hkStart: async (id) => {
+    await api(`/api/housekeeping/assignments/${id}/start`, { method: 'POST' });
+    await get().fetchHKAssignments();
+  },
+  hkComplete: async (id) => {
+    await api(`/api/housekeeping/assignments/${id}/complete`, { method: 'POST' });
+    await get().fetchHKAssignments();
+  },
+
   // Fetch overview — server always responds instantly with cached snapshot.
   // If data was stale, a background TB fetch runs on the server and delivers
   // fresh data via SSE 'snapshot'. So we always update from HTTP here, and
@@ -154,6 +191,30 @@ const useHotelStore = create((set, get) => ({
       try {
         const d = JSON.parse(ev.data);
         if (d.rooms) set({ todayCheckouts: d.rooms });
+      } catch {}
+    });
+
+    // ── Housekeeping SSE events ──
+    es2.addEventListener('housekeeping_assign', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        get().fetchHKAssignments();
+        // Add notification for housekeeper
+        const notif = { id: Date.now(), ...d };
+        set({ hkNotifications: [notif, ...get().hkNotifications].slice(0, 20) });
+      } catch {}
+    });
+
+    es2.addEventListener('housekeeping_update', (ev) => {
+      try {
+        get().fetchHKQueue();
+        get().fetchHKAssignments();
+      } catch {}
+    });
+
+    es2.addEventListener('housekeeping_cancel', (ev) => {
+      try {
+        get().fetchHKAssignments();
       } catch {}
     });
 

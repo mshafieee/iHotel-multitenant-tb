@@ -126,7 +126,10 @@ export default function BookingPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <div className="text-[10px] text-white/30 uppercase">{T('Room', 'الغرفة')}</div>
-                <div className="font-bold text-white">{result.booking.room} ({result.booking.roomType})</div>
+                <div className="font-bold text-white text-lg">{result.booking.room}</div>
+                <div className="text-[11px] text-white/40">
+                  {T('Floor', 'الطابق')} {result.booking.floor} · {result.booking.roomType}
+                </div>
               </div>
               <div>
                 <div className="text-[10px] text-white/30 uppercase">{T('Guest', 'الضيف')}</div>
