@@ -99,6 +99,86 @@ function AnimatedStat({ value, label, sub, icon: Icon }) {
   );
 }
 
+// ── Hero carousel slides (EN + AR) ───────────────────────────────────────────
+const HERO_SLIDES = {
+  en: [
+    {
+      badge:   '🟢 Live platform · Real-time IoT control',
+      line1:   'The Smartest Way to',
+      line2:   'Run Your Hotel',
+      sub:     'One platform to monitor every room in real-time, automate guest experiences, manage reservations, and cut energy costs — all from a single dashboard.',
+      accent:  'from-blue-300 via-cyan-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-blue-400',
+    },
+    {
+      badge:   '🌟 Guest Experience · QR portal · No app needed',
+      line1:   'Unforgettable',
+      line2:   'Guest Experiences',
+      sub:     'Guests scan a QR code and instantly control their AC, lights, curtains, and scene presets from their phone — no app download required. DND, housekeeping requests, and reviews built in.',
+      accent:  'from-emerald-300 via-teal-300 to-cyan-400',
+      mockup:  'guest',
+      dot:     'bg-emerald-400',
+    },
+    {
+      badge:   '⚡ Energy AI · Automatic 30–38% savings',
+      line1:   'Cut Energy Costs,',
+      line2:   'Automatically',
+      sub:     'iHotel detects vacant rooms and shuts off AC and lights automatically. Motion sensors, departure automation, and smart scenes reduce your electricity bill by up to 38%.',
+      accent:  'from-amber-300 via-orange-300 to-yellow-300',
+      mockup:  'pms',
+      dot:     'bg-amber-400',
+    },
+    {
+      badge:   '🏨 Multi-Property · One platform, all your hotels',
+      line1:   'Manage Every',
+      line2:   'Property, Instantly',
+      sub:     'Switch between hotels with a single click. See every room live, trigger control commands remotely, and track revenue across your entire group — in one unified view.',
+      accent:  'from-violet-300 via-purple-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-violet-400',
+    },
+  ],
+  ar: [
+    {
+      badge:   '🟢 منصة فعلية · تحكم لحظي بأجهزة IoT',
+      line1:   'أذكى طريقة',
+      line2:   'لإدارة فندقك',
+      sub:     'منصة واحدة لمراقبة كل غرفة لحظياً، وأتمتة تجربة الضيوف، وإدارة الحجوزات، وتخفيض فاتورة الطاقة — كل شيء من لوحة تحكم واحدة.',
+      accent:  'from-blue-300 via-cyan-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-blue-400',
+    },
+    {
+      badge:   '🌟 تجربة الضيف · بوابة QR · بلا تطبيق',
+      line1:   'تجارب ضيوف',
+      line2:   'لا تُنسى',
+      sub:     'يمسح الضيف رمز QR ويتحكم فوراً في المكيف والإضاءة والستائر والسيناريوهات من هاتفه — دون تحميل أي تطبيق. عدم الإزعاج وطلبات التدبير والتقييمات كلها مدمجة.',
+      accent:  'from-emerald-300 via-teal-300 to-cyan-400',
+      mockup:  'guest',
+      dot:     'bg-emerald-400',
+    },
+    {
+      badge:   '⚡ ذكاء الطاقة · توفير تلقائي 30–38%',
+      line1:   'وفّر فاتورة الطاقة',
+      line2:   'بشكل تلقائي',
+      sub:     'تكتشف iHotel الغرف الفارغة وتُوقف المكيف والإضاءة تلقائياً. حساسات الحركة وأتمتة المغادرة والسيناريوهات الذكية تخفّض فاتورة كهربائك بما يصل إلى 38%.',
+      accent:  'from-amber-300 via-orange-300 to-yellow-300',
+      mockup:  'pms',
+      dot:     'bg-amber-400',
+    },
+    {
+      badge:   '🏨 فنادق متعددة · منصة واحدة لكل فنادقك',
+      line1:   'أدر كل فنادقك',
+      line2:   'بلحظة واحدة',
+      sub:     'انتقل بين الفنادق بنقرة واحدة. شاهد كل غرفة مباشرة، وأرسل أوامر التحكم عن بُعد، وتابع الإيرادات عبر مجموعتك كاملة — في عرض واحد.',
+      accent:  'from-violet-300 via-purple-300 to-indigo-300',
+      mockup:  'dashboard',
+      dot:     'bg-violet-400',
+    },
+  ],
+};
+
 // ── Translations (idiomatic Arabic, not literal) ──────────────────────────────
 const T = {
   en: {
