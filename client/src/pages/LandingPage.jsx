@@ -788,7 +788,7 @@ export default function LandingPage() {
       {/* ── Features ── */}
       <section id="features" className="py-24 px-6 bg-white">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-16 reveal">
             <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-2">{t.featuresTag}</p>
             <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.featuresTitle}</h2>
             <p className="text-gray-400 text-sm max-w-lg mx-auto">{t.featuresSub}</p>
@@ -798,8 +798,8 @@ export default function LandingPage() {
               const Icon = FEATURE_ICONS[i];
               const [bg, ic] = FEATURE_COLORS[i].split(' ');
               return (
-                <div key={i} className="group p-5 border border-gray-100 rounded-2xl hover:border-blue-100 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-default bg-white flex flex-col">
-                  <div className={`w-11 h-11 rounded-xl ${bg} flex items-center justify-center mb-4`}>
+                <div key={i} className={`reveal d${i + 1} group p-5 border border-gray-100 rounded-2xl hover:border-blue-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-default bg-white flex flex-col`}>
+                  <div className={`w-11 h-11 rounded-xl ${bg} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200`}>
                     <Icon size={20} className={ic} />
                   </div>
                   <h3 className="font-bold text-gray-800 text-sm mb-2">{f.title}</h3>
