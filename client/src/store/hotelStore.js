@@ -228,7 +228,7 @@ const useHotelStore = create((set, get) => ({
 
   // Check out a room: cancel reservation, set status to SERVICE, notify guest
   checkout: async (room) => {
-    await api(`/api/rooms/${room}/checkout`, { method: 'POST' });
+    const result = await api(`/api/rooms/${room}/checkout`, { method: 'POST' });
     // Optimistic: update room status to SERVICE (2) in local store
     const rooms = { ...get().rooms };
     if (rooms[room]) {
@@ -236,6 +236,7 @@ const useHotelStore = create((set, get) => ({
       set({ rooms });
     }
     get().fetchReservations();
+    return result; // { success, reviewUrl }
   },
 
   // Reset room to default state

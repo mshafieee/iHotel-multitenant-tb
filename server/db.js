@@ -452,6 +452,32 @@ function initDB() {
     markMigration('021_qr_login_token');
   }
 
+  if (!hasMigration('022_guest_reviews')) {
+    const resCols = db.pragma('table_info(reservations)').map(c => c.name);
+    if (!resCols.includes('review_token')) {
+      db.exec('ALTER TABLE reservations ADD COLUMN review_token TEXT');
+      console.log('✓ Migration 022: added review_token to reservations');
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS guest_reviews (
+        id           TEXT PRIMARY KEY,
+        hotel_id     TEXT NOT NULL,
+        reservation_id TEXT UNIQUE,
+        room         TEXT,
+        guest_name   TEXT,
+        check_in     TEXT,
+        check_out    TEXT,
+        nights       INTEGER,
+        stars        INTEGER NOT NULL CHECK(stars >= 1 AND stars <= 5),
+        review_text  TEXT,
+        created_at   TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+      )
+    `);
+    markMigration('022_guest_reviews');
+    console.log('✓ Migration 022: created guest_reviews table');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (

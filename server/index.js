@@ -1353,6 +1353,16 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
   if (devId) {
     try { await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 2 }, req.user.username); } catch {}
   }
+  // Generate a one-time review token for the guest so they can rate their stay
+  // without needing a login. The token is stored on the reservation.
+  let reviewUrl = null;
+  if (ar) {
+    const reviewToken = crypto.randomBytes(32).toString('hex');
+    db.prepare('UPDATE reservations SET review_token=? WHERE id=?').run(reviewToken, ar.id);
+    const base = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+    reviewUrl = `${base}/review?t=${reviewToken}`;
+  }
+
   sseBroadcast(hotelId, 'lockout', { room });
   addLog(hotelId, 'pms', `Room ${room} checked out → SERVICE`, { room, user: req.user.username });
 
@@ -1390,7 +1400,7 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
     checkEventScenes(hotelId, room, { checkOut: 1 });
   });
 
-  res.json({ success: true });
+  res.json({ success: true, reviewUrl });
 });
 
 app.get('/api/pms/today-checkouts', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
@@ -1757,6 +1767,75 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
     },
     hotel: { name: hotel.name, slug }
   });
+});
+
+// ═══ GUEST REVIEWS ════════════════════════════════════════════════════════════
+
+const reviewLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { error: 'Too many review attempts' } });
+
+// GET /api/public/review/:token — fetch booking details for the review form
+app.get('/api/public/review/:token', (req, res) => {
+  const { token } = req.params;
+  const row = db.prepare(`
+    SELECT r.id, r.guest_name, r.room, r.check_in, r.check_out, r.hotel_id,
+           h.name AS hotel_name, h.logo_url,
+           (SELECT id FROM guest_reviews WHERE reservation_id = r.id) AS already_reviewed
+    FROM reservations r
+    JOIN hotels h ON h.id = r.hotel_id
+    WHERE r.review_token = ? AND r.active = 0
+  `).get(token);
+  if (!row) return res.status(404).json({ error: 'Review link not found or not yet checked out' });
+  const ci = new Date(row.check_in); const co = new Date(row.check_out);
+  const nights = Math.max(1, Math.round((co - ci) / 86400000));
+  res.json({
+    guestName:  row.guest_name,
+    room:       row.room,
+    checkIn:    row.check_in,
+    checkOut:   row.check_out,
+    nights,
+    hotelName:  row.hotel_name,
+    logoUrl:    row.logo_url || null,
+    alreadyReviewed: !!row.already_reviewed,
+  });
+});
+
+// POST /api/public/review/:token — submit a review (one per reservation)
+app.post('/api/public/review/:token', reviewLimiter, (req, res) => {
+  const { token } = req.params;
+  const { stars, reviewText } = req.body;
+  if (!stars || stars < 1 || stars > 5) return res.status(400).json({ error: 'Stars must be 1–5' });
+  const reservation = db.prepare(`
+    SELECT r.*, h.name AS hotel_name
+    FROM reservations r
+    JOIN hotels h ON h.id = r.hotel_id
+    WHERE r.review_token = ? AND r.active = 0
+  `).get(token);
+  if (!reservation) return res.status(404).json({ error: 'Review link not found or not yet checked out' });
+  // One review per reservation (UNIQUE on reservation_id)
+  const existing = db.prepare('SELECT id FROM guest_reviews WHERE reservation_id=?').get(reservation.id);
+  if (existing) return res.status(409).json({ error: 'You have already submitted a review for this stay' });
+  const ci = new Date(reservation.check_in); const co = new Date(reservation.check_out);
+  const nights = Math.max(1, Math.round((co - ci) / 86400000));
+  db.prepare(`
+    INSERT INTO guest_reviews (id, hotel_id, reservation_id, room, guest_name, check_in, check_out, nights, stars, review_text)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(crypto.randomUUID(), reservation.hotel_id, reservation.id, reservation.room,
+         reservation.guest_name, reservation.check_in, reservation.check_out,
+         nights, Number(stars), reviewText?.trim() || null);
+  addLog(reservation.hotel_id, 'pms', `Guest review: Room ${reservation.room} — ${stars}★`, { room: reservation.room, stars });
+  res.json({ success: true });
+});
+
+// GET /api/reviews — list reviews for the hotel (owner/admin)
+app.get('/api/reviews', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const reviews = db.prepare(`
+    SELECT * FROM guest_reviews WHERE hotel_id=? ORDER BY created_at DESC
+  `).all(hotelId);
+  const agg = db.prepare(`
+    SELECT COUNT(*) as total, AVG(stars) as avg_stars FROM guest_reviews WHERE hotel_id=?
+  `).get(hotelId);
+  res.json({ reviews, total: agg.total, avgStars: agg.avg_stars ? Math.round(agg.avg_stars * 10) / 10 : null });
 });
 
 // ═══ HOTEL PROFILE MANAGEMENT (Owner) ═══

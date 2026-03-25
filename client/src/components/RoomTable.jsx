@@ -33,6 +33,7 @@ export default function RoomTable({ onSelectRoom, role }) {
   const updateRoomType = useHotelStore(s => s.updateRoomType);
   const [floor, setFloor] = useState(0);
   const [filter, setFilter] = useState('all');
+  const [reviewUrl, setReviewUrl] = useState(null); // shown after checkout
 
   const floors = useMemo(() => (
     [...new Set(Object.values(rooms).map(r => r.floor).filter(Boolean))].sort((a, b) => a - b)
@@ -60,7 +61,10 @@ export default function RoomTable({ onSelectRoom, role }) {
   const handleCheckout = async (e, room) => {
     e.stopPropagation();
     if (!confirm(`Check out Room ${room}? This will set status to SERVICE.`)) return;
-    try { await checkout(room); } catch {}
+    try {
+      const result = await checkout(room);
+      if (result?.reviewUrl) setReviewUrl(result.reviewUrl);
+    } catch {}
   };
 
   const canManage   = role === 'owner' || role === 'admin' || role === 'frontdesk';
@@ -68,6 +72,20 @@ export default function RoomTable({ onSelectRoom, role }) {
 
   return (
     <div className="card p-4">
+      {/* Review QR overlay after checkout */}
+      {reviewUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="text-4xl mb-2">✅</div>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">Check-out complete!</h2>
+            <p className="text-sm text-gray-500 mb-4">Show this QR to the guest to rate their stay</p>
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(reviewUrl)}&margin=8`}
+              alt="Review QR" className="w-48 h-48 mx-auto rounded-xl border border-gray-100 shadow-sm mb-3" />
+            <p className="text-[10px] text-gray-400 break-all mb-4">{reviewUrl}</p>
+            <button onClick={() => setReviewUrl(null)} className="btn btn-primary w-full">Done</button>
+          </div>
+        </div>
+      )}
       {/* Floor pills */}
       <div className="flex gap-1 flex-wrap mb-2">
         <button onClick={() => setFloor(0)}

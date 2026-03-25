@@ -34,6 +34,7 @@ const translations = {
   tab_shifts:        { ar: 'الورديات',          en: 'Shifts' },
   tab_scenes:        { ar: 'الأتمتة',           en: 'Scenes' },
   tab_hotelinfo:     { ar: 'بيانات الفندق',     en: 'Hotel Info' },
+  tab_reviews:       { ar: 'تقييمات الضيوف',   en: 'Reviews' },
   tab_simulator:     { ar: 'المحاكي',           en: 'Simulator' },
   tab_housekeeping:  { ar: 'عمال النظافة',      en: 'Housekeeping' },
 
