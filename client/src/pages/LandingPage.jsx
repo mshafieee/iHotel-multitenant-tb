@@ -493,7 +493,7 @@ function HotelLoginModal({ onClose, t, isRTL }) {
             <div className="p-1.5 bg-slate-800 rounded-lg"><LayoutDashboard size={14} className="text-white" /></div>
             <div>
               <h2 className="text-base font-bold text-gray-900 leading-tight">{t.loginTitle}</h2>
-              <p className="text-[11px] text-gray-400">{t.loginSub}</p>
+              <p className="text-xs text-gray-400">{t.loginSub}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-300 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition"><X size={16} /></button>
@@ -502,7 +502,7 @@ function HotelLoginModal({ onClose, t, isRTL }) {
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">{t.codeLabel}</label>
             <input className="input" value={hotelSlug} onChange={e => setHotelSlug(e.target.value)} placeholder={t.codePh} autoFocus required />
-            <p className="text-[10px] text-gray-400 mt-1">{t.codeHint}</p>
+            <p className="text-xs text-gray-400 mt-1">{t.codeHint}</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">{t.userLabel}</label>
@@ -526,9 +526,9 @@ function HotelLoginModal({ onClose, t, isRTL }) {
         <div className="px-6 pb-5 space-y-2 text-center">
           {forgotSent
             ? <p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">{t.forgotMsg}</p>
-            : <button onClick={() => setForgotSent(true)} className="text-[11px] text-gray-400 hover:text-gray-600 underline underline-offset-2 transition">{t.forgotPw}</button>
+            : <button onClick={() => setForgotSent(true)} className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 transition">{t.forgotPw}</button>
           }
-          <p className="text-[11px] text-gray-400">
+          <p className="text-xs text-gray-400">
             {t.sysAdmin}{' '}
             <Link to="/platform/login" className="text-gray-600 hover:text-gray-800 underline underline-offset-2 font-medium">{t.platformLogin}</Link>
           </p>
@@ -586,9 +586,9 @@ function TestimonialsCarousel({ t }) {
               <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800 truncate">{te.name}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{te.title} · {te.hotel}</p>
+                  <p className="text-xs text-gray-400 truncate">{te.title} · {te.hotel}</p>
                 </div>
-                <span className="shrink-0 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
+                <span className="shrink-0 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">{te.stat}</span>
               </div>
             </div>
           ))}
@@ -677,12 +677,6 @@ export default function LandingPage() {
   const slide  = slides[slideIdx];
 
   useScrollReveal();
-
-  // Auto-advance hero slides every 5 s
-  useEffect(() => {
-    const id = setInterval(() => setSlideIdx(i => (i + 1) % slides.length), 5000);
-    return () => clearInterval(id);
-  }, [slides.length]);
 
   // Reset slide index when language changes
   useEffect(() => { setSlideIdx(0); }, [lang]);
@@ -785,7 +779,7 @@ export default function LandingPage() {
                     style={{ animation: `fadeUp 0.6s ${0.1 + i * 0.08}s ease both` }}
                   >
                     <p className="text-xl font-extrabold text-white leading-tight">{s.v}</p>
-                    <p className="text-[10px] text-white/35 mt-1 leading-snug">{s.l}</p>
+                    <p className="text-xs text-white/45 mt-1 leading-snug">{s.l}</p>
                   </div>
                 ))}
               </div>
@@ -898,8 +892,8 @@ export default function LandingPage() {
                   <p className="text-xs text-gray-400 leading-relaxed flex-1">{f.desc}</p>
                   {f.result && (
                     <div className="mt-3 pt-3 border-t border-gray-50">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                        <CheckCircle size={10} className="shrink-0" />
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+                        <CheckCircle size={12} className="shrink-0" />
                         {f.result}
                       </span>
                     </div>
@@ -944,15 +938,15 @@ export default function LandingPage() {
           </div>
           <div className="grid lg:grid-cols-3 gap-8">
             <div className="reveal-left d1">
-              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p>
+              <p className="text-xs text-white/45 uppercase tracking-widest mb-3 font-semibold">{t.dashLabel}</p>
               <DashboardMockup />
             </div>
             <div className="reveal d2">
-              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p>
+              <p className="text-xs text-white/45 uppercase tracking-widest mb-3 font-semibold">{t.pmsLabel}</p>
               <PMSMockup />
             </div>
             <div className="reveal-right d3">
-              <p className="text-[9px] text-white/25 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p>
+              <p className="text-xs text-white/45 uppercase tracking-widest mb-3 font-semibold">{t.guestLabel}</p>
               <div className="flex justify-center"><GuestPortalMockup /></div>
             </div>
           </div>
@@ -961,7 +955,7 @@ export default function LandingPage() {
               ? ['تحديث فوري', 'تسجيل دخول QR', 'تقارير الإيرادات', 'إدارة المناوبات', 'أتمتة الطاقة', 'سيناريوهات ذكية', 'عدم الإزعاج / SOS', 'فنادق متعددة', 'تحكم ذكي بالغرف', 'صلاحيات بالأدوار', 'بوابة الضيف']
               : ['Real-time telemetry', 'QR check-in', 'Revenue reports', 'Shift management', 'Energy automation', 'Scene presets', 'DND / SOS', 'Multi-property', 'Smart room control', 'Role-based access', 'Guest portal']
             ).map(pill => (
-              <span key={pill} className="text-[11px] text-white/35 bg-white/5 border border-white/8 px-3 py-1 rounded-full hover:text-white/60 hover:bg-white/10 transition-colors duration-200">{pill}</span>
+              <span key={pill} className="text-sm text-white/55 bg-white/5 border border-white/10 px-4 py-1.5 rounded-full hover:text-white/80 hover:bg-white/10 transition-colors duration-200">{pill}</span>
             ))}
           </div>
         </div>
