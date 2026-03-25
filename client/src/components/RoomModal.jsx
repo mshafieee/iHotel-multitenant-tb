@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole, CalendarPlus, CheckCircle } from 'lucide-react';
+import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole, CalendarPlus, CheckCircle, BedDouble } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
 import { api } from '../utils/api';
 import useLangStore from '../store/langStore';
@@ -80,6 +80,10 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [showHKPicker, setShowHKPicker]   = useState(false);
+  const [hkList, setHkList]               = useState([]);
+  const [hkAssigning, setHkAssigning]     = useState(false);
+  const [hkFlash, setHkFlash]             = useState(null);
   const [doorCountdown, setDoorCountdown] = useState(0);
   const [unlockSent, setUnlockSent] = useState(false);
   const [sleepFireAt, setSleepFireAt] = useState(null);
@@ -277,6 +281,38 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     try { await checkout(r.room); onClose(); }
     catch (e) { console.error('Checkout failed:', e.message); }
     finally { setCheckingOut(false); }
+  };
+
+  const openHKPicker = async () => {
+    setShowHKPicker(true);
+    setHkFlash(null);
+    if (!hkList.length) {
+      try {
+        const data = await api('/api/housekeeping/housekeepers');
+        setHkList(data);
+      } catch {}
+    }
+  };
+
+  const assignToHousekeeper = async (username) => {
+    setHkAssigning(true);
+    try {
+      const res = await api('/api/housekeeping/assign', {
+        method: 'POST',
+        body: JSON.stringify({ rooms: [String(r.room)], assignedTo: username }),
+      });
+      const skipped = res.skipped ?? 0;
+      if (skipped > 0) {
+        setHkFlash({ type: 'warn', msg: 'Room already has an active assignment.' });
+      } else {
+        setHkFlash({ type: 'ok', msg: `Assigned to ${username}` });
+        setTimeout(() => setShowHKPicker(false), 1200);
+      }
+    } catch (e) {
+      setHkFlash({ type: 'err', msg: e.message || 'Assignment failed' });
+    } finally {
+      setHkAssigning(false);
+    }
   };
 
   const cancelSleepTimer = () => {
@@ -625,6 +661,61 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               <CalendarPlus size={16} />
               {lang === 'ar' ? `حجز الغرفة ${r.room}` : `Reserve Room ${r.room}`}
             </button>
+          )}
+
+          {/* Assign to Housekeeper — shown for staff when room is in SERVICE status */}
+          {isStaff && r.roomStatus === 2 && (
+            <div>
+              <button onClick={openHKPicker}
+                className="w-full py-2.5 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition flex items-center justify-center gap-2">
+                <BedDouble size={16} />
+                Assign to Housekeeper
+              </button>
+
+              {showHKPicker && (
+                <div className="mt-2 rounded-xl border border-amber-200 bg-white shadow-md overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border-b border-amber-100">
+                    <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Select Housekeeper</span>
+                    <button onClick={() => setShowHKPicker(false)}
+                      className="text-amber-400 hover:text-amber-600 text-lg leading-none">×</button>
+                  </div>
+
+                  {hkFlash && (
+                    <div className={`text-xs font-semibold px-3 py-2 ${
+                      hkFlash.type === 'ok'   ? 'bg-emerald-50 text-emerald-700' :
+                      hkFlash.type === 'warn' ? 'bg-amber-50 text-amber-700' :
+                                                'bg-red-50 text-red-600'
+                    }`}>{hkFlash.msg}</div>
+                  )}
+
+                  {hkList.length === 0 ? (
+                    <div className="px-3 py-4 text-xs text-gray-400 text-center">
+                      No housekeeper accounts found.<br />
+                      <span className="text-gray-300">Create one in the Users tab.</span>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-50">
+                      {hkList.map(h => (
+                        <li key={h.id}>
+                          <button
+                            disabled={hkAssigning}
+                            onClick={() => assignToHousekeeper(h.username)}
+                            className="w-full text-left px-3 py-2.5 hover:bg-amber-50 transition disabled:opacity-50 flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[11px] font-bold shrink-0">
+                              {(h.full_name || h.username).charAt(0).toUpperCase()}
+                            </span>
+                            <div>
+                              <div className="text-sm font-semibold text-gray-700">{h.full_name || h.username}</div>
+                              {h.full_name && <div className="text-[10px] text-gray-400">@{h.username}</div>}
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Staff tools */}
