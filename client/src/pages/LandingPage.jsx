@@ -669,8 +669,10 @@ function SEOMeta({ lang }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [showLogin, setShowLogin] = useState(false);
-  const [lang, setLang]           = useState('ar');
-  const [slideIdx, setSlideIdx]   = useState(0);
+  const [lang, setLang]                   = useState('ar');
+  const [slideIdx, setSlideIdx]           = useState(0);
+  const [slideProgress, setSlideProgress] = useState(0);
+  const heroRef = useRef(null);
   const t      = T[lang];
   const isRTL  = lang === 'ar';
   const slides = HERO_SLIDES[lang];
@@ -678,8 +680,36 @@ export default function LandingPage() {
 
   useScrollReveal();
 
-  // Reset slide index when language changes
-  useEffect(() => { setSlideIdx(0); }, [lang]);
+  // Scroll-driven hero carousel
+  useEffect(() => {
+    const onScroll = () => {
+      if (!heroRef.current) return;
+      const rect       = heroRef.current.getBoundingClientRect();
+      const scrollable = heroRef.current.offsetHeight - window.innerHeight;
+      if (scrollable <= 0) return;
+      const scrolled = Math.max(0, Math.min(scrollable, -rect.top));
+      const total    = scrolled / scrollable;                            // 0 → 1
+      const idx      = Math.min(slides.length - 1, Math.floor(total * slides.length));
+      const within   = (total - idx / slides.length) / (1 / slides.length); // 0 → 1
+      setSlideIdx(idx);
+      setSlideProgress(Math.min(100, Math.max(0, within * 100)));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [slides.length]);
+
+  // Smooth-scroll hero to the chosen slide
+  const goToSlide = (i) => {
+    if (!heroRef.current) return;
+    const scrollable = heroRef.current.offsetHeight - window.innerHeight;
+    window.scrollTo({ top: heroRef.current.offsetTop + (i / slides.length) * scrollable, behavior: 'smooth' });
+  };
+
+  // Reset to slide 0 when language changes
+  useEffect(() => {
+    setSlideIdx(0);
+    setSlideProgress(0);
+  }, [lang]);
 
   // Always preload Cairo font (Arabic is the default)
   useEffect(() => {
@@ -730,8 +760,10 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── Hero ── */}
-      <section className="hero-bg pt-28 pb-20 px-6 relative overflow-hidden" style={{ minHeight: '92vh', display: 'flex', alignItems: 'center' }}>
+      {/* ── Hero (scroll-driven carousel — 4 × 100vh) ── */}
+      <section ref={heroRef} className="relative" style={{ height: '400vh' }}>
+        {/* Sticky visual layer — stays pinned while user scrolls through 400vh */}
+        <div className="sticky top-0 hero-bg overflow-hidden" style={{ height: '100vh' }}>
 
         {/* Subtle grid overlay */}
         <div className="absolute inset-0 pointer-events-none" style={{
@@ -748,7 +780,8 @@ export default function LandingPage() {
         <div className="absolute top-20 -end-20 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-[500px] h-[400px] bg-violet-600/6 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto relative z-10 w-full">
+        <div className="relative z-10 h-full flex items-center px-6" style={{ paddingTop: '5rem' }}>
+        <div className="max-w-7xl mx-auto w-full">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
 
             {/* ── Slide content ── */}
@@ -833,7 +866,7 @@ export default function LandingPage() {
               {slides.map((s, i) => (
                 <button
                   key={i}
-                  onClick={() => setSlideIdx(i)}
+                  onClick={() => goToSlide(i)}
                   aria-label={`Slide ${i + 1}`}
                   className={`rounded-full transition-all duration-300 ${
                     i === slideIdx
@@ -843,24 +876,21 @@ export default function LandingPage() {
                 />
               ))}
             </div>
-            {/* Progress bar */}
+            {/* Progress bar — width driven by scroll position */}
             <div className="flex-1 h-px bg-white/10 rounded-full overflow-hidden">
               <div
-                key={`prog-${slideIdx}`}
-                className="h-full bg-white/35 rounded-full"
-                style={{ animation: 'progressBar 5s linear forwards' }}
+                className="h-full bg-white/40 rounded-full transition-none"
+                style={{ width: `${slideProgress}%` }}
               />
             </div>
             {/* Slide counter */}
-            <span
-              key={`cnt-${slideIdx}`}
-              className="text-[11px] text-white/25 font-mono tabular-nums"
-              style={{ animation: 'fadeIn 0.5s ease forwards' }}
-            >
+            <span className="text-xs text-white/30 font-mono tabular-nums">
               {String(slideIdx + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}
             </span>
           </div>
-        </div>
+        </div>{/* end max-w-7xl */}
+        </div>{/* end flex items-center */}
+        </div>{/* end sticky */}
       </section>
 
       {/* ── Trusted by ── */}
