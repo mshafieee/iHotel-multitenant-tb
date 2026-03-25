@@ -578,8 +578,22 @@ function SEOMeta({ lang }) {
 export default function LandingPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [lang, setLang]           = useState('ar');
-  const t     = T[lang];
-  const isRTL = lang === 'ar';
+  const [slideIdx, setSlideIdx]   = useState(0);
+  const t      = T[lang];
+  const isRTL  = lang === 'ar';
+  const slides = HERO_SLIDES[lang];
+  const slide  = slides[slideIdx];
+
+  useScrollReveal();
+
+  // Auto-advance hero slides every 5 s
+  useEffect(() => {
+    const id = setInterval(() => setSlideIdx(i => (i + 1) % slides.length), 5000);
+    return () => clearInterval(id);
+  }, [slides.length]);
+
+  // Reset slide index when language changes
+  useEffect(() => { setSlideIdx(0); }, [lang]);
 
   // Always preload Cairo font (Arabic is the default)
   useEffect(() => {
@@ -631,38 +645,60 @@ export default function LandingPage() {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="bg-gradient-to-br from-slate-950 via-[#0c1526] to-[#0f172a] pt-28 pb-24 px-6 relative overflow-hidden">
+      <section className="hero-bg pt-28 pb-20 px-6 relative overflow-hidden" style={{ minHeight: '92vh', display: 'flex', alignItems: 'center' }}>
+
+        {/* Subtle grid overlay */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px)`,
+          backgroundSize: '64px 64px',
+        }} />
+
+        {/* Floating particles */}
+        <FloatingParticles />
+
         {/* Ambient glow orbs */}
         <div className="absolute -top-40 start-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute top-20 -end-20 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-[500px] h-[400px] bg-violet-600/6 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto relative z-10">
+        <div className="max-w-7xl mx-auto relative z-10 w-full">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
-            <div>
+
+            {/* ── Slide content ── */}
+            <div key={slideIdx} style={{ animation: 'fadeUp 0.7s ease forwards' }}>
+
+              {/* Badge */}
               <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-3 py-1.5 mb-7">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-emerald-300 font-semibold">{t.badge}</span>
+                <span className="text-xs text-emerald-300 font-semibold">{slide.badge}</span>
               </div>
-              <h1 className={`font-extrabold text-white leading-[1.1] mb-6 ${isRTL ? 'text-5xl' : 'text-5xl'}`}>
-                {t.heroLine1}<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-300 to-indigo-300">
-                  {t.heroLine2}
+
+              {/* Headline */}
+              <h1 className="font-extrabold text-white leading-[1.1] mb-6 text-5xl">
+                {slide.line1}<br />
+                <span className={`text-transparent bg-clip-text bg-gradient-to-r ${slide.accent}`}>
+                  {slide.line2}
                 </span>
-                {t.heroLine3 && <><br />{t.heroLine3}</>}
               </h1>
-              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-md">{t.heroSub}</p>
+
+              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-md">{slide.sub}</p>
 
               {/* Stats strip */}
               <div className="grid grid-cols-4 gap-3 mb-10">
-                {t.stats.map(s => (
-                  <div key={s.l} className="bg-white/5 border border-white/8 rounded-xl px-3 py-3 text-center">
+                {t.stats.map((s, i) => (
+                  <div
+                    key={s.l}
+                    className="bg-white/5 border border-white/8 rounded-xl px-3 py-3 text-center hover:bg-white/8 transition-colors duration-200"
+                    style={{ animation: `fadeUp 0.6s ${0.1 + i * 0.08}s ease both` }}
+                  >
                     <p className="text-xl font-extrabold text-white leading-tight">{s.v}</p>
                     <p className="text-[10px] text-white/35 mt-1 leading-snug">{s.l}</p>
                   </div>
                 ))}
               </div>
 
+              {/* CTAs */}
               <div className="flex items-center gap-3 flex-wrap">
                 <button onClick={() => setShowLogin(true)}
                   className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-7 py-3 rounded-xl transition shadow-2xl shadow-blue-500/30 text-sm">
@@ -680,14 +716,63 @@ export default function LandingPage() {
                 </a>
               </div>
             </div>
-            <div className="relative hidden lg:block">
-              {/* Glow behind mockup */}
-              <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-3xl" />
-              <div className="relative">
-                <DashboardMockup />
-                <div className="absolute -end-5 -bottom-8 shadow-2xl"><RoomControlCard /></div>
+
+            {/* ── Mockup (desktop only) ── */}
+            <div key={`mock-${slideIdx}`} className="relative hidden lg:block"
+                 style={{ animation: 'slideLeft 0.75s ease forwards' }}>
+              <div className="absolute inset-0 bg-blue-500/8 blur-3xl rounded-3xl" />
+              <div className="relative float-card">
+                {slide.mockup === 'dashboard' && (
+                  <>
+                    <DashboardMockup />
+                    <div className="absolute -end-5 -bottom-8 shadow-2xl float-card-delay">
+                      <RoomControlCard />
+                    </div>
+                  </>
+                )}
+                {slide.mockup === 'guest' && (
+                  <div className="flex justify-center">
+                    <GuestPortalMockup />
+                  </div>
+                )}
+                {slide.mockup === 'pms' && <PMSMockup />}
               </div>
             </div>
+          </div>
+
+          {/* ── Slide controls ── */}
+          <div className="mt-14 flex items-center gap-5">
+            {/* Dot indicators */}
+            <div className="flex items-center gap-2">
+              {slides.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSlideIdx(i)}
+                  aria-label={`Slide ${i + 1}`}
+                  className={`rounded-full transition-all duration-300 ${
+                    i === slideIdx
+                      ? `w-6 h-2 ${s.dot}`
+                      : 'w-2 h-2 bg-white/20 hover:bg-white/45'
+                  }`}
+                />
+              ))}
+            </div>
+            {/* Progress bar */}
+            <div className="flex-1 h-px bg-white/10 rounded-full overflow-hidden">
+              <div
+                key={`prog-${slideIdx}`}
+                className="h-full bg-white/35 rounded-full"
+                style={{ animation: 'progressBar 5s linear forwards' }}
+              />
+            </div>
+            {/* Slide counter */}
+            <span
+              key={`cnt-${slideIdx}`}
+              className="text-[11px] text-white/25 font-mono tabular-nums"
+              style={{ animation: 'fadeIn 0.5s ease forwards' }}
+            >
+              {String(slideIdx + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}
+            </span>
           </div>
         </div>
       </section>
