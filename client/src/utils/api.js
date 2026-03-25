@@ -36,6 +36,10 @@ async function refreshAccessToken() {
   return data.accessToken;
 }
 
+// Codes that mean the server has hard-terminated this session.
+// No point retrying or refreshing — log out immediately.
+const HARD_LOGOUT_CODES = new Set(['ACCOUNT_DEACTIVATED', 'SESSION_REVOKED']);
+
 // Main fetch wrapper with auto-retry on 401
 export async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers };
@@ -43,16 +47,27 @@ export async function api(path, options = {}) {
 
   let res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  // If token expired, try refresh once
-  if (res.status === 401 && refreshToken) {
-    try {
-      const newToken = await refreshAccessToken();
-      headers['Authorization'] = `Bearer ${newToken}`;
-      res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-    } catch {
+  if (res.status === 401) {
+    const body = await res.json().catch(() => ({}));
+
+    // Hard logout: account deactivated or session force-revoked — no refresh attempt.
+    if (HARD_LOGOUT_CODES.has(body.code)) {
       clearTokens();
       if (onLogout) onLogout();
-      throw new Error('Session expired');
+      throw new Error(body.error || 'Session terminated');
+    }
+
+    // Normal expiry: try refresh once, then give up.
+    if (refreshToken) {
+      try {
+        const newToken = await refreshAccessToken();
+        headers['Authorization'] = `Bearer ${newToken}`;
+        res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+      } catch {
+        clearTokens();
+        if (onLogout) onLogout();
+        throw new Error('Session expired');
+      }
     }
   }
 
