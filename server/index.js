@@ -19,10 +19,26 @@ const { initDB }                  = require('./db');
 const { ThingsBoardClientPool }   = require('./thingsboard');
 const { authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
 const nodemailer                  = require('nodemailer');
+const webpush                     = require('web-push');
 
 // ═══ INIT ═══
 const db     = initDB();
 const tbPool = new ThingsBoardClientPool();
+
+// ── Web Push VAPID keys (generated once, stored in platform_config) ──────────
+(function initVapid() {
+  let pub = db.prepare("SELECT value FROM platform_config WHERE key='vapid_public'").get();
+  let prv = db.prepare("SELECT value FROM platform_config WHERE key='vapid_private'").get();
+  if (!pub || !prv) {
+    const keys = webpush.generateVAPIDKeys();
+    db.prepare("INSERT OR REPLACE INTO platform_config (key,value) VALUES ('vapid_public',?)").run(keys.publicKey);
+    db.prepare("INSERT OR REPLACE INTO platform_config (key,value) VALUES ('vapid_private',?)").run(keys.privateKey);
+    pub = { value: keys.publicKey };
+    prv = { value: keys.privateKey };
+    console.log('✓ VAPID keys generated');
+  }
+  webpush.setVapidDetails('mailto:admin@ihotel.app', pub.value, prv.value);
+})();
 
 // ── Email transporter (optional — only used for password reset) ──────────────
 // Configure SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS in server/.env
@@ -364,6 +380,35 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   res.json({
     accessToken, refreshToken,
     user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id, hotelSlug: hotel.slug, hotelName: hotel.name, logoUrl: hotel.logo_url || null }
+  });
+});
+
+// ── POST /api/auth/qr-login ───────────────────────────────────────────────
+// Instant login using the per-user QR token (no password needed).
+app.post('/api/auth/qr-login', authLimiter, (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'QR token required' });
+
+  const row = db.prepare(`
+    SELECT hu.*, h.slug AS hotelSlug, h.name AS hotelName, h.logo_url AS logoUrl
+    FROM hotel_users hu
+    JOIN hotels h ON h.id = hu.hotel_id
+    WHERE hu.qr_login_token = ? AND hu.active = 1 AND h.active = 1
+  `).get(token);
+  if (!row) return res.status(401).json({ error: 'Invalid or revoked QR code' });
+
+  const accessToken  = generateAccessToken({ ...row, hotelId: row.hotel_id });
+  const refreshToken = generateRefreshToken(row);
+  const expiresAt    = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('INSERT INTO refresh_tokens (user_id, user_type, token, expires_at) VALUES (?,?,?,?)')
+    .run(row.id, 'hotel', refreshToken, expiresAt);
+  db.prepare("UPDATE hotel_users SET last_login = datetime('now') WHERE id = ?").run(row.id);
+
+  addLog(row.hotel_id, 'auth', `QR login: ${row.username}`, { user: row.username });
+  res.json({
+    accessToken, refreshToken,
+    user: { id: row.id, username: row.username, role: row.role, fullName: row.full_name,
+            hotelId: row.hotel_id, hotelSlug: row.hotelSlug, hotelName: row.hotelName, logoUrl: row.logoUrl || null }
   });
 });
 
@@ -1589,12 +1634,21 @@ app.get('/api/public/book/:slug/availability', (req, res) => {
   ).all(hotel.id, checkOut, checkIn).map(r => r.room);
   const occupiedSet = new Set(occupied);
 
+  // Also exclude rooms physically occupied right now (roomStatus=1 from IoT)
+  const liveOverview = getLastOverviewRooms(hotel.id);
+  const physOccupied = new Set(
+    Object.entries(liveOverview)
+      .filter(([, d]) => d.roomStatus === 1)
+      .map(([roomNum]) => roomNum)
+  );
+
   // Count available rooms per type
   const availability = {};
   allRooms.forEach(r => {
     if (!availability[r.room_type]) availability[r.room_type] = { total: 0, available: 0 };
     availability[r.room_type].total++;
-    if (!occupiedSet.has(r.room_number)) availability[r.room_type].available++;
+    if (!occupiedSet.has(r.room_number) && !physOccupied.has(r.room_number))
+      availability[r.room_type].available++;
   });
 
   res.json({ checkIn, checkOut, availability });
@@ -1624,7 +1678,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
   if (coDate <= ciDate) return res.status(400).json({ error: 'Check-out must be after check-in' });
 
   // Find an available room of the requested type — lowest floor first
-  const allRooms = db.prepare('SELECT room_number FROM hotel_rooms WHERE hotel_id=? AND room_type=? ORDER BY CAST(room_number AS INTEGER)')
+  const allRooms = db.prepare('SELECT room_number, floor FROM hotel_rooms WHERE hotel_id=? AND room_type=? ORDER BY floor ASC, CAST(room_number AS INTEGER) ASC')
     .all(hotel.id, roomType);
   if (!allRooms.length) return res.status(400).json({ error: `No rooms of type ${roomType} exist` });
 
@@ -1634,7 +1688,17 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
   ).all(hotel.id, checkOut, checkIn).map(r => r.room);
   const occupiedSet = new Set(occupied);
 
-  const availableRoom = allRooms.find(r => !occupiedSet.has(r.room_number));
+  // Also skip rooms physically occupied right now (roomStatus=1)
+  const liveData = getLastOverviewRooms(hotel.id);
+  const physOccupiedBook = new Set(
+    Object.entries(liveData)
+      .filter(([, d]) => d.roomStatus === 1)
+      .map(([roomNum]) => roomNum)
+  );
+
+  const availableRoom = allRooms.find(r =>
+    !occupiedSet.has(r.room_number) && !physOccupiedBook.has(r.room_number)
+  );
   if (!availableRoom) return res.status(409).json({ error: 'No rooms available for the selected dates and type' });
 
   const room = availableRoom.room_number;
@@ -1682,7 +1746,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
   res.json({
     success: true,
     booking: {
-      id, room, guestName, roomType, checkIn, checkOut,
+      id, room, floor: availableRoom.floor, guestName, roomType, checkIn, checkOut,
       nights, ratePerNight, totalAmount,
       currency: profile.currency || 'SAR'
     },
@@ -2502,7 +2566,7 @@ app.put('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   const { fullName, role, active } = req.body;
   const user         = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (role && !['owner', 'admin', 'frontdesk'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (role && !['owner', 'admin', 'frontdesk', 'housekeeper'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   db.prepare('UPDATE hotel_users SET full_name=COALESCE(?,full_name), role=COALESCE(?,role), active=COALESCE(?,active) WHERE id=? AND hotel_id=?')
     .run(fullName ?? null, role ?? null, active != null ? (active ? 1 : 0) : null, req.params.id, hotelId);
   res.json({ success: true });
@@ -2533,6 +2597,64 @@ app.delete('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.id === req.user.id) return res.status(400).json({ error: 'Cannot deactivate your own account' });
   db.prepare('UPDATE hotel_users SET active=0 WHERE id=? AND hotel_id=?').run(req.params.id, hotelId);
+  res.json({ success: true });
+});
+
+// ── GET /api/users/:id/qr-token ───────────────────────────────────────────
+app.get('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const user    = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=? AND active=1').get(req.params.id, hotelId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  let token = user.qr_login_token;
+  if (!token) {
+    token = crypto.randomBytes(32).toString('hex');
+    db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(token, user.id);
+  }
+  const base     = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  res.json({ token, loginUrl: `${base}/qr?t=${token}`, username: user.username, fullName: user.full_name, role: user.role });
+});
+
+// ── DELETE /api/users/:id/qr-token — revoke & regenerate ─────────────────
+app.delete('/api/users/:id/qr-token', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId  = req.user.hotelId;
+  const user     = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const newToken = crypto.randomBytes(32).toString('hex');
+  db.prepare('UPDATE hotel_users SET qr_login_token=? WHERE id=?').run(newToken, user.id);
+  const base     = process.env.GUEST_URL_BASE || `${req.protocol}://${req.get('host')}`;
+  addLog(hotelId, 'auth', `QR token regenerated for ${user.username}`, { user: req.user.username });
+  res.json({ success: true, token: newToken, loginUrl: `${base}/qr?t=${newToken}` });
+});
+
+// ═══ WEB PUSH ════════════════════════════════════════════════════════════════
+
+app.get('/api/push/vapid-key', (req, res) => {
+  const row = db.prepare("SELECT value FROM platform_config WHERE key='vapid_public'").get();
+  if (!row) return res.status(503).json({ error: 'Push not configured' });
+  res.json({ publicKey: row.value });
+});
+
+app.post('/api/push/subscribe', authenticate, (req, res) => {
+  const { endpoint, keys } = req.body;
+  if (!endpoint || !keys?.p256dh || !keys?.auth)
+    return res.status(400).json({ error: 'endpoint and keys (p256dh, auth) required' });
+  const id = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO push_subscriptions (id, hotel_id, username, endpoint, keys_p256dh, keys_auth, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      hotel_id=excluded.hotel_id, username=excluded.username,
+      keys_p256dh=excluded.keys_p256dh, keys_auth=excluded.keys_auth,
+      created_at=excluded.created_at
+  `).run(id, req.user.hotelId, req.user.username, endpoint, keys.p256dh, keys.auth, Date.now());
+  res.json({ success: true });
+});
+
+app.delete('/api/push/unsubscribe', authenticate, (req, res) => {
+  const { endpoint } = req.body;
+  if (endpoint) db.prepare("DELETE FROM push_subscriptions WHERE endpoint=? AND username=?").run(endpoint, req.user.username);
   res.json({ success: true });
 });
 
@@ -2676,6 +2798,23 @@ app.post('/api/housekeeping/assign', authenticate, requireRole('owner', 'admin',
 
   // Also update the manager view for everyone with manager roles
   sseBroadcastRoles(hotelId, 'housekeeping_update', { action: 'assigned', assignments: created, assignedTo }, ['owner', 'admin', 'frontdesk']);
+
+  // Send Web Push to all registered devices of this housekeeper
+  const pushSubs = db.prepare("SELECT * FROM push_subscriptions WHERE hotel_id=? AND username=?").all(hotelId, assignedTo);
+  const roomList = created.map(c => c.room).join(', ');
+  const pushPayload = JSON.stringify({
+    title: '🧹 New Cleaning Assignment',
+    body: `Room${created.length > 1 ? 's' : ''} ${roomList} assigned to you${notes ? ` — ${notes}` : ''}`,
+    tag: 'hk-assign', url: '/',
+  });
+  for (const sub of pushSubs) {
+    webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth } },
+      pushPayload
+    ).catch(() => {
+      db.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").run(sub.endpoint);
+    });
+  }
 
   res.json({ success: true, assigned: created.length, skipped: rooms.length - created.length });
 });

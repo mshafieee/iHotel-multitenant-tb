@@ -12,6 +12,7 @@ import PlatformResetPassword from './pages/PlatformResetPassword';
 import BookingPage from './pages/BookingPage';
 import HotelDirectoryPage from './pages/HotelDirectoryPage';
 import KioskBookingPage from './pages/KioskBookingPage';
+import QrLoginPage from './pages/QrLoginPage';
 
 // Guard for platform admin routes
 function PlatformRoute({ children }) {
@@ -56,6 +57,9 @@ export default function App() {
       <Route path="/book" element={<HotelDirectoryPage />} />
       <Route path="/book/:slug" element={<BookingPage />} />
       <Route path="/kiosk/:slug" element={<KioskBookingPage />} />
+      <Route path="/qr" element={
+        isAuthenticated ? <Navigate to={user?.role === 'guest' ? '/guest-portal' : '/'} /> : <QrLoginPage />
+      } />
 
       {/* Guest routes */}
       <Route path="/guest" element={
