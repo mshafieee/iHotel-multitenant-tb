@@ -21,9 +21,25 @@ import HotelInfoPanel from '../components/HotelInfoPanel';
 import HousekeepingPanel from '../components/HousekeepingPanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
+// A single shared AudioContext is reused across all beeps.
+// Browsers block audio until a user gesture has occurred, so we resume the
+// context on the first click/keydown anywhere on the page.
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Resume on any user gesture so subsequent automated beeps are allowed
+    const resume = () => { _audioCtx?.resume(); document.removeEventListener('click', resume); document.removeEventListener('keydown', resume); };
+    document.addEventListener('click', resume);
+    document.addEventListener('keydown', resume);
+  }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
 function beep(freq, duration, volume = 0.6) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
