@@ -984,7 +984,8 @@ export default function LandingPage() {
       <section className="py-28 px-6 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 relative overflow-hidden">
         <div className="absolute -top-40 -end-40 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 start-0 w-[400px] h-[400px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-2xl mx-auto text-center relative z-10">
+
+        <div className="max-w-2xl mx-auto text-center relative z-10 reveal-scale">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-full px-4 py-1.5 mb-6">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs text-white/70 font-medium">{isRTL ? 'جاهز للبدء الفوري' : 'Ready to deploy today'}</span>
@@ -992,32 +993,39 @@ export default function LandingPage() {
           <h2 className="text-4xl font-extrabold text-white mb-5 leading-tight">{t.ctaTitle}</h2>
           <p className="text-white/50 text-base leading-relaxed mb-10 max-w-md mx-auto">{t.ctaSub}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-            <button onClick={() => setShowLogin(true)}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm transition shadow-2xl shadow-blue-500/30">
+            <button
+              onClick={() => setShowLogin(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm transition shadow-2xl shadow-blue-500/30 hover:scale-105 active:scale-95"
+            >
               {t.ctaBtn}
               {isRTL ? <ChevronRight size={16} className="rotate-180" /> : <ArrowRight size={16} />}
             </button>
-            <a href="#features"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition">
+            <a
+              href="#features"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition hover:scale-105 active:scale-95"
+            >
               {isRTL ? 'اكتشف المميزات' : 'See all features'}
             </a>
           </div>
           <p className="text-white/25 text-[11px] mt-8">
             {t.sysAdmin}{' '}
-            <Link to="/platform/login" className="text-white/40 hover:text-white/70 underline underline-offset-2">{t.platformLogin}</Link>
+            <Link to="/platform/login" className="text-white/40 hover:text-white/70 underline underline-offset-2 transition">{t.platformLogin}</Link>
           </p>
         </div>
       </section>
 
       {/* ── Footer ── */}
-      <footer className="bg-slate-950 px-6 py-8 border-t border-white/5">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-white/10 rounded"><LayoutDashboard size={12} className="text-white" /></div>
+      <footer className="bg-slate-950 px-6 py-10 relative" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        {/* Subtle top glow line */}
+        <div className="absolute top-0 start-0 end-0 h-px"
+             style={{ background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.4), rgba(59,130,246,0.4), transparent)' }} />
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 reveal">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-white/10 rounded-lg"><LayoutDashboard size={13} className="text-white" /></div>
             <span className="font-bold text-white text-sm">iHotel</span>
             <span className="text-white/20 text-xs">· {isRTL ? 'منصة إدارة الفنادق الذكية' : 'Smart Hotel IoT Platform'}</span>
           </div>
-          <p className="text-white/15 text-xs">{t.footer}</p>
+          <p className="text-white/15 text-xs tracking-wide">{t.footer}</p>
         </div>
       </footer>
 
