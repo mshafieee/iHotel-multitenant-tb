@@ -3508,14 +3508,14 @@ app.patch('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, r
 });
 
 // ── DELETE /api/upsell/catalog/:id ────────────────────────────────────────
-// Owner: soft-delete (set active=0)
+// Owner: hard-delete the offer
 app.delete('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
-  db.prepare('UPDATE upsell_offers SET active=0 WHERE id=?').run(offer.id);
-  addLog(hotelId, 'upsell', `Offer deactivated: ${offer.name} by ${req.user.username}`, { user: req.user.username });
+  db.prepare('DELETE FROM upsell_offers WHERE id=?').run(offer.id);
+  addLog(hotelId, 'upsell', `Offer deleted: ${offer.name} by ${req.user.username}`, { user: req.user.username });
   res.json({ success: true });
 });
 

@@ -150,7 +150,7 @@ export default function HotelInfoPanel() {
     if (!confirm(T('upsell_delete_confirm'))) return;
     try {
       await api(`/api/upsell/catalog/${id}`, { method: 'DELETE' });
-      loadCatalog();
+      setCatalog(prev => prev.filter(o => o.id !== id));
     } catch (e) { alert('Delete failed: ' + e.message); }
   }
 
