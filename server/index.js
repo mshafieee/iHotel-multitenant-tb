@@ -1642,15 +1642,15 @@ app.get('/api/public/book/:slug/availability', (req, res) => {
   const occupied = db.prepare(
     `SELECT DISTINCT room FROM reservations WHERE hotel_id=? AND active=1
      AND check_in < ? AND check_out > ?`
-  ).all(hotel.id, checkOut, checkIn).map(r => r.room);
+  ).all(hotel.id, checkOut, checkIn).map(r => String(r.room));
   const occupiedSet = new Set(occupied);
 
-  // Also exclude rooms physically occupied right now (roomStatus=1 from IoT)
+  // Also exclude rooms physically unavailable (OCCUPIED=1, SERVICE=2, MAINTENANCE=3)
   const liveOverview = getLastOverviewRooms(hotel.id);
   const physOccupied = new Set(
     Object.entries(liveOverview)
-      .filter(([, d]) => d.roomStatus === 1)
-      .map(([roomNum]) => roomNum)
+      .filter(([, d]) => [1, 2, 3].includes(d.roomStatus))
+      .map(([roomNum]) => String(roomNum))
   );
 
   // Count available rooms per type
@@ -1658,7 +1658,7 @@ app.get('/api/public/book/:slug/availability', (req, res) => {
   allRooms.forEach(r => {
     if (!availability[r.room_type]) availability[r.room_type] = { total: 0, available: 0 };
     availability[r.room_type].total++;
-    if (!occupiedSet.has(r.room_number) && !physOccupied.has(r.room_number))
+    if (!occupiedSet.has(String(r.room_number)) && !physOccupied.has(String(r.room_number)))
       availability[r.room_type].available++;
   });
 
@@ -1693,26 +1693,34 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
     .all(hotel.id, roomType);
   if (!allRooms.length) return res.status(400).json({ error: `No rooms of type ${roomType} exist` });
 
+  // Cast to String to guard against rooms stored as INTEGER vs TEXT
   const occupied = db.prepare(
     `SELECT DISTINCT room FROM reservations WHERE hotel_id=? AND active=1
      AND check_in < ? AND check_out > ?`
-  ).all(hotel.id, checkOut, checkIn).map(r => r.room);
+  ).all(hotel.id, checkOut, checkIn).map(r => String(r.room));
   const occupiedSet = new Set(occupied);
 
-  // Also skip rooms physically occupied right now (roomStatus=1)
+  // Skip rooms physically unavailable (OCCUPIED=1, SERVICE=2, MAINTENANCE=3)
   const liveData = getLastOverviewRooms(hotel.id);
   const physOccupiedBook = new Set(
     Object.entries(liveData)
-      .filter(([, d]) => d.roomStatus === 1)
-      .map(([roomNum]) => roomNum)
+      .filter(([, d]) => [1, 2, 3].includes(d.roomStatus))
+      .map(([roomNum]) => String(roomNum))
   );
 
   const availableRoom = allRooms.find(r =>
-    !occupiedSet.has(r.room_number) && !physOccupiedBook.has(r.room_number)
+    !occupiedSet.has(String(r.room_number)) && !physOccupiedBook.has(String(r.room_number))
   );
   if (!availableRoom) return res.status(409).json({ error: 'No rooms available for the selected dates and type' });
 
   const room = availableRoom.room_number;
+
+  // Final safety check — confirm this room is still free (guards against any edge case)
+  const doubleCheck = db.prepare(
+    `SELECT id FROM reservations WHERE hotel_id=? AND room=? AND active=1
+     AND check_in < ? AND check_out > ?`
+  ).get(hotel.id, String(room), checkOut, checkIn);
+  if (doubleCheck) return res.status(409).json({ error: 'No rooms available for the selected dates and type' });
 
   // Get rate
   const rateRow = db.prepare('SELECT rate_per_night FROM night_rates WHERE hotel_id=? AND room_type=?').get(hotel.id, roomType);
