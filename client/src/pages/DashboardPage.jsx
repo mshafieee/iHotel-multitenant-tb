@@ -88,6 +88,7 @@ export default function DashboardPage() {
     fetchHKQueue, fetchHKAssignments,
     maintTickets, fetchMaintTickets,
     maintNotifications, dismissMaintNotification,
+    upsellPending, fetchUpsellPending,
   } = useHotelStore();
   const rooms = useHotelStore(s => s.rooms);
   const [tab, setTab] = useState('rooms');
@@ -146,7 +147,7 @@ export default function DashboardPage() {
 
   const TABS = [
     { id: 'rooms',        label: T('tab_rooms'),      icon: LayoutGrid,  visible: canSeeRooms },
-    { id: 'pms',          label: T('tab_pms'),         icon: BookOpen,    visible: canSeePMS,          badge: todayCheckouts?.length },
+    { id: 'pms',          label: T('tab_pms'),         icon: BookOpen,    visible: canSeePMS,          badge: (todayCheckouts?.length || 0) + (upsellPending?.length || 0) },
     { id: 'housekeeping', label: isMaintenance ? T('tab_maintenance') : T('tab_housekeeping'), icon: isMaintenance ? Wrench : BedDouble, visible: canSeeHousekeeping, badge: hkPendingCount },
     { id: 'maintenance',  label: T('tab_maintenance'),  icon: Wrench,      visible: canSeeMaintenance,  badge: maintOpenCount },
     { id: 'logs',         label: T('tab_logs'),        icon: ScrollText,  visible: canSeeLogs },
@@ -174,6 +175,7 @@ export default function DashboardPage() {
       fetchHKAssignments();
     }
     if (isMaintenance || canSeeMaintenance) fetchMaintTickets();
+    if (canSeePMS) fetchUpsellPending();
     const t = setInterval(() => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })), 1000);
     return () => { stopPolling(); clearInterval(t); };
   }, []);

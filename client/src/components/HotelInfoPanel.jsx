@@ -29,7 +29,20 @@ export default function HotelInfoPanel() {
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  // Upsell catalog state
+  const [catalog, setCatalog] = useState([]);
+  const [offerForm, setOfferForm] = useState({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0, room_types: [] });
+  const [showOfferForm, setShowOfferForm] = useState(false);
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [catalogSaved, setCatalogSaved] = useState(false);
+
+  // Upsell stats state
+  const [upsellStats, setUpsellStats] = useState([]);
+  const [expandedStat, setExpandedStat] = useState(null);   // offerId whose room breakdown is open
+  const [roomStats, setRoomStats] = useState({});            // { [offerId]: rows[] }
+  const [roomStatsLoading, setRoomStatsLoading] = useState(false);
+
+  useEffect(() => { load(); loadCatalog(); loadStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     try {
@@ -113,6 +126,64 @@ export default function HotelInfoPanel() {
       if (data.success) setProfile(p => ({ ...p, heroImageUrl: data.imageUrl }));
     } catch (e) { alert('Upload failed: ' + e.message); }
     finally { setUploading(null); }
+  }
+
+  async function loadCatalog() {
+    try {
+      const data = await api('/api/upsell/catalog');
+      setCatalog(data);
+    } catch {}
+  }
+
+  async function loadStats() {
+    try {
+      const data = await api('/api/upsell/stats');
+      setUpsellStats(data);
+    } catch {}
+  }
+
+  async function toggleRoomStats(offerId) {
+    if (expandedStat === offerId) { setExpandedStat(null); return; }
+    setExpandedStat(offerId);
+    if (roomStats[offerId]) return; // already loaded
+    setRoomStatsLoading(true);
+    try {
+      const data = await api(`/api/upsell/stats/${offerId}/rooms`);
+      setRoomStats(prev => ({ ...prev, [offerId]: data }));
+    } catch {} finally { setRoomStatsLoading(false); }
+  }
+
+  async function saveOffer() {
+    if (!offerForm.name || !offerForm.name_ar || !offerForm.price) return;
+    try {
+      if (editingOffer) {
+        await api(`/api/upsell/catalog/${editingOffer}`, { method: 'PATCH', body: JSON.stringify(offerForm) });
+      } else {
+        await api('/api/upsell/catalog', { method: 'POST', body: JSON.stringify(offerForm) });
+      }
+      setShowOfferForm(false);
+      setEditingOffer(null);
+      setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0, room_types: [] });
+      setCatalogSaved(true);
+      setTimeout(() => setCatalogSaved(false), 2000);
+      loadCatalog();
+    } catch (e) { alert('Save failed: ' + e.message); }
+  }
+
+  async function deleteOffer(id) {
+    if (!confirm(T('upsell_delete_confirm'))) return;
+    try {
+      await api(`/api/upsell/catalog/${id}`, { method: 'DELETE' });
+      setCatalog(prev => prev.filter(o => o.id !== id));
+    } catch (e) { alert('Delete failed: ' + e.message); }
+  }
+
+  function startEditOffer(offer) {
+    setEditingOffer(offer.id);
+    let parsedRoomTypes = [];
+    try { parsedRoomTypes = offer.room_types ? JSON.parse(offer.room_types) : []; } catch {}
+    setOfferForm({ name: offer.name, name_ar: offer.name_ar, category: offer.category, price: offer.price, unit: offer.unit, active: !!offer.active, sort_order: offer.sort_order, room_types: parsedRoomTypes });
+    setShowOfferForm(true);
   }
 
   const bookingUrl = profile.bookingEnabled && hotelSlug
@@ -285,6 +356,265 @@ export default function HotelInfoPanel() {
             );
           })}
         </div>
+      </div>
+
+      {/* Upsell Offers Catalog */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-gray-700">{T('upsell_catalog_title')}</h3>
+          <div className="flex items-center gap-2">
+            {catalogSaved && <span className="text-xs text-emerald-600 font-semibold">{T('upsell_saved_ok')}</span>}
+            <button onClick={() => { setEditingOffer(null); setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0, room_types: [] }); setShowOfferForm(true); }}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition">
+              <Plus size={12} /> {T('upsell_add_offer')}
+            </button>
+          </div>
+        </div>
+
+        {showOfferForm && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{T('upsell_offer_name')}</div>
+                <input className="input" value={offerForm.name} onChange={e => setOfferForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Breakfast in Bed" />
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{T('upsell_offer_name_ar')}</div>
+                <input className="input" dir="rtl" value={offerForm.name_ar} onChange={e => setOfferForm(f => ({ ...f, name_ar: e.target.value }))} placeholder="مثال: إفطار في السرير" />
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{lang === 'ar' ? 'الفئة' : 'Category'}</div>
+                <select className="input" value={offerForm.category} onChange={e => setOfferForm(f => ({ ...f, category: e.target.value }))}>
+                  <option value="FOOD">{T('upsell_cat_food')}</option>
+                  <option value="TRANSPORT">{T('upsell_cat_transport')}</option>
+                  <option value="AMENITY">{T('upsell_cat_amenity')}</option>
+                  <option value="SERVICE">{T('upsell_cat_service')}</option>
+                </select>
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{T('upsell_price')} (SAR)</div>
+                <input className="input" type="number" min="0" value={offerForm.price} onChange={e => setOfferForm(f => ({ ...f, price: e.target.value }))} />
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{lang === 'ar' ? 'الوحدة' : 'Unit'}</div>
+                <select className="input" value={offerForm.unit} onChange={e => setOfferForm(f => ({ ...f, unit: e.target.value }))}>
+                  <option value="one-time">{T('upsell_unit_once')}</option>
+                  <option value="per-night">{T('upsell_unit_night')}</option>
+                  <option value="per-person">{T('upsell_unit_person')}</option>
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input type="checkbox" checked={offerForm.active} onChange={e => setOfferForm(f => ({ ...f, active: e.target.checked }))} />
+                  {lang === 'ar' ? 'نشط' : 'Active'}
+                </label>
+              </div>
+              {/* Room type visibility filter — spans full row */}
+              <div className="col-span-2 md:col-span-3">
+                <div className="text-[9px] text-gray-400 uppercase mb-1.5">{T('upsell_room_types_filter')}</div>
+                <div className="flex flex-wrap gap-2">
+                  {roomTypes.length === 0 ? (
+                    <span className="text-[10px] text-gray-400 italic">{lang === 'ar' ? 'لا توجد أنواع غرف' : 'No room types found'}</span>
+                  ) : roomTypes.map(rt => {
+                    const checked = offerForm.room_types.includes(rt);
+                    return (
+                      <label key={rt} className={`flex items-center gap-1 px-2.5 py-1 rounded-full border cursor-pointer text-[10px] font-semibold transition ${checked ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
+                        <input type="checkbox" className="hidden" checked={checked}
+                          onChange={() => setOfferForm(f => ({
+                            ...f,
+                            room_types: checked
+                              ? f.room_types.filter(x => x !== rt)
+                              : [...f.room_types, rt]
+                          }))} />
+                        {rt}
+                      </label>
+                    );
+                  })}
+                  <span className="text-[9px] text-gray-300 self-center">{lang === 'ar' ? '(فارغ = جميع الغرف)' : '(empty = all rooms)'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={saveOffer} className="btn btn-primary text-xs">{T('upsell_confirm')}</button>
+              <button onClick={() => { setShowOfferForm(false); setEditingOffer(null); }} className="btn btn-ghost text-xs">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+            </div>
+          </div>
+        )}
+
+        {catalog.length === 0 ? (
+          <div className="text-xs text-gray-400 py-4 text-center">{T('upsell_no_offers')}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[9px] text-gray-400 uppercase border-b border-gray-100">
+                  <th className="pb-1 text-left">{T('upsell_offer_name')}</th>
+                  <th className="pb-1 text-left">{T('upsell_offer_name_ar')}</th>
+                  <th className="pb-1 text-left">{lang === 'ar' ? 'الفئة' : 'Category'}</th>
+                  <th className="pb-1 text-left">{T('upsell_price')}</th>
+                  <th className="pb-1 text-left">{lang === 'ar' ? 'الوحدة' : 'Unit'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'نشط' : 'Active'}</th>
+                  <th className="pb-1 text-left">{T('upsell_room_types_filter')}</th>
+                  <th className="pb-1"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalog.map(offer => (
+                  <tr key={offer.id} className={`border-b border-gray-50 ${!offer.active ? 'opacity-50' : ''}`}>
+                    <td className="py-1.5">{offer.name}</td>
+                    <td className="py-1.5" dir="rtl">{offer.name_ar}</td>
+                    <td className="py-1.5">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] bg-gray-100 text-gray-500">{offer.category}</span>
+                    </td>
+                    <td className="py-1.5">{offer.price} SAR</td>
+                    <td className="py-1.5">{offer.unit}</td>
+                    <td className="py-1.5 text-center">{offer.active ? '✓' : '—'}</td>
+                    <td className="py-1.5">
+                      {offer.room_types
+                        ? (() => { try { return JSON.parse(offer.room_types).join(', '); } catch { return offer.room_types; } })()
+                        : <span className="text-gray-300 text-[9px]">{lang === 'ar' ? 'الكل' : 'All'}</span>}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => startEditOffer(offer)}
+                          className="px-2 py-0.5 text-[10px] font-semibold rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition">
+                          {lang === 'ar' ? 'تعديل' : 'Edit'}
+                        </button>
+                        <button onClick={() => deleteOffer(offer.id)}
+                          className="px-2 py-0.5 text-[10px] font-semibold rounded bg-red-50 text-red-400 hover:bg-red-100 transition">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Upsell Services Statistics */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-gray-700">
+            {lang === 'ar' ? '📊 إحصائيات الخدمات' : '📊 Service Statistics'}
+          </h3>
+          <button onClick={loadStats} className="text-[10px] text-brand-500 hover:text-brand-700 font-semibold transition">
+            {lang === 'ar' ? '↻ تحديث' : '↻ Refresh'}
+          </button>
+        </div>
+
+        {upsellStats.length === 0 ? (
+          <div className="text-xs text-gray-400 py-4 text-center">
+            {lang === 'ar' ? 'لا توجد بيانات حتى الآن' : 'No requests recorded yet'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[9px] text-gray-400 uppercase border-b border-gray-100">
+                  <th className="pb-1 text-left">{lang === 'ar' ? 'الخدمة' : 'Service'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'الطلبات' : 'Requests'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'قيد الانتظار' : 'Pending'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'مؤكد' : 'Confirmed'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'تم التسليم' : 'Delivered'}</th>
+                  <th className="pb-1 text-right">{lang === 'ar' ? 'الإيراد' : 'Revenue'}</th>
+                  <th className="pb-1"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {upsellStats.map(stat => (
+                  <React.Fragment key={stat.id}>
+                    <tr className={`border-b border-gray-50 hover:bg-gray-50 transition ${expandedStat === stat.id ? 'bg-amber-50' : ''}`}>
+                      <td className="py-2">
+                        <div className="font-semibold text-gray-800">{lang === 'ar' ? stat.name_ar : stat.name}</div>
+                        <div className="text-[9px] text-gray-400">{stat.category}</div>
+                      </td>
+                      <td className="py-2 text-center">
+                        <span className="font-bold text-gray-700">{stat.total_requests}</span>
+                        {stat.total_qty > 0 && <div className="text-[9px] text-gray-400">×{stat.total_qty} {lang === 'ar' ? 'قطعة' : 'units'}</div>}
+                      </td>
+                      <td className="py-2 text-center">
+                        {stat.pending_count > 0
+                          ? <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700">{stat.pending_count}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-center">
+                        {stat.confirmed_count > 0
+                          ? <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">{stat.confirmed_count}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-center">
+                        {stat.delivered_count > 0
+                          ? <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700">{stat.delivered_count}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-right font-semibold text-gray-700">
+                        {stat.total_revenue > 0 ? `${stat.total_revenue.toLocaleString()} SAR` : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-right">
+                        {stat.total_requests > 0 && (
+                          <button
+                            onClick={() => toggleRoomStats(stat.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                              expandedStat === stat.id
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200'
+                            }`}
+                          >
+                            {expandedStat === stat.id
+                              ? (lang === 'ar' ? '▲ إخفاء' : '▲ Hide')
+                              : (lang === 'ar' ? '▼ تفاصيل' : '▼ Details')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Per-room breakdown accordion */}
+                    {expandedStat === stat.id && (
+                      <tr>
+                        <td colSpan={7} className="p-0">
+                          <div className="bg-amber-50 border-b border-amber-100 px-4 py-3">
+                            <div className="text-[9px] text-amber-600 uppercase tracking-widest font-semibold mb-2">
+                              {lang === 'ar' ? `توزيع الطلبات على الغرف — ${stat.name_ar}` : `Room breakdown — ${stat.name}`}
+                            </div>
+                            {roomStatsLoading && !roomStats[stat.id] ? (
+                              <div className="text-xs text-gray-400 py-2">{lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</div>
+                            ) : !roomStats[stat.id] || roomStats[stat.id].length === 0 ? (
+                              <div className="text-xs text-gray-400 py-2">{lang === 'ar' ? 'لا توجد بيانات' : 'No room data'}</div>
+                            ) : (
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-[9px] text-amber-500 uppercase">
+                                    <th className="pb-1 text-left">{lang === 'ar' ? 'الغرفة' : 'Room'}</th>
+                                    <th className="pb-1 text-center">{lang === 'ar' ? 'الطلبات' : 'Requests'}</th>
+                                    <th className="pb-1 text-center">{lang === 'ar' ? 'الكمية' : 'Units'}</th>
+                                    <th className="pb-1 text-right">{lang === 'ar' ? 'الإيراد' : 'Revenue'}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {roomStats[stat.id].map(row => (
+                                    <tr key={row.room} className="border-t border-amber-100">
+                                      <td className="py-1 font-mono font-bold text-gray-700">{lang === 'ar' ? 'غرفة' : 'Rm'} {row.room}</td>
+                                      <td className="py-1 text-center text-gray-600">{row.total_requests}</td>
+                                      <td className="py-1 text-center text-gray-500">×{row.total_qty}</td>
+                                      <td className="py-1 text-right text-gray-700 font-semibold">{row.total_revenue > 0 ? `${row.total_revenue.toLocaleString()} SAR` : '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

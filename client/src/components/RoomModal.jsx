@@ -575,6 +575,10 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     </Section>
   );
 
+  // ExtrasWidget is rendered as a stable JSX element (not a component defined inside the closure)
+  // to prevent React unmounting/remounting it on every 5s room poll.
+  // See GuestExtrasWidget defined outside RoomModal below.
+
   const servicesSection = (
     <Section title={T('rm_services')}>
       <div className="flex gap-2">
@@ -654,6 +658,15 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               )}
             </div>
           </div>
+          {isGuest && (
+            <button
+              onClick={() => useLangStore.getState().setLang(lang === 'ar' ? 'en' : 'ar')}
+              className="px-2.5 py-1 rounded-lg bg-white/15 text-white text-xs font-bold hover:bg-white/25 transition border border-white/20 mr-1"
+              title={lang === 'ar' ? 'Switch to English' : 'التبديل للعربية'}
+            >
+              {lang === 'ar' ? 'EN' : 'ع'}
+            </button>
+          )}
           <button onClick={onClose} className={`p-2 rounded-lg transition ${isGuest ? 'hover:bg-white/10' : 'hover:bg-gray-200'}`}>
             <X size={18} className={isGuest ? 'text-white/70' : 'text-gray-400'} />
           </button>
@@ -775,6 +788,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               {curtainsSection}
               {presetsSection}
               {servicesSection}
+              <GuestExtrasWidget lang={lang} />
             </>
           ) : (
             /* ── STAFF ORDER: Sensors → Door → Presets → Lights → AC → Curtains → Services → … ── */
@@ -916,6 +930,162 @@ function RoomAutomation({ room }) {
         ))}
       </div>
     </Section>
+  );
+}
+
+// ── Guest Extras Widget ───────────────────────────────────────────────────
+// Defined outside RoomModal so React never recreates the component type between
+// renders (which caused unmount → remount every 5 s poll, clearing all state).
+function GuestExtrasWidget({ lang }) {
+  const T = (key) => t(key, lang);
+  const CAT_EMOJI = { FOOD: '🍳', TRANSPORT: '🚗', AMENITY: '🌸', SERVICE: '🛎️' };
+  const CAT_LABEL = { FOOD: T('upsell_cat_food'), TRANSPORT: T('upsell_cat_transport'), AMENITY: T('upsell_cat_amenity'), SERVICE: T('upsell_cat_service') };
+  const STATUS_CHIP = {
+    pending:   'bg-amber-50 text-amber-700 border-amber-200',
+    confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    delivered: 'bg-blue-50 text-blue-700 border-blue-200',
+    cancelled: 'bg-gray-100 text-gray-400 border-gray-200',
+  };
+
+  const [offers,     setOffers]     = useState([]);
+  const [myExtras,   setMyExtras]   = useState([]);
+  const [quantities, setQuantities] = useState({});
+  const [submitting, setSubmitting] = useState(null);
+  const [flash,      setFlash]      = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadData = () => {
+    api('/api/upsell/offers').then(setOffers).catch(() => {});
+    api('/api/upsell/my-extras').then(setMyExtras).catch(() => {});
+  };
+
+  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([
+      api('/api/upsell/offers').then(setOffers),
+      api('/api/upsell/my-extras').then(setMyExtras),
+    ]); } catch {} finally { setRefreshing(false); }
+  };
+
+  const handleRequest = async (offer) => {
+    const qty = quantities[offer.id] || 1;
+    setSubmitting(offer.id);
+    try {
+      const extra = await api('/api/upsell/extras', {
+        method: 'POST',
+        body: JSON.stringify({ offerId: offer.id, quantity: qty }),
+      });
+      setMyExtras(prev => [extra, ...prev]);
+      setFlash(T('upsell_requested_ok'));
+      setTimeout(() => setFlash(null), 3000);
+    } catch (e) {
+      setFlash('⚠️ ' + (e.message || 'Failed'));
+      setTimeout(() => setFlash(null), 3000);
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const offerName = (o) => lang === 'ar' ? (o.name_ar || o.name) : o.name;
+  const unitLabel = (u) => ({ 'one-time': T('upsell_unit_once'), 'per-night': T('upsell_unit_night'), 'per-person': T('upsell_unit_person') }[u] || u);
+
+  // Group offers by category
+  const categories = [...new Set(offers.map(o => o.category))];
+
+  return (
+    <div className="card p-3">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{T('upsell_tab')}</div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="text-[10px] text-brand-500 hover:text-brand-700 font-semibold transition disabled:opacity-50"
+        >
+          {refreshing ? '…' : T('upsell_refresh')}
+        </button>
+      </div>
+
+      {flash && (
+        <div className="text-xs font-semibold rounded-lg px-3 py-2 mb-3 bg-emerald-50 text-emerald-700">
+          {flash}
+        </div>
+      )}
+
+      {/* Available offers grouped by category */}
+      {offers.length === 0 ? (
+        <p className="text-xs text-gray-400 text-center py-4">{T('upsell_no_offers')}</p>
+      ) : (
+        <div className="space-y-3">
+          {categories.map(cat => (
+            <div key={cat}>
+              <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                <span>{CAT_EMOJI[cat] || '🛎️'}</span>
+                <span>{CAT_LABEL[cat] || cat}</span>
+              </div>
+              <div className="space-y-2">
+                {offers.filter(o => o.category === cat).map(offer => {
+                  const qty = quantities[offer.id] || 1;
+                  const isBusy = submitting === offer.id;
+                  return (
+                    <div key={offer.id} className="flex items-start gap-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 leading-snug break-words">{offerName(offer)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{offer.price} SAR · {unitLabel(offer.unit)}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setQuantities(q => ({ ...q, [offer.id]: Math.max(1, (q[offer.id] || 1) - 1) }))}
+                          className="w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition"
+                        >−</button>
+                        <span className="w-5 text-center text-xs font-bold text-gray-700">{qty}</span>
+                        <button
+                          onClick={() => setQuantities(q => ({ ...q, [offer.id]: (q[offer.id] || 1) + 1 }))}
+                          className="w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition"
+                        >+</button>
+                      </div>
+                      <button
+                        onClick={() => handleRequest(offer)}
+                        disabled={isBusy}
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white hover:opacity-90 transition disabled:opacity-50"
+                      >
+                        {isBusy ? '…' : T('upsell_request_btn')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* My existing orders */}
+      {myExtras.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('upsell_my_orders')}</p>
+          {myExtras.map(ex => (
+            <div key={ex.id} className="rounded-lg bg-gray-50 border border-gray-100 p-2 text-xs space-y-1">
+              <div className="flex items-start gap-2">
+                <span className="flex-1 text-gray-700 font-medium break-words leading-snug">
+                  {lang === 'ar' ? (ex.offer_name_ar || ex.offer_name) : ex.offer_name}
+                  {ex.quantity > 1 && <span className="text-gray-400 font-normal"> ×{ex.quantity}</span>}
+                </span>
+                <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_CHIP[ex.status] || 'bg-gray-100 text-gray-400'}`}>
+                  {T(`upsell_status_${ex.status}`) || ex.status}
+                </span>
+              </div>
+              {ex.staff_note && (
+                <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1 break-words leading-snug">
+                  💬 {ex.staff_note}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

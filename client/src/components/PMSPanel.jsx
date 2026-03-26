@@ -34,7 +34,7 @@ function CopyBtn({ text, lang }) {
 }
 
 export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
-  const { reservations, fetchReservations } = useHotelStore();
+  const { reservations, fetchReservations, upsellPending, fetchUpsellPending } = useHotelStore();
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
 
@@ -48,6 +48,12 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
   const [extendForm, setExtendForm] = useState({ newCheckOut: '', paymentMethod: '' });
   const [extendResult, setExtendResult] = useState(null);
   const [extendError, setExtendError] = useState('');
+  const [extrasId, setExtrasId] = useState(null);
+  const [extrasData, setExtrasData] = useState([]);
+  const [extrasLoading, setExtrasLoading] = useState(false);
+  const [extrasNote, setExtrasNote] = useState({});
+  const [quickAddOffers, setQuickAddOffers] = useState([]);
+  const [quickAdd, setQuickAdd] = useState({ offerId: '', qty: 1 });
 
   const today = new Date().toISOString().split('T')[0];
   const defaultCo = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
@@ -63,6 +69,41 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
       if (onAutoFillConsumed) onAutoFillConsumed();
     }
   }, [autoFillRoom]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => { fetchUpsellPending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openExtras = async (r) => {
+    if (extrasId === r.id) { setExtrasId(null); return; }
+    setExtrasId(r.id);
+    setExtrasData([]);
+    setExtrasLoading(true);
+    try {
+      const [data, offers] = await Promise.all([
+        api(`/api/upsell/reservations/${r.id}/extras`),
+        api('/api/upsell/catalog'),
+      ]);
+      setExtrasData(data);
+      setQuickAddOffers(offers.filter(o => o.active));
+      setQuickAdd({ offerId: offers.find(o => o.active)?.id || '', qty: 1 });
+    } finally { setExtrasLoading(false); }
+  };
+
+  const updateExtra = async (extraId, status, note) => {
+    await api(`/api/upsell/extras/${extraId}`, { method: 'PATCH', body: JSON.stringify({ status, staffNote: note }) });
+    if (extrasId) {
+      const data = await api(`/api/upsell/reservations/${extrasId}/extras`);
+      setExtrasData(data);
+    }
+    fetchUpsellPending();
+  };
+
+  const submitQuickAdd = async (resId) => {
+    if (!quickAdd.offerId) return;
+    await api('/api/upsell/extras', { method: 'POST', body: JSON.stringify({ offerId: quickAdd.offerId, quantity: quickAdd.qty, reservationId: resId }) });
+    const data = await api(`/api/upsell/reservations/${resId}/extras`);
+    setExtrasData(data);
+    fetchUpsellPending();
+  };
 
   const getGuestUrl = (reservationToken) => `${GUEST_HOST}/guest?token=${encodeURIComponent(reservationToken)}`;
 
@@ -289,6 +330,20 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {(() => {
+                    const pendingCount = upsellPending.filter(e => e.reservation_id === r.id).length;
+                    return pendingCount > 0 ? (
+                      <button onClick={() => openExtras(r)}
+                        className={`text-xs font-bold px-2 py-1 rounded-lg transition ${extrasId === r.id ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-600 border border-amber-300 hover:bg-amber-100'}`}>
+                        ⊕ {pendingCount} {T('upsell_pending_badge')}
+                      </button>
+                    ) : (
+                      <button onClick={() => openExtras(r)}
+                        className={`text-xs font-bold px-2 py-1 rounded-lg transition ${extrasId === r.id ? 'bg-amber-500 text-white' : 'text-amber-500 hover:bg-amber-50 border border-amber-200'}`}>
+                        + {T('upsell_tab')}
+                      </button>
+                    );
+                  })()}
                   {r.active && (
                     <button onClick={() => openExtend(r)}
                       className={`text-xs font-bold px-2 py-1 rounded-lg transition ${extendId === r.id ? 'bg-purple-500 text-white' : 'text-purple-500 hover:bg-purple-50 border border-purple-200'}`}>
@@ -342,6 +397,85 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
                   </div>
                 )}
                 {extendError && <div className="text-xs text-red-500 mt-1">{extendError}</div>}
+              </div>
+            )}
+
+            {extrasId === r.id && (
+              <div className="border-t border-gray-100 bg-amber-50 px-3 pb-3 pt-2 rounded-b-xl">
+                <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide mb-2">{T('upsell_extras_on_res')}</div>
+                {extrasLoading ? (
+                  <div className="text-xs text-gray-400 py-2">{lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</div>
+                ) : (
+                  <>
+                    {extrasData.length === 0 ? (
+                      <div className="text-xs text-gray-400 py-2">{T('upsell_no_orders')}</div>
+                    ) : (
+                      <div className="space-y-2 mb-3">
+                        {extrasData.map(ex => {
+                          const STATUS_COLORS = {
+                            pending: 'bg-amber-100 text-amber-700',
+                            confirmed: 'bg-emerald-100 text-emerald-700',
+                            delivered: 'bg-blue-100 text-blue-700',
+                            cancelled: 'bg-gray-100 text-gray-400',
+                          };
+                          return (
+                            <div key={ex.id} className="bg-white rounded-lg p-2 border border-amber-100 flex flex-wrap gap-2 items-center text-xs">
+                              <span className="font-semibold flex-1">{lang === 'ar' ? ex.offer_name_ar : ex.offer_name}</span>
+                              <span className="text-gray-400">×{ex.quantity}</span>
+                              <span className="text-gray-500">{ex.total_price?.toLocaleString()} {T('sar')}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_COLORS[ex.status] || 'bg-gray-100 text-gray-400'}`}>
+                                {T(`upsell_status_${ex.status}`)}
+                              </span>
+                              {ex.status === 'pending' && (
+                                <div className="flex gap-1 items-center">
+                                  <input
+                                    className="input text-[10px] py-0.5 w-24"
+                                    placeholder={T('upsell_note')}
+                                    value={extrasNote[ex.id] || ''}
+                                    onChange={e => setExtrasNote(n => ({ ...n, [ex.id]: e.target.value }))}
+                                  />
+                                  <button onClick={() => updateExtra(ex.id, 'confirmed', extrasNote[ex.id])}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition">
+                                    {T('upsell_confirm')}
+                                  </button>
+                                  <button onClick={() => updateExtra(ex.id, 'cancelled', extrasNote[ex.id])}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-500 hover:bg-red-200 transition">
+                                    {T('upsell_decline')}
+                                  </button>
+                                </div>
+                              )}
+                              {ex.status === 'confirmed' && (
+                                <button onClick={() => updateExtra(ex.id, 'delivered', '')}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-600 hover:bg-blue-200 transition">
+                                  {T('upsell_deliver')}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {quickAddOffers.length > 0 && (
+                      <div className="mt-2 border-t border-amber-100 pt-2">
+                        <div className="text-[9px] text-amber-500 uppercase font-semibold mb-1">{T('upsell_quick_add')}</div>
+                        <div className="flex gap-2 items-end flex-wrap">
+                          <select className="input text-xs" value={quickAdd.offerId}
+                            onChange={e => setQuickAdd(q => ({ ...q, offerId: e.target.value }))}>
+                            {quickAddOffers.map(o => (
+                              <option key={o.id} value={o.id}>{lang === 'ar' ? o.name_ar : o.name} — {o.price} {T('sar')}</option>
+                            ))}
+                          </select>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setQuickAdd(q => ({ ...q, qty: Math.max(1, q.qty - 1) }))} className="px-2 py-1 rounded bg-amber-100 text-amber-600 font-bold text-xs">−</button>
+                            <span className="w-6 text-center text-xs font-mono">{quickAdd.qty}</span>
+                            <button onClick={() => setQuickAdd(q => ({ ...q, qty: q.qty + 1 }))} className="px-2 py-1 rounded bg-amber-100 text-amber-600 font-bold text-xs">+</button>
+                          </div>
+                          <button onClick={() => submitQuickAdd(r.id)} className="btn btn-primary text-xs">{T('upsell_add_offer')}</button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>

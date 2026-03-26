@@ -3247,6 +3247,323 @@ app.delete('/api/maintenance/:id', authenticate, requireRole('owner', 'admin'), 
   res.json({ success: true });
 });
 
+// ═══ UPSELL ENGINE ═════════════════════════════════════════════════════════
+
+// ── GET /api/upsell/offers ────────────────────────────────────────────────
+// Guest + staff: list active offers for the hotel (ordered by sort_order)
+app.get('/api/upsell/offers', authenticate, (req, res) => {
+  const hotelId = req.user.hotelId;
+  let rows = db.prepare(
+    'SELECT * FROM upsell_offers WHERE hotel_id=? AND active=1 ORDER BY sort_order, id'
+  ).all(hotelId);
+
+  // For guests, filter by room_types if set
+  if (req.user.role === 'guest' && req.user.room) {
+    const FLOOR_TYPE = { 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3 };
+    const ROOM_TYPES = ['STANDARD', 'SUPERIOR', 'DELUXE', 'SUITE'];
+    const hotelRoom = db.prepare(
+      'SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?'
+    ).get(hotelId, String(req.user.room));
+    const roomNum = String(req.user.room);
+    const guestRoomType = hotelRoom?.room_type
+      || ROOM_TYPES[FLOOR_TYPE[parseInt(roomNum.length <= 3 ? roomNum[0] : roomNum.slice(0, -2))] ?? 0];
+
+    rows = rows.filter(o => {
+      if (!o.room_types) return true; // null = visible to all
+      try {
+        const allowed = JSON.parse(o.room_types);
+        return Array.isArray(allowed) && allowed.includes(guestRoomType);
+      } catch { return true; }
+    });
+  }
+
+  res.json(rows);
+});
+
+// ── GET /api/upsell/my-extras ─────────────────────────────────────────────
+// Guest JWT: list own extras for the active reservation
+app.get('/api/upsell/my-extras', authenticate, (req, res) => {
+  const hotelId = req.user.hotelId;
+
+  // For guests, find their active reservation via room
+  let reservationId;
+  if (req.user.role === 'guest') {
+    const res_ = db.prepare(
+      "SELECT id FROM reservations WHERE hotel_id=? AND room=? AND active=1 LIMIT 1"
+    ).get(hotelId, String(req.user.room));
+    if (!res_) return res.json([]);
+    reservationId = res_.id;
+  } else {
+    return res.status(403).json({ error: 'Use /api/upsell/reservations/:id/extras for staff' });
+  }
+
+  const rows = db.prepare(
+    'SELECT * FROM reservation_extras WHERE hotel_id=? AND reservation_id=? ORDER BY created_at DESC'
+  ).all(hotelId, reservationId);
+  res.json(rows);
+});
+
+// ── POST /api/upsell/extras ───────────────────────────────────────────────
+// Guest or staff: submit an extras request
+// Body: { offerId, quantity, reservationId? }
+// Guests: reservationId inferred from room; staff must provide reservationId
+app.post('/api/upsell/extras', authenticate, (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { offerId, quantity = 1, reservationId: bodyResId } = req.body;
+
+  if (!offerId) return res.status(400).json({ error: 'offerId is required' });
+  if (!Number.isInteger(Number(quantity)) || quantity < 1) {
+    return res.status(400).json({ error: 'quantity must be a positive integer' });
+  }
+
+  // Validate offer belongs to this hotel and is active
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=? AND active=1').get(offerId, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found or inactive' });
+
+  // Resolve reservation
+  let reservation;
+  if (req.user.role === 'guest') {
+    reservation = db.prepare(
+      "SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1 LIMIT 1"
+    ).get(hotelId, String(req.user.room));
+  } else {
+    if (!bodyResId) return res.status(400).json({ error: 'reservationId is required for staff' });
+    reservation = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=?').get(bodyResId, hotelId);
+  }
+  if (!reservation) return res.status(404).json({ error: 'No active reservation found' });
+
+  const totalPrice = Math.round(offer.price * quantity * 100) / 100;
+  const requestedBy = req.user.role === 'guest' ? 'guest' : req.user.username;
+
+  const result = db.prepare(`
+    INSERT INTO reservation_extras
+      (hotel_id, reservation_id, offer_id, offer_name, offer_name_ar,
+       quantity, unit_price, total_price, status, requested_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+  `).run(hotelId, reservation.id, offer.id, offer.name, offer.name_ar,
+         quantity, offer.price, totalPrice, requestedBy);
+
+  const extra = db.prepare('SELECT * FROM reservation_extras WHERE id=?').get(result.lastInsertRowid);
+
+  addLog(hotelId, 'upsell',
+    `Extra requested: [${offer.category}] ${offer.name} ×${quantity} by ${requestedBy} (Rm ${reservation.room})`,
+    { room: reservation.room, user: requestedBy }
+  );
+
+  // Notify managers in real-time
+  sseBroadcastRoles(hotelId, 'upsell_request', {
+    extra, room: reservation.room, guestName: reservation.guest_name
+  }, ['owner', 'admin', 'frontdesk']);
+
+  res.status(201).json(extra);
+});
+
+// ── GET /api/upsell/reservations/:resId/extras ────────────────────────────
+// Staff: list all extras for a specific reservation
+app.get('/api/upsell/reservations/:resId/extras', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const reservation = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=?').get(req.params.resId, hotelId);
+  if (!reservation) return res.status(404).json({ error: 'Reservation not found' });
+
+  const rows = db.prepare(
+    'SELECT * FROM reservation_extras WHERE reservation_id=? AND hotel_id=? ORDER BY created_at DESC'
+  ).all(req.params.resId, hotelId);
+  res.json(rows);
+});
+
+// ── GET /api/upsell/pending ───────────────────────────────────────────────
+// Staff: all pending extras across all reservations (for badge + quick view)
+app.get('/api/upsell/pending', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(`
+    SELECT re.*, r.room, r.guest_name
+    FROM reservation_extras re
+    JOIN reservations r ON re.reservation_id = r.id
+    WHERE re.hotel_id=? AND re.status='pending'
+    ORDER BY re.created_at DESC
+  `).all(hotelId);
+  res.json(rows);
+});
+
+// ── PATCH /api/upsell/extras/:id ──────────────────────────────────────────
+// Staff: update extra status (confirmed / delivered / cancelled) + optional note
+app.patch('/api/upsell/extras/:id', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const extra = db.prepare('SELECT * FROM reservation_extras WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!extra) return res.status(404).json({ error: 'Extra not found' });
+
+  const { status, staffNote } = req.body;
+  const validStatuses = ['confirmed', 'delivered', 'cancelled'];
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const updates = ['updated_at=?'];
+  const params  = [now];
+  if (status)                   { updates.push('status=?');     params.push(status); }
+  if (staffNote !== undefined)  { updates.push('staff_note=?'); params.push(staffNote); }
+  params.push(extra.id);
+
+  db.prepare(`UPDATE reservation_extras SET ${updates.join(', ')} WHERE id=?`).run(...params);
+  const updated = db.prepare('SELECT * FROM reservation_extras WHERE id=?').get(extra.id);
+
+  // On confirm: log revenue to income_log
+  if (status === 'confirmed') {
+    const reservation = db.prepare('SELECT * FROM reservations WHERE id=?').get(extra.reservation_id);
+    if (reservation) {
+      const room       = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, reservation.room);
+      const roomType   = room?.room_type || 'STANDARD';
+      const todayISO   = new Date().toISOString().slice(0, 10);
+      try {
+        const crypto = require('crypto');
+        db.prepare(`INSERT INTO income_log
+          (id, hotel_id, reservation_id, room, guest_name, nights, room_type,
+           rate_per_night, total_amount, payment_method, created_by,
+           check_in, check_out, created_at)
+          VALUES (?,?,?,?,?,0,?,?,?,?,?,?,?, datetime('now'))`)
+          .run(crypto.randomUUID(), hotelId, reservation.id, reservation.room,
+               reservation.guest_name, roomType, extra.unit_price,
+               updated.total_price, reservation.payment_method,
+               req.user.username, todayISO, todayISO);
+      } catch (e) { console.error('upsell income_log write failed:', e.message); }
+    }
+  }
+
+  addLog(hotelId, 'upsell',
+    `Extra #${extra.id} (${extra.offer_name}) ${status || 'updated'} by ${req.user.username}`,
+    { user: req.user.username }
+  );
+
+  // Notify managers + the guest (if they have an SSE connection)
+  sseBroadcastRoles(hotelId, 'upsell_update', { extra: updated }, ['owner', 'admin', 'frontdesk']);
+  // Notify guest's SSE channel by room
+  const reservation = db.prepare('SELECT room FROM reservations WHERE id=?').get(extra.reservation_id);
+  if (reservation) {
+    sseBroadcast(hotelId, 'upsell_update', { extra: updated, room: reservation.room });
+  }
+
+  res.json(updated);
+});
+
+// ── GET /api/upsell/catalog ───────────────────────────────────────────────
+// Owner/admin: list all offers (including inactive)
+app.get('/api/upsell/catalog', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(
+    'SELECT * FROM upsell_offers WHERE hotel_id=? ORDER BY sort_order, id'
+  ).all(hotelId);
+  res.json(rows);
+});
+
+// ── POST /api/upsell/catalog ──────────────────────────────────────────────
+// Owner: create a new offer
+app.post('/api/upsell/catalog', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { name, name_ar, description, description_ar, category = 'SERVICE', price, unit = 'one-time', active = 1, sort_order = 0, room_types } = req.body;
+
+  if (!name || !name_ar) return res.status(400).json({ error: 'name and name_ar are required' });
+  if (price === undefined || isNaN(Number(price))) return res.status(400).json({ error: 'price is required' });
+
+  const validCategories = ['FOOD', 'TRANSPORT', 'AMENITY', 'SERVICE'];
+  if (!validCategories.includes(category)) return res.status(400).json({ error: 'Invalid category' });
+
+  const roomTypesVal = Array.isArray(room_types) && room_types.length > 0 ? JSON.stringify(room_types) : null;
+
+  const result = db.prepare(`
+    INSERT INTO upsell_offers (hotel_id, name, name_ar, description, description_ar, category, price, unit, active, sort_order, room_types)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(hotelId, name, name_ar, description || null, description_ar || null, category, Number(price), unit, active ? 1 : 0, sort_order, roomTypesVal);
+
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=?').get(result.lastInsertRowid);
+  addLog(hotelId, 'upsell', `Offer created: ${name} (${category}) by ${req.user.username}`, { user: req.user.username });
+  res.status(201).json(offer);
+});
+
+// ── PATCH /api/upsell/catalog/:id ─────────────────────────────────────────
+// Owner: update an offer
+app.patch('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  const fields = ['name', 'name_ar', 'description', 'description_ar', 'category', 'price', 'unit', 'active', 'sort_order', 'room_types'];
+  const updates = [];
+  const params  = [];
+  for (const f of fields) {
+    if (req.body[f] !== undefined) {
+      updates.push(`${f}=?`);
+      let val = req.body[f];
+      if (f === 'room_types') val = Array.isArray(val) && val.length > 0 ? JSON.stringify(val) : null;
+      params.push(val);
+    }
+  }
+  if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+  params.push(offer.id);
+
+  db.prepare(`UPDATE upsell_offers SET ${updates.join(', ')} WHERE id=?`).run(...params);
+  const updated = db.prepare('SELECT * FROM upsell_offers WHERE id=?').get(offer.id);
+  addLog(hotelId, 'upsell', `Offer updated: ${updated.name} by ${req.user.username}`, { user: req.user.username });
+  res.json(updated);
+});
+
+// ── DELETE /api/upsell/catalog/:id ────────────────────────────────────────
+// Owner: hard-delete the offer
+app.delete('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  db.prepare('DELETE FROM upsell_offers WHERE id=?').run(offer.id);
+  addLog(hotelId, 'upsell', `Offer deleted: ${offer.name} by ${req.user.username}`, { user: req.user.username });
+  res.json({ success: true });
+});
+
+// ── GET /api/upsell/stats ─────────────────────────────────────────────────
+// Owner/admin: per-offer request counts + revenue totals
+app.get('/api/upsell/stats', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(`
+    SELECT
+      o.id, o.name, o.name_ar, o.category, o.price, o.unit,
+      COUNT(e.id)                                                AS total_requests,
+      COALESCE(SUM(e.quantity), 0)                              AS total_qty,
+      COALESCE(SUM(e.total_price), 0)                           AS total_revenue,
+      COUNT(CASE WHEN e.status = 'pending'   THEN 1 END)        AS pending_count,
+      COUNT(CASE WHEN e.status = 'confirmed' THEN 1 END)        AS confirmed_count,
+      COUNT(CASE WHEN e.status = 'delivered' THEN 1 END)        AS delivered_count,
+      COUNT(CASE WHEN e.status = 'cancelled' THEN 1 END)        AS cancelled_count
+    FROM upsell_offers o
+    LEFT JOIN reservation_extras e ON e.offer_id = o.id AND e.hotel_id = o.hotel_id
+    WHERE o.hotel_id = ?
+    GROUP BY o.id
+    ORDER BY total_requests DESC, o.sort_order
+  `).all(hotelId);
+  res.json(rows);
+});
+
+// ── GET /api/upsell/stats/:offerId/rooms ──────────────────────────────────
+// Owner/admin: per-room breakdown for one offer
+app.get('/api/upsell/stats/:offerId/rooms', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT id FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.offerId, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  const rows = db.prepare(`
+    SELECT
+      r.room,
+      COUNT(e.id)            AS total_requests,
+      COALESCE(SUM(e.quantity), 0)   AS total_qty,
+      COALESCE(SUM(e.total_price), 0) AS total_revenue
+    FROM reservation_extras e
+    JOIN reservations r ON r.id = e.reservation_id
+    WHERE e.hotel_id = ? AND e.offer_id = ?
+    GROUP BY r.room
+    ORDER BY total_requests DESC
+  `).all(hotelId, offer.id);
+  res.json(rows);
+});
+
 // ═══ SCENES CRUD ═══
 
 app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {
