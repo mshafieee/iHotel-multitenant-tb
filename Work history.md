@@ -2,7 +2,154 @@
 
 ---
 
-## Session: 2026-03-24 — Bug Fixes + Housekeeping Workflow
+## Session: 2026-03-26 — Landing Page Redesign + Maintenance Ticket Tracking
+
+### Summary
+Two major feature branches delivered:
+
+**Part 1 — Landing Page Redesign (`claude/complete-previous-session-fe9mo`)**
+Full overhaul of `LandingPage.jsx`: dynamic hero carousel driven by scroll (not time), modern CSS
+animations, scroll-reveal for every section, auto-rotating testimonials, and complete Arabic/English
+bilingual support. Fixed several text readability issues (too-small font sizes throughout).
+
+**Part 2 — Maintenance Ticket Tracking System (`claude/complete-previous-session-fe9mo`)**
+Full end-to-end maintenance ticketing: housekeepers open tickets from their task list, admins track
+and resolve them in a new Maintenance dashboard tab with live open-ticket badge.
+
+---
+
+### Part 1 — Landing Page Redesign
+
+#### 1. Animations (`client/src/index.css`)
+12 new `@keyframes` blocks: `fadeIn`, `fadeUp`, `slideLeft`, `slideRight`, `scaleIn`,
+`gradientShift`, `gradientFlow`, `particleFloat`, `counterFade`, `progressBar`, `floatCard`,
+`shimmerText`. Scroll-reveal base classes (`.reveal`, `.reveal-left`, `.reveal-right`,
+`.reveal-scale`) toggled to `.visible` via `IntersectionObserver`. Stagger delay utilities
+`.d1`–`.d8`. Utility classes: `.gradient-text-flow`, `.hero-bg`, `.impact-bg`, `.float-card`.
+
+#### 2. Hero Section — Scroll-Driven Carousel
+- Hero section is now `400vh` tall with `position: sticky` inner content at `100vh`.
+- Scroll position is read via `window.scroll` + `getBoundingClientRect()` to derive `slideIdx`
+  (0–3) and `slideProgress` (0–100) — no `setInterval`, no auto-advance.
+- 4 slides in both EN and AR, each with badge, two headline lines, sub-text, accent gradient, and
+  a mockup key (`dashboard` / `guest` / `pms`).
+- Dots navigate by calling `window.scrollTo()` to the correct position within the sticky section.
+- Progress bar width driven by `slideProgress` state (not CSS animation).
+
+#### 3. Components Added to LandingPage
+- `FloatingParticles` — 22 deterministic floating particles (no `Math.random()`, no flicker).
+- `AnimatedStat` — number reveal on scroll via `IntersectionObserver` (threshold 0.5).
+- `TestimonialsCarousel` — 6-second auto-advance, `key={page}` fade, staggered card `fadeUp`,
+  prev/next buttons, dot indicators, animated progress bar.
+
+#### 4. Scroll-Reveal Integration
+`useScrollReveal()` hook attaches `IntersectionObserver` (threshold 0.12) to all elements with
+`.reveal`, `.reveal-left`, `.reveal-right`, `.reveal-scale` classes. Stagger delays via `.d1`–`.d8`.
+Applied to: Features cards (8 items), Impact stats, Showcase mockups, CTA, Footer.
+
+#### 5. Text Readability Fixes
+All illegibly small text sizes replaced:
+- Pills / badges: `text-[11px]` → `text-sm`
+- Showcase labels: `text-[9px]` → `text-xs`
+- Stats labels: `text-[10px]` → `text-xs`
+- Testimonial sub-text: `text-[10px]` → `text-xs`
+- Feature badges: `text-[10px]` → `text-xs`
+- Login modal hints: `text-[10px]`/`text-[11px]` → `text-xs`
+
+#### 6. Arabic/English Bilingual
+`dir={isRTL ? 'rtl' : 'ltr'}` on root div, Cairo font for Arabic, RTL-aware arrow icons
+(`ChevronRight rotate-180`), `goToSlide` scroll offset resets on language change.
+
+---
+
+### Part 2 — Maintenance Ticket Tracking System
+
+#### 1. Database (`server/db.js`)
+Migration `024_maintenance_tickets`: new `maintenance_tickets` table.
+Schema: `id`, `hotel_id (FK)`, `room_number`, `category` (AC / Plumbing / Electrical / Furniture /
+Cleaning / Other), `description`, `priority` (low / medium / high / urgent), `status`
+(open / in_progress / resolved), `reported_by`, `assigned_to`, `notes`, `created_at`,
+`updated_at`, `resolved_at`.
+
+#### 2. API (`server/index.js`)
+Four new endpoints under `/api/maintenance`:
+
+| Method | Endpoint | Roles | Description |
+|--------|----------|-------|-------------|
+| GET | `/api/maintenance` | all staff | Managers see all tickets; housekeepers see only their own. Optional `?status=` filter. |
+| POST | `/api/maintenance` | all staff | Open new ticket. Validates category + priority. SSE broadcast to managers. |
+| PATCH | `/api/maintenance/:id` | all staff | Managers: update status/assignment/notes/priority. Housekeepers: edit description only if open. Sets `resolved_at` when status→resolved. SSE broadcast to managers and reporter. |
+| DELETE | `/api/maintenance/:id` | owner/admin | Hard-delete (for test data). SSE broadcast. |
+
+#### 3. MaintenancePanel (`client/src/components/MaintenancePanel.jsx`) — NEW
+Admin/manager panel:
+- Filter tabs: All / Open / In Progress / Resolved with per-status counts.
+- Ticket row with category emoji, description, status badge, priority badge, timestamp.
+- Side drawer for ticket detail: category, room, priority, reported-by, timestamps.
+- Managers: status dropdown, staff assignment dropdown (from `/api/housekeeping/housekeepers`),
+  internal notes textarea, "Mark Resolved" shortcut button.
+- `onCountChange` callback keeps the DashboardPage tab badge in sync.
+- SSE listener via `window.addEventListener('maintenance_update')`.
+- Full Arabic + English via inline `STRINGS` object.
+
+#### 4. HousekeepingPanel — "Report Issue" button (`client/src/components/HousekeepingPanel.jsx`)
+- `ReportIssueModal` component: category chips, priority selector, room number input, description
+  textarea. Room pre-filled from the assignment card. Submits to `POST /api/maintenance`.
+- `RoomTaskCard` gains an `onReport` prop → small red "🔧 Report Issue" button below the action button.
+- `HousekeeperView` gains `reportRoom` state to open/close the modal.
+- **"My Reports" section** at bottom of housekeeper view: list of own submitted tickets with
+  status badge and any admin notes/replies. "+" button to file a free-form ticket without a room.
+
+#### 5. DashboardPage (`client/src/pages/DashboardPage.jsx`)
+- Imports `Wrench` icon and `MaintenancePanel`.
+- New `canSeeMaintenance` flag (all staff including housekeepers).
+- `maintOpenCount` state loaded from `GET /api/maintenance?status=open` on mount.
+- New **Maintenance** tab between Housekeeping and Logs, shows live red badge with open-ticket count.
+
+#### 6. i18n (`client/src/i18n.js`)
+Added `tab_maintenance` (AR: الصيانة / EN: Maintenance) and 28 `maint_*` keys covering all
+maintenance modal/panel/list strings in both Arabic and English.
+
+---
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `23c0dff`–`e10686b` | Landing page redesign (11 incremental commits) |
+| `653b99e` | feat: add maintenance ticket tracking system |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/index.css` | 12 keyframe blocks, scroll-reveal utilities, gradient/particle classes |
+| `client/src/pages/LandingPage.jsx` | Full redesign: scroll-driven hero, animated stats, testimonials carousel, scroll-reveal |
+| `server/db.js` | Migration `024`: `maintenance_tickets` table |
+| `server/index.js` | 4 new maintenance API endpoints |
+| `client/src/components/MaintenancePanel.jsx` | New: admin maintenance ticket panel |
+| `client/src/components/HousekeepingPanel.jsx` | Report Issue modal + My Reports section for housekeepers |
+| `client/src/pages/DashboardPage.jsx` | Maintenance tab with live open-ticket badge |
+| `client/src/i18n.js` | `tab_maintenance` + 28 `maint_*` keys in AR + EN |
+
+---
+
+### Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Scroll-driven hero (400vh sticky) | Gives users full control over pace; works without JS timers that break on tab focus loss |
+| Deterministic particles | Using modulo arithmetic instead of `Math.random()` prevents particle positions shifting on every re-render |
+| Tickets scoped per hotel via JWT `hotelId` | Same multi-tenant isolation pattern as all other tables — no cross-hotel data exposure |
+| Housekeepers see only own tickets | Protects staff privacy; managers get full cross-housekeeper visibility for tracking |
+| `onCountChange` callback for badge | Avoids lifting state up through multiple levels; MaintenancePanel owns the data and reports the count |
+| SSE broadcast on ticket mutation | Real-time update to admin dashboards without polling |
+
+---
+
+
 
 ### Summary
 Two separate work packages delivered in this session:

@@ -75,7 +75,7 @@ const DEBOUNCE_MS = 500;
 export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, onReserveRoom }) {
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
-  const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
+  const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied'), T('status_reserved')];
   const rooms = useHotelStore(s => s.rooms);
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
@@ -632,7 +632,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               </h2>
               {!isGuest && (
                 <div className="flex gap-1.5 mt-1 flex-wrap">
-                  <span className="badge" style={{ background: sc + '18', color: sc }}>{STATUSES[statusIdx]}</span>
+                  <span className="badge" style={{ background: sc + '18', color: sc }}>{STATUS_LABELS[statusIdx] || STATUSES[statusIdx]}</span>
                   {r.pdMode && <span className="badge bg-red-50 text-red-600">⚡ PD</span>}
                   <span className="badge bg-gray-100 text-gray-500">{r.type}</span>
                   <span className="badge bg-gray-100 text-gray-500">F{r.floor}</span>
@@ -817,7 +817,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
                           color: statusIdx === i ? SCOL[i] : '#9CA3AF',
                           borderColor: statusIdx === i ? SCOL[i] + '33' : '#E5E7EB'
                         }}>
-                        {st}
+                        {STATUS_LABELS[i] || st}
                       </button>
                     ))}
                   </div>

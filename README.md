@@ -14,6 +14,7 @@ A multi-tenant SaaS hotel management platform. Each hotel (tenant) gets its own 
 - [Room Status Flow](#room-status-flow)
 - [Room Automation](#room-automation)
 - [Scenes Engine](#scenes-engine)
+- [Maintenance Tracking](#maintenance-tracking)
 - [Guest Portal](#guest-portal)
 - [Platform Admin Portal](#platform-admin-portal)
 - [Installation](#installation)
@@ -88,11 +89,12 @@ Real-time updates are delivered via Server-Sent Events (SSE). Control commands a
 
 ### Hotel Staff
 
-| Role | Finance | Logs | Users | Rooms | PMS | Shifts | Heatmap |
-|------|---------|------|-------|-------|-----|--------|---------|
-| **Owner** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Admin** | — | ✓ | — | ✓ | ✓ | ✓ | ✓ |
-| **Front Desk** | — | — | — | View | ✓ | ✓ | ✓ |
+| Role | Finance | Logs | Users | Rooms | PMS | Shifts | Heatmap | Maintenance |
+|------|---------|------|-------|-------|-----|--------|---------|-------------|
+| **Owner** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | View + Resolve |
+| **Admin** | — | ✓ | — | ✓ | ✓ | ✓ | ✓ | View + Resolve |
+| **Front Desk** | — | — | — | View | ✓ | ✓ | ✓ | View + Resolve |
+| **Housekeeper** | — | — | — | — | — | — | — | Report + View own |
 
 ### Platform Super-Admin
 
@@ -118,6 +120,7 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
 - **Shifts** — shift handover accounting with force-close modal (collects actual Cash and Visa amounts, compares to expected, flags discrepancies)
 - **Scenes** — create automation scenes triggered by time, status change, or sensor thresholds; apply a single scene to all rooms at once via "Apply to all rooms" checkbox
 - **Hotel Info** — owner-only tab to configure the hotel's public booking profile: description, location, phone, amenities, hero image, room type descriptions and photo galleries, check-in/out times, and online booking toggle
+- **Maintenance Tracking** — housekeepers report issues (AC, Plumbing, Electrical, Furniture, Cleaning) directly from their task card; managers track and resolve via a dedicated tab with status workflow (open → in progress → resolved), staff assignment, and internal notes
 - **Simulator** — inject mock telemetry from the browser for testing; works with any room number even without physical IoT hardware (virtual mode with SSE broadcast)
 - **Mobile-friendly tab bar** — scrollable tab navigation optimised for small screens
 
@@ -247,6 +250,39 @@ When creating a new scene, enable **"Apply to all rooms"** to instantly create t
 - Enable / disable individual scenes without deleting them
 - Scenes are scoped per hotel (multi-tenant safe)
 - Scene execution is logged in the audit trail
+
+---
+
+## Maintenance Tracking
+
+Housekeepers can report maintenance issues directly from their cleaning task list without leaving the app.
+
+### Reporting (Housekeeper)
+
+1. While viewing an assigned room card, tap **🔧 Report Issue**
+2. Select a **category**: AC · Plumbing · Electrical · Furniture · Cleaning · Other
+3. Set **priority**: Low · Medium · High · Urgent
+4. Enter a **description** of the issue
+5. Room number is pre-filled from the task card; can be overridden
+6. Submitted tickets appear in the **My Reports** section at the bottom of the housekeeper view, showing live status and any admin notes
+
+### Tracking (Admin / Manager)
+
+The **Maintenance** tab in the staff dashboard shows all open tickets with:
+- Filter tabs: All / Open / In Progress / Resolved (with counts per status)
+- A live **red badge** on the tab showing the number of open tickets
+- Ticket detail drawer: category, room, priority, reporter, timestamps
+- **Status workflow**: open → in progress → resolved (with "Mark Resolved" shortcut)
+- **Staff assignment**: assign the ticket to a specific housekeeper or engineer
+- **Internal notes**: admin-only notes visible to the reporter as feedback
+
+### Ticket Lifecycle
+
+```
+Housekeeper reports → OPEN
+Admin acknowledges  → IN PROGRESS
+Issue fixed         → RESOLVED  (resolved_at timestamp recorded)
+```
 
 ---
 
@@ -499,9 +535,13 @@ iHotel/
 │   │   ├── FinancePanel.jsx  Revenue and night rates
 │   │   ├── UsersPanel.jsx    Hotel user management
 │   │   ├── ShiftsPanel.jsx   Shift accounting with force-close modal
-│   │   ├── ScenesPanel.jsx   Scene builder and management with "apply to all rooms"
-│   │   ├── SimulatorPanel.jsx Browser-based telemetry injector (virtual + hardware modes)
-│   │   └── AlertToast.jsx    SOS / MUR notification banners
+│   │   ├── ScenesPanel.jsx       Scene builder and management with "apply to all rooms"
+│   │   ├── HousekeepingPanel.jsx Manager assignment view + housekeeper task list + report issue
+│   │   ├── MaintenancePanel.jsx  Admin maintenance ticket tracker with filter tabs + detail drawer
+│   │   ├── ReviewsPanel.jsx      Guest review management
+│   │   ├── HotelInfoPanel.jsx    Owner hotel profile editor (public booking page config)
+│   │   ├── SimulatorPanel.jsx    Browser-based telemetry injector (virtual + hardware modes)
+│   │   └── AlertToast.jsx        SOS / MUR notification banners
 │   └── store/
 │       ├── authStore.js      Login state, JWT, hotel info
 │       ├── hotelStore.js     Rooms, SSE, polling, alerts
@@ -624,6 +664,27 @@ iHotel/
 | GET/POST | `/api/platform/hotels/:id/users` | List / create hotel users |
 | PUT | `/api/platform/hotels/:id/users/:uid` | Update hotel user (incl. password reset) |
 | GET | `/api/platform/metrics` | Platform-wide stats |
+
+### Housekeeping
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/housekeeping/queue` | manager + housekeeper | Unassigned dirty rooms (managers) or own pending tasks (housekeepers) |
+| GET | `/api/housekeeping/assignments` | manager + housekeeper | Active assignments |
+| GET | `/api/housekeeping/housekeepers` | manager | List housekeeper accounts for assignment dropdown |
+| POST | `/api/housekeeping/assign` | manager | Bulk-assign rooms to a housekeeper |
+| POST | `/api/housekeeping/assignments/:id/start` | all | Mark assignment in_progress |
+| POST | `/api/housekeeping/assignments/:id/complete` | all | Mark done, reset appliances, set VACANT |
+| DELETE | `/api/housekeeping/assignments/:id` | manager | Cancel assignment |
+
+### Maintenance
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/maintenance` | all staff | List tickets; managers see all, housekeepers see own. `?status=` filter supported |
+| POST | `/api/maintenance` | all staff | Open new ticket (category, description, priority, room_number) |
+| PATCH | `/api/maintenance/:id` | all staff | Update status / assignment / notes (managers); edit description (housekeepers, open only) |
+| DELETE | `/api/maintenance/:id` | owner/admin | Hard-delete ticket |
 
 ### Users
 

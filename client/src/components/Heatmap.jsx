@@ -10,27 +10,52 @@ const effectiveStatus = (r) => (r?.roomStatus === 0 && r?.reservation) ? 5 : (r?
 const TYPE_ABBR     = { STANDARD: 'Std', DELUXE: 'Dlx', SUITE: 'Ste', VIP: 'VIP' };
 const TYPE_KEYS     = ['STANDARD', 'DELUXE', 'SUITE', 'VIP'];
 
-// ── Circular progress arc ────────────────────────────────────────────────────
-function ArcProgress({ pct, size = 52, stroke = 5 }) {
-  const r   = (size - stroke) / 2;
+// ── Multi-color status donut ring ─────────────────────────────────────────────
+// counts: array[6] — one count per status index (vacant, occupied, service, maintenance, not_occ, reserved)
+function StatusDonut({ counts = [], total = 0, size = 52, stroke = 6 }) {
+  const r    = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const off  = circ - (Math.min(Math.max(pct, 0), 100) / 100) * circ;
-  const color = pct > 60 ? '#16A34A' : pct > 30 ? '#D97706' : '#DC2626';
+  const cx   = size / 2;
+  const cy   = size / 2;
+
+  if (total === 0) {
+    return (
+      <svg width={size} height={size} className="block">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
+      </svg>
+    );
+  }
+
+  // Build arc segments for statuses that have rooms
+  const segments = [];
+  let accum = 0;
+  STATUS_COLORS.forEach((color, i) => {
+    const count = counts[i] || 0;
+    if (count === 0) return;
+    const len = (count / total) * circ;
+    segments.push({ color, len, offset: accum });
+    accum += len;
+  });
+
+  // Dominant status for center dot color
+  const maxIdx = counts.reduce((mi, c, i) => (c > (counts[mi] || 0) ? i : mi), 0);
+
   return (
-    <svg width={size} height={size} className="block">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
-      <circle
-        cx={size / 2} cy={size / 2} r={r}
-        fill="none" stroke={color} strokeWidth={stroke}
-        strokeDasharray={circ} strokeDashoffset={off}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-      />
-      <text x={size / 2} y={size / 2 + 4} textAnchor="middle"
-        style={{ fontSize: 10, fontWeight: 700, fill: color, fontFamily: 'monospace' }}>
-        {Math.round(pct)}%
-      </text>
+    <svg width={size} height={size} className="block" style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
+      {segments.map(({ color, len, offset }, i) => (
+        <circle
+          key={i}
+          cx={cx} cy={cy} r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={`${len} ${circ}`}
+          strokeDashoffset={-offset}
+        />
+      ))}
+      {/* Center dot showing dominant status color */}
+      <circle cx={cx} cy={cy} r={r * 0.28} fill={STATUS_COLORS[maxIdx]} style={{ transform: `rotate(90deg)`, transformOrigin: `${cx}px ${cy}px` }} />
     </svg>
   );
 }
@@ -58,8 +83,8 @@ const FloorBox = memo(function FloorBox({ floorNum, stats, isExpanded, onClick }
         <span className="text-[9px] text-gray-400">{stats.total} rm</span>
       </div>
 
-      {/* Arc chart — vacant % */}
-      <ArcProgress pct={stats.vacantPct} size={52} stroke={5} />
+      {/* Multi-color status donut ring */}
+      <StatusDonut counts={stats.counts} total={stats.total} size={52} stroke={6} />
 
       {/* Vacant count */}
       <div className="text-[10px] text-gray-500 mt-1 font-semibold">{stats.vacant} free</div>
@@ -172,16 +197,20 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
     const out = {};
     for (const f of Object.keys(roomsByFloor).map(Number)) {
       const floorRooms = roomsByFloor[f] || [];
-      const s = { total: floorRooms.length, vacant: 0, occupied: 0, sos: 0, mur: 0, pd: 0, byType: {} };
+      // counts[i] = number of rooms in status i (0-5)
+      const counts = [0, 0, 0, 0, 0, 0];
+      const s = { total: floorRooms.length, vacant: 0, occupied: 0, sos: 0, mur: 0, pd: 0, byType: {}, counts };
       TYPE_KEYS.forEach(k => { s.byType[k] = 0; });
       floorRooms.forEach(rn => {
         const r = rooms[rn];
         if (!r) return;
-        if (r.sosService)       s.sos++;
-        if (r.murService)       s.mur++;
-        if (r.pdMode)           s.pd++;
-        if (r.roomStatus === 1) s.occupied++;
-        if (r.roomStatus === 0) { s.vacant++; if (r.type) s.byType[r.type] = (s.byType[r.type] || 0) + 1; }
+        if (r.sosService) s.sos++;
+        if (r.murService) s.mur++;
+        if (r.pdMode)     s.pd++;
+        const si = effectiveStatus(r);
+        counts[si] = (counts[si] || 0) + 1;
+        if (si === 0) { s.vacant++; if (r.type) s.byType[r.type] = (s.byType[r.type] || 0) + 1; }
+        if (si === 1) s.occupied++;
       });
       s.vacantPct = s.total > 0 ? (s.vacant / s.total) * 100 : 0;
       out[f] = s;
@@ -246,7 +275,7 @@ export default function Heatmap({ onSelectRoom, cols = 0 }) {
               <FloorBox
                 key={f}
                 floorNum={f}
-                stats={floorStats[f] || { total: 0, vacant: 0, sos: 0, mur: 0, pd: 0, byType: {}, vacantPct: 0 }}
+                stats={floorStats[f] || { total: 0, vacant: 0, sos: 0, mur: 0, pd: 0, byType: {}, vacantPct: 0, counts: [0,0,0,0,0,0] }}
                 isExpanded={expandedFloor === f}
                 onClick={() => toggleFloor(f)}
               />

@@ -4,6 +4,31 @@ All notable changes to iHotel are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-26
+
+### Added
+- **Maintenance Ticket Tracking** — housekeepers can report maintenance issues (AC, Plumbing, Electrical, Furniture, Cleaning, Other) directly from their task card with a priority level (low / medium / high / urgent). Tickets are tracked through an `open → in_progress → resolved` workflow
+- **MaintenancePanel** — new admin/manager view: filter tabs (All / Open / In Progress / Resolved), ticket detail side drawer, status updates, staff assignment, internal notes, and a "Mark Resolved" shortcut
+- **"My Reports" section** in HousekeepingPanel — housekeepers see all their submitted tickets with current status and any admin notes. A "+" button allows filing a free-form ticket without an assigned room
+- **Maintenance tab** in DashboardPage (between Housekeeping and Logs) with a live red badge showing open-ticket count, visible to all staff roles
+- **Landing page redesign** — fully dynamic hero carousel driven by scroll (not time), floating particles, AnimatedStat counter reveal, auto-rotating TestimonialsCarousel with progress bar and dot navigation
+- **Scroll-reveal animations** — every section of the landing page (Features, Impact, Showcase, CTA, Footer) reveals on scroll with staggered entrance effects
+- `maintenance_tickets` DB table (migration `024`): `hotel_id`, `room_number`, `category`, `priority`, `status`, `reported_by`, `assigned_to`, `notes`, `created_at`, `updated_at`, `resolved_at`
+- `tab_maintenance` i18n key + 28 `maint_*` keys in Arabic and English
+
+### Changed
+- **Hero section** changed from time-based auto-advance to scroll-driven carousel — 400vh sticky layout; progress bar and slide index computed from scroll position
+- **Text readability** — all sub-pixel text sizes (`text-[9px]`/`text-[10px]`/`text-[11px]`) replaced with `text-xs` / `text-sm` across landing page pills, badges, showcase labels, and login modal hints
+- **Testimonials** — static grid replaced with paginated auto-rotating carousel with prev/next navigation
+
+### API
+- `GET /api/maintenance` — list tickets (role-scoped)
+- `POST /api/maintenance` — create ticket (all staff)
+- `PATCH /api/maintenance/:id` — update status / notes / assignment
+- `DELETE /api/maintenance/:id` — hard-delete (owner/admin only)
+
+---
+
 ## [Unreleased] — 2026-03-24
 
 ### Added

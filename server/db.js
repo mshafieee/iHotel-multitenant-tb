@@ -487,6 +487,30 @@ function initDB() {
     markMigration('023_tokens_valid_after');
   }
 
+  // ── Migration 024: maintenance tickets ───────────────────────────────────
+  if (!hasMigration('024_maintenance_tickets')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS maintenance_tickets (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        hotel_id     TEXT    NOT NULL,
+        room_number  TEXT,
+        category     TEXT    NOT NULL,
+        description  TEXT    NOT NULL,
+        priority     TEXT    NOT NULL DEFAULT 'medium',
+        status       TEXT    NOT NULL DEFAULT 'open',
+        reported_by  TEXT    NOT NULL,
+        assigned_to  TEXT,
+        notes        TEXT,
+        created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+        resolved_at  INTEGER,
+        FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+      )
+    `);
+    console.log('✓ Migration 024: created maintenance_tickets table');
+    markMigration('024_maintenance_tickets');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (

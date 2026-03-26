@@ -3,8 +3,8 @@ import { QrCode, X, RefreshCw, Copy, Check } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { api } from '../utils/api';
 
-const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', frontdesk: 'Front Desk', housekeeper: 'Housekeeper' };
-const ROLE_COLORS = { owner: 'bg-purple-50 text-purple-600', admin: 'bg-blue-50 text-blue-600', frontdesk: 'bg-emerald-50 text-emerald-600', housekeeper: 'bg-amber-50 text-amber-600' };
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', frontdesk: 'Front Desk', housekeeper: 'Housekeeper', maintenance: 'Maintenance' };
+const ROLE_COLORS = { owner: 'bg-purple-50 text-purple-600', admin: 'bg-blue-50 text-blue-600', frontdesk: 'bg-emerald-50 text-emerald-600', housekeeper: 'bg-amber-50 text-amber-600', maintenance: 'bg-red-50 text-red-600' };
 
 function QrModal({ user: u, onClose }) {
   const [qrData, setQrData] = useState(null);
@@ -29,15 +29,23 @@ function QrModal({ user: u, onClose }) {
   };
 
   const copyUrl = () => {
-    if (!qrData?.loginUrl) return;
-    navigator.clipboard.writeText(qrData.loginUrl).then(() => {
+    if (!loginUrl) return;
+    navigator.clipboard.writeText(loginUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   };
 
-  const qrImageUrl = qrData?.loginUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData.loginUrl)}`
+  // Build loginUrl using VITE_GUEST_HOST (LAN IP) so phones on the same network can scan it.
+  const _guestHost = import.meta.env.VITE_GUEST_HOST;
+  const _displayHost = _guestHost
+    ? `${_guestHost}${window.location.port ? ':' + window.location.port : ''}`
+    : window.location.host;
+  const loginUrl = qrData?.token
+    ? `${window.location.protocol}//${_displayHost}/qr?t=${qrData.token}`
+    : qrData?.loginUrl || null;
+  const qrImageUrl = loginUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(loginUrl)}`
     : null;
 
   return (
@@ -59,7 +67,7 @@ function QrModal({ user: u, onClose }) {
               <img src={qrImageUrl} alt="QR Code" className="w-48 h-48 mx-auto rounded-xl border border-gray-100 mb-4" />
             )}
             <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mb-4">
-              <span className="text-[10px] text-gray-500 flex-1 truncate text-left">{qrData.loginUrl}</span>
+              <span className="text-[10px] text-gray-500 flex-1 truncate text-left">{loginUrl}</span>
               <button onClick={copyUrl} className="text-brand-500 hover:text-brand-700 flex-shrink-0">
                 {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
               </button>
@@ -214,6 +222,7 @@ export default function UsersPanel() {
                 <label className="text-[9px] text-gray-400 uppercase">Role</label>
                 <select className="input" value={createForm.role} onChange={e => setCreateForm({ ...createForm, role: e.target.value })}>
                   <option value="housekeeper">Housekeeper</option>
+                  <option value="maintenance">Maintenance</option>
                   <option value="frontdesk">Front Desk</option>
                   <option value="admin">Admin</option>
                   <option value="owner">Owner</option>

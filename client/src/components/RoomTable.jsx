@@ -9,17 +9,20 @@ const SCOL = ['#16A34A', '#2563EB', '#D97706', '#DC2626', '#8B5CF6', '#0891B2'];
 const effectiveStatusIdx = (r) => (r?.roomStatus === 0 && r?.reservation) ? 5 : (r?.roomStatus ?? 0);
 
 export default function RoomTable({ onSelectRoom, role }) {
-  const rooms = useHotelStore(s => s.rooms);
+  const rooms          = useHotelStore(s => s.rooms);
+  const hkAssignments  = useHotelStore(s => s.hkAssignments);
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
 
   const STATUSES = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied'), T('status_reserved')];
   const STATUS_KEYS = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED', 'RESERVED'];
   const FILTERS = [
-    ['all', T('all')],
+    ['all',          T('all')],
     ['reserved',     T('status_reserved')],
     ['vacant',       T('rt_vacant')],
     ['occupied',     T('rt_occupied')],
+    ['dirty',        T('rt_dirty')],
+    ['on_cleaning',  T('rt_on_cleaning')],
     ['service',      T('rt_service')],
     ['not_occupied', T('rt_not_occ')],
     ['maintenance',  T('rt_maint')],
@@ -42,21 +45,26 @@ export default function RoomTable({ onSelectRoom, role }) {
   const filtered = useMemo(() => {
     let arr = Object.values(rooms);
     if (floor) arr = arr.filter(r => r.floor === floor);
+    // Build sets of rooms with active housekeeping assignments
+    const assignedRooms    = new Set(hkAssignments.filter(a => ['pending', 'in_progress'].includes(a.status)).map(a => String(a.room)));
+    const inProgressRooms  = new Set(hkAssignments.filter(a => a.status === 'in_progress').map(a => String(a.room)));
     const fmap = {
-      occupied: r => r.roomStatus === 1,
-      vacant: r => r.roomStatus === 0 && !r.reservation,
-      reserved: r => r.roomStatus === 0 && !!r.reservation,
-      service: r => r.roomStatus === 2,
-      maintenance: r => r.roomStatus === 3,
+      occupied:     r => r.roomStatus === 1,
+      vacant:       r => r.roomStatus === 0 && !r.reservation,
+      reserved:     r => r.roomStatus === 0 && !!r.reservation,
+      dirty:        r => r.roomStatus === 2 && !assignedRooms.has(String(r.room)),
+      on_cleaning:  r => inProgressRooms.has(String(r.room)),
+      service:      r => r.roomStatus === 2,
+      maintenance:  r => r.roomStatus === 3,
       not_occupied: r => r.roomStatus === 4,
-      mur: r => r.murService,
-      dnd: r => r.dndService,
-      sos: r => r.sosService,
-      pd: r => r.pdMode,
+      mur:          r => r.murService,
+      dnd:          r => r.dndService,
+      sos:          r => r.sosService,
+      pd:           r => r.pdMode,
     };
     if (fmap[filter]) arr = arr.filter(fmap[filter]);
     return arr.sort((a, b) => String(a.room).localeCompare(String(b.room), undefined, { numeric: true }));
-  }, [rooms, floor, filter]);
+  }, [rooms, floor, filter, hkAssignments]);
 
   const handleCheckout = async (e, room) => {
     e.stopPropagation();
@@ -149,6 +157,7 @@ export default function RoomTable({ onSelectRoom, role }) {
                   <td className="px-2 py-2.5" onClick={e => e.stopPropagation()}>
                     {canEditType ? (
                       <select
+                        dir="ltr"
                         value={r.type || r.roomType || 'STANDARD'}
                         onChange={e => updateRoomType(r.room, e.target.value)}
                         className="text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:border-brand-400"
@@ -191,7 +200,7 @@ export default function RoomTable({ onSelectRoom, role }) {
                           </button>
                         )}
                         {/* Status dropdown */}
-                        <select value={r.roomStatus ?? 0}
+                        <select dir="ltr" value={r.roomStatus ?? 0}
                           onChange={e => rpc(r.room, 'setRoomStatus', { roomStatus: +e.target.value })}
                           className="text-[10px] border border-gray-200 rounded px-0.5 py-0.5 bg-white max-w-[80px]">
                           {STATUSES.map((s, i) => <option key={i} value={i}>{STATUS_KEYS[i]}</option>)}

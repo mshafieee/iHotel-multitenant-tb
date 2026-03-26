@@ -1,6 +1,22 @@
 import { create } from 'zustand';
 import { api, getAccessToken } from '../utils/api';
 
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {}
+}
+
 const useHotelStore = create((set, get) => ({
   rooms: {},
   deviceCount: 0,
@@ -19,10 +35,15 @@ const useHotelStore = create((set, get) => ({
   // hkAssignments  : active assignments (managers see all; housekeepers see own)
   // hkHousekeepers : list of housekeeper accounts (for assignment dropdown)
   // hkNotifications: incoming assignment alerts for the logged-in housekeeper
+  // maintWorkers   : list of maintenance worker accounts (for ticket assignment)
+  // maintTickets   : open tickets for the logged-in maintenance worker (real-time)
   hkQueue:         [],
   hkAssignments:   [],
   hkHousekeepers:  [],
   hkNotifications: [],  // { rooms, assignedBy, notes, ts } — desktop toast payloads
+  maintWorkers:    [],
+  maintTickets:    [],
+  maintNotifications: [],
 
   // Fetch overview — server always responds instantly with cached snapshot.
   // If data was stale, a background TB fetch runs on the server and delivers
@@ -200,6 +221,29 @@ const useHotelStore = create((set, get) => ({
       } catch {}
     });
 
+    // ── Maintenance SSE events ─────────────────────────────────────────────
+
+    // Personal notification when a ticket is assigned to this maintenance worker
+    es2.addEventListener('maintenance_assigned', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        // Play a sound alert
+        playNotifSound();
+        // Add a toast notification
+        const note = { ...d.ticket, _notifId: Date.now() };
+        set({ maintNotifications: [note, ...get().maintNotifications].slice(0, 10) });
+      } catch {}
+      get().fetchMaintTickets();
+    });
+
+    // Any ticket update (status change, assign, resolve)
+    es2.addEventListener('maintenance_update', () => {
+      get().fetchMaintTickets();
+      // Also refresh HK queue in case a resolved maintenance ticket freed a room
+      get().fetchHKQueue();
+      get().fetchHKAssignments();
+    });
+
     es2.onerror = () => {
       setTimeout(() => get().connectSSE(), 5000);
     };
@@ -349,6 +393,22 @@ const useHotelStore = create((set, get) => ({
     } catch {}
   },
 
+  // Fetch list of maintenance worker accounts for the ticket assignment dropdown.
+  fetchMaintWorkers: async () => {
+    try {
+      const data = await api('/api/housekeeping/maintenance-workers');
+      set({ maintWorkers: data });
+    } catch {}
+  },
+
+  // Fetch maintenance tickets for the logged-in maintenance worker.
+  fetchMaintTickets: async () => {
+    try {
+      const data = await api('/api/maintenance');
+      set({ maintTickets: data });
+    } catch {}
+  },
+
   // Manager: assign a list of rooms to a housekeeper.
   hkAssign: async (rooms, assignedTo, notes = '') => {
     const result = await api('/api/housekeeping/assign', {
@@ -396,6 +456,10 @@ const useHotelStore = create((set, get) => ({
   // Dismiss a housekeeping notification toast.
   dismissHKNotification: (id) => {
     set({ hkNotifications: get().hkNotifications.filter(n => n.id !== id) });
+  },
+
+  dismissMaintNotification: (id) => {
+    set({ maintNotifications: get().maintNotifications.filter(n => n._notifId !== id) });
   },
 
   updateRoomType: async (room, roomType) => {
