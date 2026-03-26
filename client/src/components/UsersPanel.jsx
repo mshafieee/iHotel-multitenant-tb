@@ -29,15 +29,20 @@ function QrModal({ user: u, onClose }) {
   };
 
   const copyUrl = () => {
-    if (!qrData?.loginUrl) return;
-    navigator.clipboard.writeText(qrData.loginUrl).then(() => {
+    if (!loginUrl) return;
+    navigator.clipboard.writeText(loginUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   };
 
-  const qrImageUrl = qrData?.loginUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData.loginUrl)}`
+  // Build loginUrl client-side so it always uses the current host/IP,
+  // not the server's GUEST_URL_BASE (which may point to a different address).
+  const loginUrl = qrData?.token
+    ? `${window.location.protocol}//${window.location.host}/qr?t=${qrData.token}`
+    : qrData?.loginUrl || null;
+  const qrImageUrl = loginUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(loginUrl)}`
     : null;
 
   return (
@@ -59,7 +64,7 @@ function QrModal({ user: u, onClose }) {
               <img src={qrImageUrl} alt="QR Code" className="w-48 h-48 mx-auto rounded-xl border border-gray-100 mb-4" />
             )}
             <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mb-4">
-              <span className="text-[10px] text-gray-500 flex-1 truncate text-left">{qrData.loginUrl}</span>
+              <span className="text-[10px] text-gray-500 flex-1 truncate text-left">{loginUrl}</span>
               <button onClick={copyUrl} className="text-brand-500 hover:text-brand-700 flex-shrink-0">
                 {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
               </button>

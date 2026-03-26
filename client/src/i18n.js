@@ -166,6 +166,8 @@ const translations = {
   rt_vacant:         { ar: '🟢 شاغرة',          en: '🟢 Vacant' },
   rt_occupied:       { ar: '🔵 مشغولة',         en: '🔵 Occ' },
   rt_service:        { ar: '🧹 خدمة',           en: '🧹 Service' },
+  rt_dirty:          { ar: '🟠 تحتاج تنظيف',    en: '🟠 Dirty' },
+  rt_on_cleaning:    { ar: '🧹 قيد التنظيف',    en: '🧹 Cleaning' },
   rt_not_occ:        { ar: '🟣 محجوزة',          en: '🟣 Reserved' },
   rt_maint:          { ar: '🔧 صيانة',          en: '🔧 Maint' },
   rt_mur:            { ar: '🧹 تنظيف',          en: '🧹 MUR' },

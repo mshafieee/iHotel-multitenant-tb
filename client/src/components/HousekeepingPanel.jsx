@@ -142,6 +142,9 @@ function ManagerView({ T }) {
     }
   };
 
+  // Map username → display name for showing in assignment list
+  const hkNameMap = Object.fromEntries(hkHousekeepers.map(h => [h.username, h.full_name || h.username]));
+
   // Pending + in_progress assignments for the "Active" tab badge
   const activeCount = hkAssignments.filter(a => ['pending', 'in_progress'].includes(a.status)).length;
 
@@ -280,7 +283,7 @@ function ManagerView({ T }) {
                         <span className="font-extrabold font-mono text-lg text-gray-800">{a.room}</span>
                         <StatusBadge status={a.status} T={T} />
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5 truncate">{a.assigned_to}</div>
+                      <div className="text-xs text-gray-500 mt-0.5 truncate">{hkNameMap[a.assigned_to] || a.assigned_to}</div>
                       {a.notes && (
                         <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 inline-block max-w-full truncate">
                           📋 {a.notes}
