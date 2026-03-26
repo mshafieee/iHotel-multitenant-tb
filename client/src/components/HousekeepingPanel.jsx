@@ -747,52 +747,50 @@ function RoomTaskCard({ a, busy, onStart, onDone, onReport, T }) {
   const isBusy       = busy === a.id;
 
   return (
-    <div className={`card p-4 border-l-4 ${isInProgress ? 'border-l-blue-500' : 'border-l-amber-400'}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          {/* Room number + floor/type */}
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-extrabold font-mono text-gray-800">{a.room}</span>
-            {a.floor && <span className="text-xs text-gray-400">{T('hk_floor_prefix')}{a.floor}</span>}
-            {a.type  && <span className="text-[10px] text-gray-400 bg-gray-100 rounded px-1">{a.type}</span>}
-            <StatusBadge status={a.status} T={T} />
-          </div>
-
-          {/* Notes from manager */}
-          {a.notes && (
-            <div className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1 max-w-xs">
-              📋 {a.notes}
-            </div>
-          )}
-
-          {/* Timing info */}
-          <div className="text-[10px] text-gray-400 mt-1 space-x-3">
-            <span>{T('hk_assigned_at')} {fmtTime(a.assigned_at)}</span>
-            {a.started_at && <span>{T('hk_started_at')} {fmtTime(a.started_at)}</span>}
-          </div>
+    <div className={`card p-3 border-l-4 ${isInProgress ? 'border-l-blue-500' : 'border-l-amber-400'}`}>
+      {/* Room number row */}
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-2xl font-extrabold font-mono text-gray-800">{a.room}</span>
+          {a.floor && <span className="text-xs text-gray-400">{T('hk_floor_prefix')}{a.floor}</span>}
+          {a.type  && <span className="text-[10px] text-gray-400 bg-gray-100 rounded px-1">{a.type}</span>}
         </div>
+        <StatusBadge status={a.status} T={T} />
+      </div>
 
-        {/* Action buttons */}
-        <div className="shrink-0 ml-4 flex flex-col gap-2 items-end">
-          {!isInProgress && onStart && (
-            <button onClick={onStart} disabled={isBusy}
-              className="px-4 py-2 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition disabled:opacity-50">
-              {isBusy ? '…' : T('hk_btn_start')}
-            </button>
-          )}
-          {isInProgress && onDone && (
-            <button onClick={onDone} disabled={isBusy}
-              className="px-4 py-2 rounded-xl font-bold text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition disabled:opacity-50">
-              {isBusy ? '…' : T('hk_btn_done')}
-            </button>
-          )}
-          {onReport && (
-            <button onClick={onReport}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">
-              {T('maint_report_btn')}
-            </button>
-          )}
+      {/* Notes from manager */}
+      {a.notes && (
+        <div className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mb-1.5">
+          📋 {a.notes}
         </div>
+      )}
+
+      {/* Timing info */}
+      <div className="text-[10px] text-gray-400 mb-2.5 flex flex-wrap gap-x-3">
+        <span>{T('hk_assigned_at')} {fmtTime(a.assigned_at)}</span>
+        {a.started_at && <span>{T('hk_started_at')} {fmtTime(a.started_at)}</span>}
+      </div>
+
+      {/* Action buttons — full width row for easy tap on mobile */}
+      <div className="flex gap-2">
+        {!isInProgress && onStart && (
+          <button onClick={onStart} disabled={isBusy}
+            className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100 transition disabled:opacity-50">
+            {isBusy ? '…' : T('hk_btn_start')}
+          </button>
+        )}
+        {isInProgress && onDone && (
+          <button onClick={onDone} disabled={isBusy}
+            className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 active:bg-emerald-100 transition disabled:opacity-50">
+            {isBusy ? '…' : T('hk_btn_done')}
+          </button>
+        )}
+        {onReport && (
+          <button onClick={onReport}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-red-50 text-red-600 border border-red-200 active:bg-red-100 transition">
+            🔧 {T('maint_report_btn')}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -803,23 +801,17 @@ function RoomTaskCard({ a, busy, onStart, onDone, onReport, T }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function MaintenanceWorkerView({ T }) {
   const { user } = useAuthStore();
-  const [tickets, setTickets]   = useState([]);
-  const [busy, setBusy]         = useState(null);
-  const [flash, setFlash]       = useState(null);
+  const maintTickets      = useHotelStore(s => s.maintTickets);
+  const fetchMaintTickets = useHotelStore(s => s.fetchMaintTickets);
+  const [busy, setBusy]   = useState(null);
+  const [flash, setFlash] = useState(null);
 
   const showFlash = useCallback((type, msg) => {
     setFlash({ type, msg });
     setTimeout(() => setFlash(null), 3500);
   }, []);
 
-  const fetchTickets = useCallback(async () => {
-    try {
-      const data = await api('/api/maintenance');
-      setTickets(data);
-    } catch {}
-  }, []);
-
-  useEffect(() => { fetchTickets(); }, [fetchTickets]);
+  useEffect(() => { fetchMaintTickets(); }, [fetchMaintTickets]);
 
   const handleUpdate = async (id, status) => {
     setBusy(id);
@@ -829,7 +821,7 @@ function MaintenanceWorkerView({ T }) {
         body: JSON.stringify({ status }),
       });
       showFlash('ok', status === 'resolved' ? 'Ticket resolved ✓' : 'Status updated');
-      fetchTickets();
+      fetchMaintTickets();
     } catch (e) {
       showFlash('err', e.message || 'Failed');
     } finally {
@@ -838,7 +830,7 @@ function MaintenanceWorkerView({ T }) {
   };
 
   const PRIORITY_COLOR = { low: 'text-gray-400', medium: 'text-blue-500', high: 'text-amber-600', urgent: 'text-red-600 font-bold' };
-  const openTickets = tickets.filter(t => t.status !== 'resolved');
+  const openTickets = maintTickets.filter(t => t.status !== 'resolved');
 
   return (
     <div className="space-y-3">
@@ -855,40 +847,38 @@ function MaintenanceWorkerView({ T }) {
         </div>
       ) : (
         openTickets.map(ticket => (
-          <div key={ticket.id} className={`card p-4 border-l-4 ${
+          <div key={ticket.id} className={`card p-3 border-l-4 ${
             ticket.status === 'in_progress' ? 'border-l-amber-400' : 'border-l-blue-300'
           }`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-bold text-gray-600 bg-gray-100 rounded px-1.5">{ticket.category}</span>
-                  {ticket.room_number && (
-                    <span className="text-sm font-extrabold text-brand-600 font-mono">Rm {ticket.room_number}</span>
-                  )}
-                  <span className={`text-[10px] ${PRIORITY_COLOR[ticket.priority] || ''}`}>● {ticket.priority}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    ticket.status === 'in_progress' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
-                  }`}>{ticket.status}</span>
-                </div>
-                <div className="text-sm text-gray-800 mt-1.5 font-medium">{ticket.description}</div>
-                {ticket.notes && (
-                  <div className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1.5">📋 {ticket.notes}</div>
-                )}
-              </div>
-              <div className="shrink-0 flex flex-col gap-1.5 items-end">
-                {ticket.status === 'open' && (
-                  <button onClick={() => handleUpdate(ticket.id, 'in_progress')} disabled={busy === ticket.id}
-                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition disabled:opacity-50">
-                    {busy === ticket.id ? '…' : '▶ Start'}
-                  </button>
-                )}
-                {ticket.status === 'in_progress' && (
-                  <button onClick={() => handleUpdate(ticket.id, 'resolved')} disabled={busy === ticket.id}
-                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition disabled:opacity-50">
-                    {busy === ticket.id ? '…' : '✓ Done'}
-                  </button>
-                )}
-              </div>
+            {/* Header row: category + room + badges */}
+            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+              <span className="text-xs font-bold text-gray-600 bg-gray-100 rounded px-1.5">{ticket.category}</span>
+              {ticket.room_number && (
+                <span className="text-sm font-extrabold text-brand-600 font-mono">Rm {ticket.room_number}</span>
+              )}
+              <span className={`text-[10px] ${PRIORITY_COLOR[ticket.priority] || ''}`}>● {ticket.priority}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                ticket.status === 'in_progress' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+              }`}>{ticket.status}</span>
+            </div>
+            <div className="text-sm text-gray-800 mb-1.5 font-medium">{ticket.description}</div>
+            {ticket.notes && (
+              <div className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mb-2">📋 {ticket.notes}</div>
+            )}
+            {/* Full-width action buttons */}
+            <div className="flex gap-2">
+              {ticket.status === 'open' && (
+                <button onClick={() => handleUpdate(ticket.id, 'in_progress')} disabled={busy === ticket.id}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100 transition disabled:opacity-50">
+                  {busy === ticket.id ? '…' : '▶ Start'}
+                </button>
+              )}
+              {ticket.status === 'in_progress' && (
+                <button onClick={() => handleUpdate(ticket.id, 'resolved')} disabled={busy === ticket.id}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 active:bg-emerald-100 transition disabled:opacity-50">
+                  {busy === ticket.id ? '…' : '✓ Done'}
+                </button>
+              )}
             </div>
           </div>
         ))

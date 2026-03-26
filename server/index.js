@@ -3107,6 +3107,22 @@ app.post('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontd
     }
   }
 
+  // Push notification to all maintenance workers
+  setImmediate(() => {
+    const maintWorkers = db.prepare("SELECT username FROM hotel_users WHERE hotel_id=? AND role='maintenance' AND active=1").all(hotelId);
+    const pushBody = `${room_number ? `Room ${room_number} — ` : ''}[${category}] ${description.slice(0, 60)}`;
+    const pushPayload = JSON.stringify({ title: '🔧 New Maintenance Ticket', body: pushBody, tag: 'maint-new', url: '/' });
+    for (const w of maintWorkers) {
+      const subs = db.prepare("SELECT * FROM push_subscriptions WHERE hotel_id=? AND username=?").all(hotelId, w.username);
+      for (const sub of subs) {
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth } },
+          pushPayload
+        ).catch(() => { db.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").run(sub.endpoint); });
+      }
+    }
+  });
+
   res.status(201).json(ticket);
 });
 
@@ -3158,12 +3174,52 @@ app.patch('/api/maintenance/:id', authenticate, requireRole('owner', 'admin', 'f
   const updated = db.prepare('SELECT * FROM maintenance_tickets WHERE id=?').get(ticket.id);
   addLog(hotelId, 'maintenance', `Ticket #${ticket.id} updated by ${req.user.username}`, { user: req.user.username });
   sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'updated', ticket: updated }, ['owner', 'admin', 'frontdesk']);
+  // When resolved with a room number → set room back to SERVICE so it appears in housekeeping queue
+  if (updated.status === 'resolved' && updated.room_number) {
+    const devId = getDeviceRoomMap(hotelId)[String(updated.room_number)];
+    if (devId) {
+      setImmediate(() => sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 2 }, req.user.username).catch(() => {}));
+    }
+    // Push notification to all housekeepers that the room is ready for cleaning
+    setImmediate(() => {
+      const hkWorkers = db.prepare("SELECT username FROM hotel_users WHERE hotel_id=? AND role='housekeeper' AND active=1").all(hotelId);
+      const hkPayload = JSON.stringify({
+        title: '🧹 Room Ready for Cleaning',
+        body: `Room ${updated.room_number} maintenance resolved — ready for housekeeping`,
+        tag: 'hk-maint-resolved', url: '/',
+      });
+      for (const w of hkWorkers) {
+        const subs = db.prepare("SELECT * FROM push_subscriptions WHERE hotel_id=? AND username=?").all(hotelId, w.username);
+        for (const sub of subs) {
+          webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth } },
+            hkPayload
+          ).catch(() => { db.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").run(sub.endpoint); });
+        }
+      }
+    });
+  }
   if (ticket.reported_by !== req.user.username) {
     sseBroadcastUser(hotelId, ticket.reported_by, 'maintenance_update', { action: 'updated', ticket: updated });
   }
   // Notify the assigned maintenance worker when a ticket is assigned or updated
   if (updated.assigned_to && updated.assigned_to !== req.user.username) {
     sseBroadcastUser(hotelId, updated.assigned_to, 'maintenance_assigned', { ticket: updated });
+    // Push notification to the assigned worker
+    const assignSubs = db.prepare("SELECT * FROM push_subscriptions WHERE hotel_id=? AND username=?").all(hotelId, updated.assigned_to);
+    if (assignSubs.length) {
+      const assignPayload = JSON.stringify({
+        title: '🔧 Maintenance Ticket Assigned',
+        body: `${updated.room_number ? `Room ${updated.room_number} — ` : ''}${updated.description.slice(0, 60)}`,
+        tag: 'maint-assign', url: '/',
+      });
+      for (const sub of assignSubs) {
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.keys_p256dh, auth: sub.keys_auth } },
+          assignPayload
+        ).catch(() => { db.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").run(sub.endpoint); });
+      }
+    }
   }
 
   res.json(updated);

@@ -12,14 +12,21 @@
  *  • Arabic + English via useLangStore / t()
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
+import useHotelStore from '../store/hotelStore';
 import useAuthStore from '../store/authStore';
 import useLangStore from '../store/langStore';
 import { api } from '../utils/api';
 import {
-  Wrench, AlertTriangle, CheckCircle2, Clock, ChevronRight,
-  X, RefreshCw, Plus, Loader2, Filter
+  Wrench, CheckCircle2, Clock, ChevronRight,
+  X, RefreshCw, Loader2
 } from 'lucide-react';
+
+// ── Role labels for the assignment dropdown ───────────────────────────────────
+const ROLE_LABEL = {
+  en: { admin: 'Admin', housekeeper: 'HK', maintenance: 'Maint' },
+  ar: { admin: 'مشرف', housekeeper: 'نظافة', maintenance: 'صيانة' },
+};
 
 // ── Translation strings ───────────────────────────────────────────────────────
 const STRINGS = {
@@ -152,7 +159,7 @@ function TicketRow({ ticket, s, onClick }) {
 }
 
 // ── Ticket drawer ─────────────────────────────────────────────────────────────
-function TicketDrawer({ ticket, s, isManager, housekeepers, onClose, onSaved }) {
+function TicketDrawer({ ticket, s, lang, isManager, housekeepers, onClose, onSaved }) {
   const [status,     setStatus]     = useState(ticket.status);
   const [assignedTo, setAssignedTo] = useState(ticket.assigned_to || '');
   const [notes,      setNotes]      = useState(ticket.notes || '');
@@ -276,11 +283,14 @@ function TicketDrawer({ ticket, s, isManager, housekeepers, onClose, onSaved }) 
                   className="input"
                 >
                   <option value="">{s.unassigned}</option>
-                  {housekeepers.map(hk => (
-                    <option key={hk.username} value={hk.username}>
-                      [{hk.role}] {hk.full_name || hk.username}
-                    </option>
-                  ))}
+                  {housekeepers.map(hk => {
+                    const roleLabel = (ROLE_LABEL[lang] || ROLE_LABEL.en)[hk.role] || hk.role;
+                    return (
+                      <option key={hk.username} value={hk.username}>
+                        [{roleLabel}] {hk.full_name || hk.username}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -344,50 +354,27 @@ export default function MaintenancePanel({ onCountChange }) {
   const s          = STRINGS[lang] || STRINGS.en;
   const isManager  = ['owner', 'admin', 'frontdesk'].includes(user?.role);
 
-  const [tickets,      setTickets]      = useState([]);
-  const [filter,       setFilter]       = useState('all');
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState('');
-  const [selected,     setSelected]     = useState(null);
-  const [housekeepers, setHousekeepers] = useState([]);
+  const maintTickets     = useHotelStore(s => s.maintTickets);
+  const fetchMaintTickets = useHotelStore(s => s.fetchMaintTickets);
+  const maintWorkers     = useHotelStore(s => s.maintWorkers);
+  const fetchMaintWorkers = useHotelStore(s => s.fetchMaintWorkers);
 
-  const fetchTickets = useCallback(async () => {
-    setLoading(true); setError('');
-    try {
-      const params = filter !== 'all' ? `?status=${filter}` : '';
-      const data = await api(`/api/maintenance${params}`);
-      setTickets(data);
-      // update open-count badge in DashboardPage tab
-      if (onCountChange) {
-        const allData = filter !== 'all' ? await api('/api/maintenance?status=open') : data;
-        onCountChange(filter !== 'all' ? allData.length : data.filter(t => t.status === 'open').length);
-      }
-    } catch {
-      setError(s.loadError);
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, s.loadError, onCountChange]);
+  const [filter,   setFilter]   = useState('all');
+  const [selected, setSelected] = useState(null);
 
-  useEffect(() => { fetchTickets(); }, [fetchTickets]);
-
-  // fetch all assignable staff (admin, housekeeper, maintenance) for the dropdown
+  // Initial load
   useEffect(() => {
-    if (!isManager) return;
-    api('/api/housekeeping/maintenance-workers').then(setHousekeepers).catch(() => {});
-  }, [isManager]);
+    fetchMaintTickets();
+    if (isManager) fetchMaintWorkers();
+  }, [fetchMaintTickets, fetchMaintWorkers, isManager]);
 
-  // SSE real-time updates
+  // Keep DashboardPage badge in sync
   useEffect(() => {
-    const hotelStore = window.__hotelStore;
-    if (!hotelStore) return;
-    // Listen via a simple custom event emitted by the SSE handler if wired
-    const handler = () => fetchTickets();
-    window.addEventListener('maintenance_update', handler);
-    return () => window.removeEventListener('maintenance_update', handler);
-  }, [fetchTickets]);
+    if (onCountChange) onCountChange(maintTickets.filter(t => t.status === 'open').length);
+  }, [maintTickets, onCountChange]);
 
-  const openCount = tickets.filter(t => t.status === 'open').length;
+  const openCount = maintTickets.filter(t => t.status === 'open').length;
+  const displayed = filter === 'all' ? maintTickets : maintTickets.filter(t => t.status === filter);
 
   const FILTERS = [
     { key: 'all',         label: s.all },
@@ -409,8 +396,8 @@ export default function MaintenancePanel({ onCountChange }) {
             </span>
           )}
         </div>
-        <button onClick={fetchTickets} disabled={loading} className="btn btn-ghost p-2" title={s.refresh}>
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+        <button onClick={fetchMaintTickets} className="btn btn-ghost p-2" title={s.refresh}>
+          <RefreshCw size={15} />
         </button>
       </div>
 
@@ -429,7 +416,7 @@ export default function MaintenancePanel({ onCountChange }) {
             {f.label}
             {f.key !== 'all' && (
               <span className="ms-1 opacity-70">
-                ({tickets.filter(t => t.status === f.key).length})
+                ({maintTickets.filter(t => t.status === f.key).length})
               </span>
             )}
           </button>
@@ -438,19 +425,13 @@ export default function MaintenancePanel({ onCountChange }) {
 
       {/* list */}
       <div className="mt-3 min-h-[200px]">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 size={22} className="animate-spin text-gray-300" />
-          </div>
-        ) : error ? (
-          <p className="text-center text-sm text-red-500 py-10">{error}</p>
-        ) : tickets.length === 0 ? (
+        {displayed.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-gray-300">
             <CheckCircle2 size={36} />
             <p className="text-sm">{s.noTickets}</p>
           </div>
         ) : (
-          tickets.map(ticket => (
+          displayed.map(ticket => (
             <TicketRow
               key={ticket.id}
               ticket={ticket}
@@ -466,10 +447,11 @@ export default function MaintenancePanel({ onCountChange }) {
         <TicketDrawer
           ticket={selected}
           s={s}
+          lang={lang}
           isManager={isManager}
-          housekeepers={housekeepers}
+          housekeepers={maintWorkers}
           onClose={() => setSelected(null)}
-          onSaved={() => { setSelected(null); fetchTickets(); }}
+          onSaved={() => { setSelected(null); fetchMaintTickets(); }}
         />
       )}
     </div>

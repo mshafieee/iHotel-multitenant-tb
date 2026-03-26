@@ -86,6 +86,8 @@ export default function DashboardPage() {
     todayCheckouts, commandAcks, dismissCommandAck,
     hkAssignments, hkNotifications, dismissHKNotification,
     fetchHKQueue, fetchHKAssignments,
+    maintTickets, fetchMaintTickets,
+    maintNotifications, dismissMaintNotification,
   } = useHotelStore();
   const rooms = useHotelStore(s => s.rooms);
   const [tab, setTab] = useState('rooms');
@@ -137,21 +139,15 @@ export default function DashboardPage() {
   // Pending housekeeping assignments for the tab badge (manager view only)
   const hkPendingCount = isHousekeeper
     ? hkAssignments.filter(a => a.status === 'pending').length
-    : isMaintenance ? 0  // maintenance workers see their badge from maintOpenCount
+    : isMaintenance ? maintTickets.filter(t => t.status !== 'resolved').length
     : hkAssignments.filter(a => ['pending', 'in_progress'].includes(a.status)).length;
 
-  const [maintOpenCount, setMaintOpenCount] = useState(0);
-  useEffect(() => {
-    if (!canSeeMaintenance) return;
-    api('/api/maintenance?status=open')
-      .then(data => setMaintOpenCount(data.length))
-      .catch(() => {});
-  }, [canSeeMaintenance]);
+  const maintOpenCount = maintTickets.filter(t => t.status === 'open').length;
 
   const TABS = [
     { id: 'rooms',        label: T('tab_rooms'),      icon: LayoutGrid,  visible: canSeeRooms },
     { id: 'pms',          label: T('tab_pms'),         icon: BookOpen,    visible: canSeePMS,          badge: todayCheckouts?.length },
-    { id: 'housekeeping', label: T('tab_housekeeping'), icon: BedDouble,   visible: canSeeHousekeeping, badge: hkPendingCount },
+    { id: 'housekeeping', label: isMaintenance ? T('tab_maintenance') : T('tab_housekeeping'), icon: isMaintenance ? Wrench : BedDouble, visible: canSeeHousekeeping, badge: hkPendingCount },
     { id: 'maintenance',  label: T('tab_maintenance'),  icon: Wrench,      visible: canSeeMaintenance,  badge: maintOpenCount },
     { id: 'logs',         label: T('tab_logs'),        icon: ScrollText,  visible: canSeeLogs },
     { id: 'finance',      label: T('tab_finance'),     icon: DollarSign,  visible: canSeeFinance },
@@ -177,6 +173,7 @@ export default function DashboardPage() {
       fetchHKQueue();
       fetchHKAssignments();
     }
+    if (isMaintenance || canSeeMaintenance) fetchMaintTickets();
     const t = setInterval(() => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })), 1000);
     return () => { stopPolling(); clearInterval(t); };
   }, []);
@@ -313,7 +310,7 @@ export default function DashboardPage() {
         )}
         {tab === 'pms'          && <PMSPanel autoFillRoom={pmsAutoFillRoom} onAutoFillConsumed={() => setPmsAutoFillRoom(null)} />}
         {tab === 'housekeeping' && <HousekeepingPanel />}
-        {tab === 'maintenance'  && <MaintenancePanel onCountChange={setMaintOpenCount} />}
+        {tab === 'maintenance'  && <MaintenancePanel />}
         {tab === 'logs'         && <LogsPanel />}
         {tab === 'finance'      && <FinancePanel />}
         {tab === 'users'        && <UsersPanel />}
@@ -358,6 +355,22 @@ export default function DashboardPage() {
             </div>
             <button onClick={e => { e.stopPropagation(); dismissHKNotification(n.id); }}
               className="text-amber-400 hover:text-amber-600 text-xs font-bold">✕</button>
+          </div>
+        ))}
+        {/* Maintenance assignment notifications */}
+        {maintNotifications.map(n => (
+          <div key={n._notifId}
+            className="flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg bg-red-50 border border-red-200 cursor-pointer"
+            onClick={() => dismissMaintNotification(n._notifId)}
+          >
+            <span className="text-xl">🔧</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm text-red-800">Maintenance Ticket Assigned</div>
+              <div className="text-xs text-red-600 truncate">
+                {n.room_number ? `Room ${n.room_number} — ` : ''}{n.description}
+              </div>
+            </div>
+            <button className="text-red-400 hover:text-red-600 text-xs font-bold">✕</button>
           </div>
         ))}
         {/* Command acknowledgement toasts */}
