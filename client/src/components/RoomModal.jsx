@@ -658,6 +658,15 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               )}
             </div>
           </div>
+          {isGuest && (
+            <button
+              onClick={() => useLangStore.getState().setLang(lang === 'ar' ? 'en' : 'ar')}
+              className="px-2.5 py-1 rounded-lg bg-white/15 text-white text-xs font-bold hover:bg-white/25 transition border border-white/20 mr-1"
+              title={lang === 'ar' ? 'Switch to English' : 'التبديل للعربية'}
+            >
+              {lang === 'ar' ? 'EN' : 'ع'}
+            </button>
+          )}
           <button onClick={onClose} className={`p-2 rounded-lg transition ${isGuest ? 'hover:bg-white/10' : 'hover:bg-gray-200'}`}>
             <X size={18} className={isGuest ? 'text-white/70' : 'text-gray-400'} />
           </button>
