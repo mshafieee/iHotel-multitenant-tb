@@ -2626,7 +2626,7 @@ app.get('/api/shifts/:id', authenticate, requireRole('owner', 'admin', 'frontdes
 
 // ═══ USER MANAGEMENT ═══
 app.get('/api/users', authenticate, requireRole('owner', 'admin'), (req, res) => {
-  res.json(db.prepare('SELECT id, username, role, full_name, active, last_login, created_at FROM hotel_users WHERE hotel_id=? ORDER BY created_at').all(req.user.hotelId));
+  res.json(db.prepare('SELECT id, username, role, full_name, active, last_login, created_at FROM hotel_users WHERE hotel_id=? ORDER BY created_at DESC').all(req.user.hotelId));
 });
 
 app.post('/api/users', authenticate, requireRole('owner'), (req, res) => {
@@ -2798,7 +2798,7 @@ app.get('/api/housekeeping/queue', authenticate, requireRole('owner', 'admin', '
 
   // For housekeepers: their own pending/in_progress assignments
   const myAssignments = db.prepare(
-    "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND assigned_to=? AND status IN ('pending','in_progress') ORDER BY assigned_at ASC"
+    "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND assigned_to=? AND status IN ('pending','in_progress') ORDER BY assigned_at DESC"
   ).all(hotelId, req.user.username);
   const enriched = myAssignments.map(a => ({
     ...a,
@@ -2822,7 +2822,7 @@ app.get('/api/housekeeping/assignments', authenticate, requireRole('owner', 'adm
     ).all(hotelId);
   } else {
     rows = db.prepare(
-      "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND assigned_to=? AND status IN ('pending','in_progress') ORDER BY assigned_at ASC"
+      "SELECT * FROM housekeeping_assignments WHERE hotel_id=? AND assigned_to=? AND status IN ('pending','in_progress') ORDER BY assigned_at DESC"
     ).all(hotelId, req.user.username);
   }
 

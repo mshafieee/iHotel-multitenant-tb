@@ -255,6 +255,7 @@ function TicketDrawer({ ticket, s, isManager, housekeepers, onClose, onSaved }) 
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">{s.status}</label>
                 <select
+                  dir="ltr"
                   value={status}
                   onChange={e => setStatus(e.target.value)}
                   className="input"
@@ -269,6 +270,7 @@ function TicketDrawer({ ticket, s, isManager, housekeepers, onClose, onSaved }) 
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">{s.assignedTo}</label>
                 <select
+                  dir="ltr"
                   value={assignedTo}
                   onChange={e => setAssignedTo(e.target.value)}
                   className="input"
@@ -276,7 +278,7 @@ function TicketDrawer({ ticket, s, isManager, housekeepers, onClose, onSaved }) 
                   <option value="">{s.unassigned}</option>
                   {housekeepers.map(hk => (
                     <option key={hk.username} value={hk.username}>
-                      {hk.full_name || hk.username}
+                      [{hk.role}] {hk.full_name || hk.username}
                     </option>
                   ))}
                 </select>
@@ -369,10 +371,10 @@ export default function MaintenancePanel({ onCountChange }) {
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
-  // fetch housekeepers for assignment dropdown (managers only)
+  // fetch all assignable staff (admin, housekeeper, maintenance) for the dropdown
   useEffect(() => {
     if (!isManager) return;
-    api('/api/housekeeping/housekeepers').then(setHousekeepers).catch(() => {});
+    api('/api/housekeeping/maintenance-workers').then(setHousekeepers).catch(() => {});
   }, [isManager]);
 
   // SSE real-time updates
