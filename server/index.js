@@ -3033,6 +3033,119 @@ app.delete('/api/housekeeping/assignments/:id', authenticate, requireRole('owner
   res.json({ success: true });
 });
 
+// ═══ MAINTENANCE TICKETS ═══════════════════════════════════════════════════
+
+// GET /api/maintenance  — all roles except guest; housekeepers see own tickets
+app.get('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+  const hotelId   = req.user.hotelId;
+  const isManager = ['owner', 'admin', 'frontdesk'].includes(req.user.role);
+  const { status } = req.query;
+
+  let sql  = 'SELECT * FROM maintenance_tickets WHERE hotel_id=?';
+  const params = [hotelId];
+
+  if (!isManager) {
+    sql += ' AND reported_by=?';
+    params.push(req.user.username);
+  }
+  if (status && status !== 'all') {
+    sql += ' AND status=?';
+    params.push(status);
+  }
+  sql += ' ORDER BY created_at DESC LIMIT 500';
+
+  res.json(db.prepare(sql).all(...params));
+});
+
+// POST /api/maintenance  — any staff (including housekeeper) can open a ticket
+app.post('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { room_number, category, description, priority = 'medium' } = req.body;
+
+  if (!category || !description) {
+    return res.status(400).json({ error: 'category and description are required' });
+  }
+
+  const validCategories = ['AC', 'Plumbing', 'Electrical', 'Furniture', 'Cleaning', 'Other'];
+  const validPriorities = ['low', 'medium', 'high', 'urgent'];
+
+  if (!validCategories.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+  if (!validPriorities.includes(priority)) {
+    return res.status(400).json({ error: 'Invalid priority' });
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO maintenance_tickets (hotel_id, room_number, category, description, priority, status, reported_by)
+    VALUES (?, ?, ?, ?, ?, 'open', ?)
+  `);
+  const result = stmt.run(hotelId, room_number || null, category, description, priority, req.user.username);
+  const ticket = db.prepare('SELECT * FROM maintenance_tickets WHERE id=?').get(result.lastInsertRowid);
+
+  addLog(hotelId, 'maintenance', `Ticket #${ticket.id} opened by ${req.user.username}: [${category}] ${description.slice(0, 60)}`, { user: req.user.username });
+  sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'created', ticket }, ['owner', 'admin', 'frontdesk']);
+
+  res.status(201).json(ticket);
+});
+
+// PATCH /api/maintenance/:id  — managers can update status/assignment/notes; reporter can only update description
+app.patch('/api/maintenance/:id', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+  const hotelId   = req.user.hotelId;
+  const isManager = ['owner', 'admin', 'frontdesk'].includes(req.user.role);
+  const ticket    = db.prepare('SELECT * FROM maintenance_tickets WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  // Housekeepers can only edit their own tickets and only when open
+  if (!isManager && ticket.reported_by !== req.user.username) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { status, assigned_to, notes, description, priority } = req.body;
+  const now = Math.floor(Date.now() / 1000);
+
+  const updates = ['updated_at=?'];
+  const params  = [now];
+
+  if (isManager) {
+    if (status)      { updates.push('status=?');      params.push(status); }
+    if (assigned_to !== undefined) { updates.push('assigned_to=?'); params.push(assigned_to); }
+    if (notes !== undefined) { updates.push('notes=?'); params.push(notes); }
+    if (priority)    { updates.push('priority=?');    params.push(priority); }
+    if (description) { updates.push('description=?'); params.push(description); }
+    if (status === 'resolved') { updates.push('resolved_at=?'); params.push(now); }
+  } else {
+    if (description && ticket.status === 'open') { updates.push('description=?'); params.push(description); }
+  }
+
+  params.push(ticket.id);
+  db.prepare(`UPDATE maintenance_tickets SET ${updates.join(', ')} WHERE id=?`).run(...params);
+
+  const updated = db.prepare('SELECT * FROM maintenance_tickets WHERE id=?').get(ticket.id);
+  addLog(hotelId, 'maintenance', `Ticket #${ticket.id} updated by ${req.user.username}`, { user: req.user.username });
+  sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'updated', ticket: updated }, ['owner', 'admin', 'frontdesk']);
+  if (ticket.reported_by !== req.user.username) {
+    sseBroadcastUser(hotelId, ticket.reported_by, 'maintenance_update', { action: 'updated', ticket: updated });
+  }
+
+  res.json(updated);
+});
+
+// DELETE /api/maintenance/:id  — managers only; hard-delete (rare, for test data)
+app.delete('/api/maintenance/:id', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const ticket  = db.prepare('SELECT * FROM maintenance_tickets WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+  db.prepare('DELETE FROM maintenance_tickets WHERE id=?').run(ticket.id);
+  addLog(hotelId, 'maintenance', `Ticket #${ticket.id} deleted by ${req.user.username}`, { user: req.user.username });
+  sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'deleted', id: ticket.id }, ['owner', 'admin', 'frontdesk']);
+
+  res.json({ success: true });
+});
+
 // ═══ SCENES CRUD ═══
 
 app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {

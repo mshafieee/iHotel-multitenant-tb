@@ -28,7 +28,8 @@ import useHotelStore from '../store/hotelStore';
 import useAuthStore  from '../store/authStore';
 import useLangStore  from '../store/langStore';
 import { t }         from '../i18n';
-import { getAccessToken } from '../utils/api';
+import { getAccessToken, api } from '../utils/api';
+import { X, Loader2 } from 'lucide-react';
 
 // ── Web Push subscription helper ─────────────────────────────────────────────
 async function subscribeToPush(token) {
@@ -317,9 +318,12 @@ function HousekeeperView({ T }) {
     hkStart, hkComplete,
   } = useHotelStore();
 
-  const [busy, setBusy]           = useState(null);
-  const [flash, setFlash]         = useState(null);
-  const [pushState, setPushState] = useState('idle'); // 'idle'|'subscribing'|'on'|'unsupported'
+  const [busy, setBusy]               = useState(null);
+  const [flash, setFlash]             = useState(null);
+  const [pushState, setPushState]     = useState('idle'); // 'idle'|'subscribing'|'on'|'unsupported'
+  const [reportRoom, setReportRoom]   = useState(null);  // room number string when modal open
+  const [myReports, setMyReports]     = useState([]);
+  const [reportsLoaded, setReportsLoaded] = useState(false);
 
   const showFlash = useCallback((type, msg) => {
     setFlash({ type, msg });
@@ -327,6 +331,16 @@ function HousekeeperView({ T }) {
   }, []);
 
   useEffect(() => { fetchHKAssignments(); }, [fetchHKAssignments]);
+
+  // Load my maintenance reports
+  const fetchMyReports = useCallback(async () => {
+    try {
+      const data = await api('/api/maintenance');
+      setMyReports(data);
+      setReportsLoaded(true);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchMyReports(); }, [fetchMyReports]);
 
   // Check existing push subscription on mount
   useEffect(() => {
@@ -419,7 +433,8 @@ function HousekeeperView({ T }) {
           <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('hk_section_cleaning')}</div>
           {inProgress.map(a => (
             <RoomTaskCard key={a.id} a={a} busy={busy} T={T}
-              onDone={() => handleDone(a.id, a.room)} />
+              onDone={() => handleDone(a.id, a.room)}
+              onReport={() => setReportRoom(a.room)} />
           ))}
         </div>
       )}
@@ -430,16 +445,197 @@ function HousekeeperView({ T }) {
           <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('hk_section_todo')}</div>
           {pending.map(a => (
             <RoomTaskCard key={a.id} a={a} busy={busy} T={T}
-              onStart={() => handleStart(a.id, a.room)} />
+              onStart={() => handleStart(a.id, a.room)}
+              onReport={() => setReportRoom(a.room)} />
           ))}
         </div>
+      )}
+
+      {/* My Reports */}
+      <div className="space-y-2 pt-2">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('maint_my_reports')}</div>
+          <button onClick={() => setReportRoom('')}
+            className="text-xs font-semibold text-brand-500 hover:underline">
+            + {T('maint_report_btn')}
+          </button>
+        </div>
+        {reportsLoaded && myReports.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-3">{T('maint_no_reports')}</p>
+        ) : (
+          myReports.map(r => {
+            const statusColors = { open: 'bg-blue-50 text-blue-600', in_progress: 'bg-amber-50 text-amber-600', resolved: 'bg-emerald-50 text-emerald-700' };
+            const statusKey    = { open: 'maint_status_open', in_progress: 'maint_status_inprog', resolved: 'maint_status_resolved' };
+            return (
+              <div key={r.id} className="card p-3 flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-gray-700 truncate">{r.description}</span>
+                    {r.room_number && <span className="text-xs text-gray-400">Rm {r.room_number}</span>}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[r.status] || 'bg-gray-100 text-gray-400'}`}>
+                      {T(statusKey[r.status]) || r.status}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{r.category}</span>
+                  </div>
+                  {r.notes && (
+                    <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1">
+                      💬 {r.notes}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Report Issue modal */}
+      {reportRoom !== null && (
+        <ReportIssueModal
+          defaultRoom={reportRoom}
+          T={T}
+          onClose={() => setReportRoom(null)}
+          onSubmitted={() => {
+            setReportRoom(null);
+            showFlash('ok', T('maint_submitted_ok'));
+            fetchMyReports();
+          }}
+        />
       )}
     </div>
   );
 }
 
+// ── Maintenance report modal ─────────────────────────────────────────────────
+const MAINT_CATEGORIES = ['AC', 'Plumbing', 'Electrical', 'Furniture', 'Cleaning', 'Other'];
+const MAINT_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+const MAINT_CAT_KEY    = { AC: 'maint_cat_ac', Plumbing: 'maint_cat_plumbing', Electrical: 'maint_cat_electrical', Furniture: 'maint_cat_furniture', Cleaning: 'maint_cat_cleaning', Other: 'maint_cat_other' };
+const MAINT_PRI_KEY    = { low: 'maint_pri_low', medium: 'maint_pri_medium', high: 'maint_pri_high', urgent: 'maint_pri_urgent' };
+
+function ReportIssueModal({ defaultRoom, T, onClose, onSubmitted }) {
+  const [category,    setCategory]    = useState('');
+  const [description, setDescription] = useState('');
+  const [priority,    setPriority]    = useState('medium');
+  const [room,        setRoom]        = useState(defaultRoom || '');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [error,       setError]       = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!category || !description.trim()) return;
+    setSubmitting(true); setError('');
+    try {
+      await api('/api/maintenance', {
+        method: 'POST',
+        body: JSON.stringify({ category, description: description.trim(), priority, room_number: room || undefined }),
+      });
+      onSubmitted();
+    } catch (err) {
+      setError(err.message || 'Failed to submit');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+        {/* header */}
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-800">🔧 {T('maint_modal_title')}</h3>
+          <button onClick={onClose} className="btn btn-ghost p-1.5"><X size={15} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* room */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">{T('maint_room')}</label>
+            <input
+              type="text"
+              value={room}
+              onChange={e => setRoom(e.target.value)}
+              className="input"
+              placeholder="e.g. 101"
+            />
+          </div>
+
+          {/* category */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">{T('maint_category')} *</label>
+            <div className="flex flex-wrap gap-1.5">
+              {MAINT_CATEGORIES.map(c => (
+                <button
+                  key={c} type="button"
+                  onClick={() => setCategory(c)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                    category === c
+                      ? 'bg-brand-500 text-white border-brand-500'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {T(MAINT_CAT_KEY[c])}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* priority */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">{T('maint_priority')}</label>
+            <div className="flex gap-1.5">
+              {MAINT_PRIORITIES.map(p => (
+                <button
+                  key={p} type="button"
+                  onClick={() => setPriority(p)}
+                  className={`flex-1 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                    priority === p
+                      ? 'bg-brand-500 text-white border-brand-500'
+                      : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {T(MAINT_PRI_KEY[p])}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* description */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">{T('maint_description')} *</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={3}
+              className="input resize-none"
+              placeholder={T('maint_description_ph')}
+              required
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="btn btn-ghost flex-1">{T('maint_cancel')}</button>
+            <button
+              type="submit"
+              disabled={submitting || !category || !description.trim()}
+              className="btn btn-primary flex-1 flex items-center justify-center gap-1"
+            >
+              {submitting && <Loader2 size={13} className="animate-spin" />}
+              {submitting ? T('maint_submitting') : T('maint_submit')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Individual room task card (housekeeper view) ────────────────────────────
-function RoomTaskCard({ a, busy, onStart, onDone, T }) {
+function RoomTaskCard({ a, busy, onStart, onDone, onReport, T }) {
   const isInProgress = a.status === 'in_progress';
   const isBusy       = busy === a.id;
 
@@ -469,8 +665,8 @@ function RoomTaskCard({ a, busy, onStart, onDone, T }) {
           </div>
         </div>
 
-        {/* Action button */}
-        <div className="shrink-0 ml-4">
+        {/* Action buttons */}
+        <div className="shrink-0 ml-4 flex flex-col gap-2 items-end">
           {!isInProgress && onStart && (
             <button onClick={onStart} disabled={isBusy}
               className="px-4 py-2 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition disabled:opacity-50">
@@ -481,6 +677,12 @@ function RoomTaskCard({ a, busy, onStart, onDone, T }) {
             <button onClick={onDone} disabled={isBusy}
               className="px-4 py-2 rounded-xl font-bold text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition disabled:opacity-50">
               {isBusy ? '…' : T('hk_btn_done')}
+            </button>
+          )}
+          {onReport && (
+            <button onClick={onReport}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">
+              {T('maint_report_btn')}
             </button>
           )}
         </div>

@@ -37,6 +37,7 @@ const translations = {
   tab_reviews:       { ar: 'تقييمات الضيوف',   en: 'Reviews' },
   tab_simulator:     { ar: 'المحاكي',           en: 'Simulator' },
   tab_housekeeping:  { ar: 'عمال النظافة',      en: 'Housekeeping' },
+  tab_maintenance:   { ar: 'الصيانة',           en: 'Maintenance' },
 
   // ── Roles ────────────────────────────────────────────────────────────────
   role_owner:        { ar: 'مالك — صلاحية كاملة', en: 'Owner — Full Access' },
@@ -95,6 +96,35 @@ const translations = {
   hk_picker_empty:        { ar: 'لا يوجد حسابات نظافة.\nأنشئ واحداً من تبويب المستخدمين.', en: 'No housekeeper accounts found.\nCreate one in the Users tab.' },
   hk_assigned_ok:         { ar: 'تم التكليف لـ',                    en: 'Assigned to' },
   hk_already_assigned:    { ar: 'الغرفة لديها تكليف نشط بالفعل.',   en: 'Room already has an active assignment.' },
+
+  // ── Maintenance tickets ───────────────────────────────────────────────────
+  maint_report_btn:       { ar: '🔧 بلّغ عن مشكلة',               en: '🔧 Report Issue' },
+  maint_modal_title:      { ar: 'بلّغ عن مشكلة صيانة',            en: 'Report Maintenance Issue' },
+  maint_category:         { ar: 'الفئة',                           en: 'Category' },
+  maint_description:      { ar: 'الوصف',                          en: 'Description' },
+  maint_description_ph:   { ar: 'صِف المشكلة بالتفصيل…',          en: 'Describe the issue in detail…' },
+  maint_priority:         { ar: 'الأولوية',                       en: 'Priority' },
+  maint_room:             { ar: 'رقم الغرفة',                     en: 'Room Number' },
+  maint_submit:           { ar: 'إرسال البلاغ',                   en: 'Submit Report' },
+  maint_submitting:       { ar: 'جارٍ الإرسال…',                  en: 'Submitting…' },
+  maint_cancel:           { ar: 'إلغاء',                          en: 'Cancel' },
+  maint_submitted_ok:     { ar: '✅ تم إرسال البلاغ',             en: '✅ Report submitted' },
+  maint_my_reports:       { ar: 'بلاغاتي',                       en: 'My Reports' },
+  maint_no_reports:       { ar: 'لا توجد بلاغات مرسلة.',         en: 'No reports submitted yet.' },
+  maint_cat_ac:           { ar: 'تكييف الهواء',                   en: 'Air Conditioning' },
+  maint_cat_plumbing:     { ar: 'سباكة',                         en: 'Plumbing' },
+  maint_cat_electrical:   { ar: 'كهرباء',                        en: 'Electrical' },
+  maint_cat_furniture:    { ar: 'أثاث',                          en: 'Furniture' },
+  maint_cat_cleaning:     { ar: 'نظافة',                         en: 'Cleaning' },
+  maint_cat_other:        { ar: 'أخرى',                          en: 'Other' },
+  maint_pri_low:          { ar: 'منخفضة',                        en: 'Low' },
+  maint_pri_medium:       { ar: 'متوسطة',                        en: 'Medium' },
+  maint_pri_high:         { ar: 'عالية',                         en: 'High' },
+  maint_pri_urgent:       { ar: 'عاجلة',                         en: 'Urgent' },
+  maint_status_open:      { ar: 'مفتوح',                         en: 'Open' },
+  maint_status_inprog:    { ar: 'قيد التنفيذ',                   en: 'In Progress' },
+  maint_status_resolved:  { ar: 'محلول',                         en: 'Resolved' },
+  maint_notes:            { ar: 'ملاحظات الإدارة',               en: 'Admin Notes' },
 
   // ── Room statuses ─────────────────────────────────────────────────────────
   status_vacant:       { ar: 'شاغرة',           en: 'Vacant' },

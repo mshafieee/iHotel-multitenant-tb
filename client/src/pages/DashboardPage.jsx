@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel, BedDouble, Star } from 'lucide-react';
+import { Building2, LogOut, LayoutGrid, BookOpen, ScrollText, DollarSign, Users, Clock, FlaskConical, Zap, Hotel, BedDouble, Star, Wrench } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import useHotelStore from '../store/hotelStore';
 import useLangStore from '../store/langStore';
@@ -20,6 +20,7 @@ import ScenesPanel from '../components/ScenesPanel';
 import HotelInfoPanel from '../components/HotelInfoPanel';
 import HousekeepingPanel from '../components/HousekeepingPanel';
 import ReviewsPanel from '../components/ReviewsPanel';
+import MaintenancePanel from '../components/MaintenancePanel';
 
 // ── Audio alerts via Web Audio API ─────────────────────────────────────────
 // Browsers require a user gesture before AudioContext can play sound.
@@ -130,16 +131,26 @@ export default function DashboardPage() {
   const canSeeShifts       = isOwner || isAdmin || isFrontdesk;
   // Housekeeping tab: managers assign rooms; housekeepers see their own tasks
   const canSeeHousekeeping = isOwner || isAdmin || isFrontdesk || isHousekeeper;
+  const canSeeMaintenance  = isOwner || isAdmin || isFrontdesk || isHousekeeper;
 
   // Pending housekeeping assignments for the tab badge (manager view only)
   const hkPendingCount = isHousekeeper
     ? hkAssignments.filter(a => a.status === 'pending').length
     : hkAssignments.filter(a => ['pending', 'in_progress'].includes(a.status)).length;
 
+  const [maintOpenCount, setMaintOpenCount] = useState(0);
+  useEffect(() => {
+    if (!canSeeMaintenance) return;
+    api('/api/maintenance?status=open')
+      .then(data => setMaintOpenCount(data.length))
+      .catch(() => {});
+  }, [canSeeMaintenance]);
+
   const TABS = [
     { id: 'rooms',        label: T('tab_rooms'),      icon: LayoutGrid,  visible: canSeeRooms },
     { id: 'pms',          label: T('tab_pms'),         icon: BookOpen,    visible: canSeePMS,          badge: todayCheckouts?.length },
     { id: 'housekeeping', label: T('tab_housekeeping'), icon: BedDouble,   visible: canSeeHousekeeping, badge: hkPendingCount },
+    { id: 'maintenance',  label: T('tab_maintenance'),  icon: Wrench,      visible: canSeeMaintenance,  badge: maintOpenCount },
     { id: 'logs',         label: T('tab_logs'),        icon: ScrollText,  visible: canSeeLogs },
     { id: 'finance',      label: T('tab_finance'),     icon: DollarSign,  visible: canSeeFinance },
     { id: 'users',        label: T('tab_users'),       icon: Users,       visible: canSeeUsers },
@@ -300,6 +311,7 @@ export default function DashboardPage() {
         )}
         {tab === 'pms'          && <PMSPanel autoFillRoom={pmsAutoFillRoom} onAutoFillConsumed={() => setPmsAutoFillRoom(null)} />}
         {tab === 'housekeeping' && <HousekeepingPanel />}
+        {tab === 'maintenance'  && <MaintenancePanel onCountChange={setMaintOpenCount} />}
         {tab === 'logs'         && <LogsPanel />}
         {tab === 'finance'      && <FinancePanel />}
         {tab === 'users'        && <UsersPanel />}
