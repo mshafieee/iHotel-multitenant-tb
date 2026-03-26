@@ -47,7 +47,7 @@ const {
   authenticatePlatformAdmin, generatePlatformAdminToken,
   authenticatePlatformAny, authenticateGroupUser, generateGroupUserToken
 } = require('./auth');
-const { seedHotelRates, seedHotelUsers, seedRoomDefaultScenes } = require('./db');
+const { seedHotelRates, seedHotelUpsellOffers, seedHotelUsers, seedRoomDefaultScenes } = require('./db');
 const { ThingsBoardClient, ThingsBoardClientPool } = require('./thingsboard');
 
 const router = express.Router();
@@ -162,6 +162,7 @@ router.post('/hotels', authenticatePlatformAdmin, (req, res) => {
            tbHost || null, tbUser || null, tbPass || null);
 
     seedHotelRates(_db, id);
+    seedHotelUpsellOffers(_db, id);
     seedHotelUsers(_db, id, slug);
 
     res.json({

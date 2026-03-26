@@ -511,6 +511,55 @@ function initDB() {
     markMigration('024_maintenance_tickets');
   }
 
+  // ── Migration 025: upsell offers catalog ─────────────────────────────────
+  if (!hasMigration('025_upsell_offers')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS upsell_offers (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        hotel_id       TEXT    NOT NULL,
+        name           TEXT    NOT NULL,
+        name_ar        TEXT    NOT NULL,
+        description    TEXT,
+        description_ar TEXT,
+        category       TEXT    NOT NULL DEFAULT 'SERVICE',
+        price          REAL    NOT NULL DEFAULT 0,
+        unit           TEXT    NOT NULL DEFAULT 'one-time',
+        active         INTEGER NOT NULL DEFAULT 1,
+        sort_order     INTEGER NOT NULL DEFAULT 0,
+        created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+      )
+    `);
+    console.log('✓ Migration 025: created upsell_offers table');
+    markMigration('025_upsell_offers');
+  }
+
+  // ── Migration 026: reservation extras (guest orders) ─────────────────────
+  if (!hasMigration('026_reservation_extras')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS reservation_extras (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        hotel_id         TEXT    NOT NULL,
+        reservation_id   TEXT    NOT NULL,
+        offer_id         INTEGER NOT NULL,
+        offer_name       TEXT    NOT NULL,
+        offer_name_ar    TEXT    NOT NULL,
+        quantity         INTEGER NOT NULL DEFAULT 1,
+        unit_price       REAL    NOT NULL,
+        total_price      REAL    NOT NULL,
+        status           TEXT    NOT NULL DEFAULT 'pending',
+        requested_by     TEXT    NOT NULL,
+        staff_note       TEXT,
+        created_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY (hotel_id)       REFERENCES hotels(id),
+        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+      )
+    `);
+    console.log('✓ Migration 026: created reservation_extras table');
+    markMigration('026_reservation_extras');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (
@@ -678,6 +727,17 @@ function seedHotelRates(db, hotelId) {
   ins.run(hotelId, 'VIP',     2500);
 }
 
+// ── Seed default upsell offers for a new hotel ──────────────────────────────
+function seedHotelUpsellOffers(db, hotelId) {
+  const ins = db.prepare(`INSERT OR IGNORE INTO upsell_offers
+    (hotel_id, name, name_ar, category, price, unit, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  ins.run(hotelId, 'Breakfast in Bed',         'إفطار في الغرفة',         'FOOD',      75,  'per-person', 0);
+  ins.run(hotelId, 'Airport Transfer',          'توصيل المطار',            'TRANSPORT', 150, 'one-time',   1);
+  ins.run(hotelId, 'Welcome Flowers & Fruits',  'زهور وفاكهة ترحيبية',     'AMENITY',   120, 'one-time',   2);
+  ins.run(hotelId, 'Laundry Service',           'خدمة الغسيل',             'SERVICE',   60,  'one-time',   3);
+}
+
 // ── Seed default staff users for a new hotel ────────────────────────────────
 function seedHotelUsers(db, hotelId, slug = '') {
   const password = slug ? `iHotel-${slug}-2026` : 'iHotel2026!';
@@ -722,4 +782,4 @@ function seedRoomDefaultScenes(db, hotelId, roomNumber) {
   );
 }
 
-module.exports = { initDB, seedHotelRates, seedHotelUsers, seedRoomDefaultScenes };
+module.exports = { initDB, seedHotelRates, seedHotelUpsellOffers, seedHotelUsers, seedRoomDefaultScenes };

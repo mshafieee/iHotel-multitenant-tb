@@ -575,6 +575,136 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     </Section>
   );
 
+  // ── Guest-only extras widget ─────────────────────────────────────────────
+  const ExtrasWidget = () => {
+    const [offers,      setOffers]      = useState([]);
+    const [myExtras,    setMyExtras]    = useState([]);
+    const [quantities,  setQuantities]  = useState({});   // { [offerId]: number }
+    const [submitting,  setSubmitting]  = useState(null); // offerId being submitted
+    const [flash,       setFlash]       = useState(null);
+
+    const CAT_EMOJI = { FOOD: '🍳', TRANSPORT: '🚗', AMENITY: '🌸', SERVICE: '🛎️' };
+    const STATUS_CHIP = {
+      pending:   'bg-amber-50 text-amber-700 border-amber-200',
+      confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      delivered: 'bg-blue-50 text-blue-700 border-blue-200',
+      cancelled: 'bg-gray-100 text-gray-400 border-gray-200',
+    };
+    const STATUS_LABEL = {
+      pending:   T('upsell_status_pending'),
+      confirmed: T('upsell_status_confirmed'),
+      delivered: T('upsell_status_delivered'),
+      cancelled: T('upsell_status_cancelled'),
+    };
+
+    useEffect(() => {
+      api('/api/upsell/offers').then(setOffers).catch(() => {});
+      api('/api/upsell/my-extras').then(setMyExtras).catch(() => {});
+    }, []);
+
+    // Refresh my-extras when SSE delivers upsell_update
+    useEffect(() => {
+      const handler = () => api('/api/upsell/my-extras').then(setMyExtras).catch(() => {});
+      window.addEventListener('upsell_update_guest', handler);
+      return () => window.removeEventListener('upsell_update_guest', handler);
+    }, []);
+
+    const handleRequest = async (offer) => {
+      const qty = quantities[offer.id] || 1;
+      setSubmitting(offer.id);
+      try {
+        const extra = await api('/api/upsell/extras', {
+          method: 'POST',
+          body: JSON.stringify({ offerId: offer.id, quantity: qty }),
+        });
+        setMyExtras(prev => [extra, ...prev]);
+        setFlash(T('upsell_requested_ok'));
+        setTimeout(() => setFlash(null), 3000);
+      } catch (e) {
+        setFlash('⚠️ ' + (e.message || 'Failed'));
+        setTimeout(() => setFlash(null), 3000);
+      } finally {
+        setSubmitting(null);
+      }
+    };
+
+    const offerName = (o) => lang === 'ar' ? (o.name_ar || o.name) : o.name;
+    const unitLabel = (u) => ({ 'one-time': T('upsell_unit_once'), 'per-night': T('upsell_unit_night'), 'per-person': T('upsell_unit_person') }[u] || u);
+
+    return (
+      <Section title={T('upsell_tab')}>
+        {flash && (
+          <div className="text-xs font-semibold rounded-lg px-3 py-2 mb-2 bg-emerald-50 text-emerald-700">
+            {flash}
+          </div>
+        )}
+
+        {/* Available offers */}
+        {offers.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-4">{T('upsell_no_offers')}</p>
+        ) : (
+          <div className="space-y-2">
+            {offers.map(offer => {
+              const qty = quantities[offer.id] || 1;
+              const isBusy = submitting === offer.id;
+              return (
+                <div key={offer.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                  <span className="text-xl shrink-0">{CAT_EMOJI[offer.category] || '🛎️'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{offerName(offer)}</p>
+                    <p className="text-[10px] text-gray-400">{offer.price} SAR · {unitLabel(offer.unit)}</p>
+                  </div>
+                  {/* Qty stepper */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setQuantities(q => ({ ...q, [offer.id]: Math.max(1, (q[offer.id] || 1) - 1) }))}
+                      className="w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition"
+                    >−</button>
+                    <span className="w-5 text-center text-xs font-bold text-gray-700">{qty}</span>
+                    <button
+                      onClick={() => setQuantities(q => ({ ...q, [offer.id]: (q[offer.id] || 1) + 1 }))}
+                      className="w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition"
+                    >+</button>
+                  </div>
+                  <button
+                    onClick={() => handleRequest(offer)}
+                    disabled={isBusy}
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white hover:opacity-90 transition disabled:opacity-50"
+                  >
+                    {isBusy ? '…' : T('upsell_request_btn')}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* My existing orders */}
+        {myExtras.length > 0 && (
+          <div className="mt-3 space-y-1">
+            <p className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{T('upsell_my_orders')}</p>
+            {myExtras.map(ex => (
+              <div key={ex.id} className="flex items-center gap-2 text-xs">
+                <span className="flex-1 truncate text-gray-700">
+                  {lang === 'ar' ? (ex.offer_name_ar || ex.offer_name) : ex.offer_name}
+                  {ex.quantity > 1 && <span className="text-gray-400"> ×{ex.quantity}</span>}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_CHIP[ex.status] || 'bg-gray-100 text-gray-400'}`}>
+                  {STATUS_LABEL[ex.status] || ex.status}
+                </span>
+                {ex.staff_note && (
+                  <span className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 max-w-[120px] truncate" title={ex.staff_note}>
+                    💬 {ex.staff_note}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+    );
+  };
+
   const servicesSection = (
     <Section title={T('rm_services')}>
       <div className="flex gap-2">
@@ -775,6 +905,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               {curtainsSection}
               {presetsSection}
               {servicesSection}
+              <ExtrasWidget />
             </>
           ) : (
             /* ── STAFF ORDER: Sensors → Door → Presets → Lights → AC → Curtains → Services → … ── */

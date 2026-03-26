@@ -29,7 +29,14 @@ export default function HotelInfoPanel() {
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  // Upsell catalog state
+  const [catalog, setCatalog] = useState([]);
+  const [offerForm, setOfferForm] = useState({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0 });
+  const [showOfferForm, setShowOfferForm] = useState(false);
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [catalogSaved, setCatalogSaved] = useState(false);
+
+  useEffect(() => { load(); loadCatalog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     try {
@@ -113,6 +120,44 @@ export default function HotelInfoPanel() {
       if (data.success) setProfile(p => ({ ...p, heroImageUrl: data.imageUrl }));
     } catch (e) { alert('Upload failed: ' + e.message); }
     finally { setUploading(null); }
+  }
+
+  async function loadCatalog() {
+    try {
+      const data = await api('/api/upsell/catalog');
+      setCatalog(data);
+    } catch {}
+  }
+
+  async function saveOffer() {
+    if (!offerForm.name || !offerForm.name_ar || !offerForm.price) return;
+    try {
+      if (editingOffer) {
+        await api(`/api/upsell/catalog/${editingOffer}`, { method: 'PATCH', body: JSON.stringify(offerForm) });
+      } else {
+        await api('/api/upsell/catalog', { method: 'POST', body: JSON.stringify(offerForm) });
+      }
+      setShowOfferForm(false);
+      setEditingOffer(null);
+      setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0 });
+      setCatalogSaved(true);
+      setTimeout(() => setCatalogSaved(false), 2000);
+      loadCatalog();
+    } catch (e) { alert('Save failed: ' + e.message); }
+  }
+
+  async function deleteOffer(id) {
+    if (!confirm(T('upsell_delete_confirm'))) return;
+    try {
+      await api(`/api/upsell/catalog/${id}`, { method: 'DELETE' });
+      loadCatalog();
+    } catch (e) { alert('Delete failed: ' + e.message); }
+  }
+
+  function startEditOffer(offer) {
+    setEditingOffer(offer.id);
+    setOfferForm({ name: offer.name, name_ar: offer.name_ar, category: offer.category, price: offer.price, unit: offer.unit, active: !!offer.active, sort_order: offer.sort_order });
+    setShowOfferForm(true);
   }
 
   const bookingUrl = profile.bookingEnabled && hotelSlug
@@ -285,6 +330,112 @@ export default function HotelInfoPanel() {
             );
           })}
         </div>
+      </div>
+
+      {/* Upsell Offers Catalog */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-gray-700">{T('upsell_catalog_title')}</h3>
+          <div className="flex items-center gap-2">
+            {catalogSaved && <span className="text-xs text-emerald-600 font-semibold">{T('upsell_saved_ok')}</span>}
+            <button onClick={() => { setEditingOffer(null); setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0 }); setShowOfferForm(true); }}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition">
+              <Plus size={12} /> {T('upsell_add_offer')}
+            </button>
+          </div>
+        </div>
+
+        {showOfferForm && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{T('upsell_offer_name')}</div>
+                <input className="input" value={offerForm.name} onChange={e => setOfferForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Breakfast in Bed" />
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{T('upsell_offer_name_ar')}</div>
+                <input className="input" dir="rtl" value={offerForm.name_ar} onChange={e => setOfferForm(f => ({ ...f, name_ar: e.target.value }))} placeholder="مثال: إفطار في السرير" />
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{lang === 'ar' ? 'الفئة' : 'Category'}</div>
+                <select className="input" value={offerForm.category} onChange={e => setOfferForm(f => ({ ...f, category: e.target.value }))}>
+                  <option value="FOOD">{T('upsell_cat_food')}</option>
+                  <option value="TRANSPORT">{T('upsell_cat_transport')}</option>
+                  <option value="AMENITY">{T('upsell_cat_amenity')}</option>
+                  <option value="SERVICE">{T('upsell_cat_service')}</option>
+                </select>
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{T('upsell_price')} (SAR)</div>
+                <input className="input" type="number" min="0" value={offerForm.price} onChange={e => setOfferForm(f => ({ ...f, price: e.target.value }))} />
+              </div>
+              <div>
+                <div className="text-[9px] text-gray-400 uppercase mb-1">{lang === 'ar' ? 'الوحدة' : 'Unit'}</div>
+                <select className="input" value={offerForm.unit} onChange={e => setOfferForm(f => ({ ...f, unit: e.target.value }))}>
+                  <option value="one-time">{T('upsell_unit_once')}</option>
+                  <option value="per-night">{T('upsell_unit_night')}</option>
+                  <option value="per-person">{T('upsell_unit_person')}</option>
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input type="checkbox" checked={offerForm.active} onChange={e => setOfferForm(f => ({ ...f, active: e.target.checked }))} />
+                  {lang === 'ar' ? 'نشط' : 'Active'}
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={saveOffer} className="btn btn-primary text-xs">{T('upsell_confirm')}</button>
+              <button onClick={() => { setShowOfferForm(false); setEditingOffer(null); }} className="btn btn-ghost text-xs">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+            </div>
+          </div>
+        )}
+
+        {catalog.length === 0 ? (
+          <div className="text-xs text-gray-400 py-4 text-center">{T('upsell_no_offers')}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[9px] text-gray-400 uppercase border-b border-gray-100">
+                  <th className="pb-1 text-left">{T('upsell_offer_name')}</th>
+                  <th className="pb-1 text-left">{T('upsell_offer_name_ar')}</th>
+                  <th className="pb-1 text-left">{lang === 'ar' ? 'الفئة' : 'Category'}</th>
+                  <th className="pb-1 text-left">{T('upsell_price')}</th>
+                  <th className="pb-1 text-left">{lang === 'ar' ? 'الوحدة' : 'Unit'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'نشط' : 'Active'}</th>
+                  <th className="pb-1"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalog.map(offer => (
+                  <tr key={offer.id} className={`border-b border-gray-50 ${!offer.active ? 'opacity-50' : ''}`}>
+                    <td className="py-1.5">{offer.name}</td>
+                    <td className="py-1.5" dir="rtl">{offer.name_ar}</td>
+                    <td className="py-1.5">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] bg-gray-100 text-gray-500">{offer.category}</span>
+                    </td>
+                    <td className="py-1.5">{offer.price} SAR</td>
+                    <td className="py-1.5">{offer.unit}</td>
+                    <td className="py-1.5 text-center">{offer.active ? '✓' : '—'}</td>
+                    <td className="py-1.5 text-right">
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => startEditOffer(offer)}
+                          className="px-2 py-0.5 text-[10px] font-semibold rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition">
+                          {lang === 'ar' ? 'تعديل' : 'Edit'}
+                        </button>
+                        <button onClick={() => deleteOffer(offer.id)}
+                          className="px-2 py-0.5 text-[10px] font-semibold rounded bg-red-50 text-red-400 hover:bg-red-100 transition">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
