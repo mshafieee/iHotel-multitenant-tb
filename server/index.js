@@ -3519,6 +3519,51 @@ app.delete('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, 
   res.json({ success: true });
 });
 
+// ── GET /api/upsell/stats ─────────────────────────────────────────────────
+// Owner/admin: per-offer request counts + revenue totals
+app.get('/api/upsell/stats', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(`
+    SELECT
+      o.id, o.name, o.name_ar, o.category, o.price, o.unit,
+      COUNT(e.id)                                                AS total_requests,
+      COALESCE(SUM(e.quantity), 0)                              AS total_qty,
+      COALESCE(SUM(e.total_price), 0)                           AS total_revenue,
+      COUNT(CASE WHEN e.status = 'pending'   THEN 1 END)        AS pending_count,
+      COUNT(CASE WHEN e.status = 'confirmed' THEN 1 END)        AS confirmed_count,
+      COUNT(CASE WHEN e.status = 'delivered' THEN 1 END)        AS delivered_count,
+      COUNT(CASE WHEN e.status = 'cancelled' THEN 1 END)        AS cancelled_count
+    FROM upsell_offers o
+    LEFT JOIN reservation_extras e ON e.offer_id = o.id AND e.hotel_id = o.hotel_id
+    WHERE o.hotel_id = ?
+    GROUP BY o.id
+    ORDER BY total_requests DESC, o.sort_order
+  `).all(hotelId);
+  res.json(rows);
+});
+
+// ── GET /api/upsell/stats/:offerId/rooms ──────────────────────────────────
+// Owner/admin: per-room breakdown for one offer
+app.get('/api/upsell/stats/:offerId/rooms', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT id FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.offerId, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  const rows = db.prepare(`
+    SELECT
+      r.room,
+      COUNT(e.id)            AS total_requests,
+      COALESCE(SUM(e.quantity), 0)   AS total_qty,
+      COALESCE(SUM(e.total_price), 0) AS total_revenue
+    FROM reservation_extras e
+    JOIN reservations r ON r.id = e.reservation_id
+    WHERE e.hotel_id = ? AND e.offer_id = ?
+    GROUP BY r.room
+    ORDER BY total_requests DESC
+  `).all(hotelId, offer.id);
+  res.json(rows);
+});
+
 // ═══ SCENES CRUD ═══
 
 app.get('/api/scenes', authenticate, requireRole('owner', 'admin'), (req, res) => {

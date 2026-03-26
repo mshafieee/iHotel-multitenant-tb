@@ -36,7 +36,13 @@ export default function HotelInfoPanel() {
   const [editingOffer, setEditingOffer] = useState(null);
   const [catalogSaved, setCatalogSaved] = useState(false);
 
-  useEffect(() => { load(); loadCatalog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Upsell stats state
+  const [upsellStats, setUpsellStats] = useState([]);
+  const [expandedStat, setExpandedStat] = useState(null);   // offerId whose room breakdown is open
+  const [roomStats, setRoomStats] = useState({});            // { [offerId]: rows[] }
+  const [roomStatsLoading, setRoomStatsLoading] = useState(false);
+
+  useEffect(() => { load(); loadCatalog(); loadStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     try {
@@ -127,6 +133,24 @@ export default function HotelInfoPanel() {
       const data = await api('/api/upsell/catalog');
       setCatalog(data);
     } catch {}
+  }
+
+  async function loadStats() {
+    try {
+      const data = await api('/api/upsell/stats');
+      setUpsellStats(data);
+    } catch {}
+  }
+
+  async function toggleRoomStats(offerId) {
+    if (expandedStat === offerId) { setExpandedStat(null); return; }
+    setExpandedStat(offerId);
+    if (roomStats[offerId]) return; // already loaded
+    setRoomStatsLoading(true);
+    try {
+      const data = await api(`/api/upsell/stats/${offerId}/rooms`);
+      setRoomStats(prev => ({ ...prev, [offerId]: data }));
+    } catch {} finally { setRoomStatsLoading(false); }
   }
 
   async function saveOffer() {
@@ -463,6 +487,129 @@ export default function HotelInfoPanel() {
                       </div>
                     </td>
                   </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Upsell Services Statistics */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-gray-700">
+            {lang === 'ar' ? '📊 إحصائيات الخدمات' : '📊 Service Statistics'}
+          </h3>
+          <button onClick={loadStats} className="text-[10px] text-brand-500 hover:text-brand-700 font-semibold transition">
+            {lang === 'ar' ? '↻ تحديث' : '↻ Refresh'}
+          </button>
+        </div>
+
+        {upsellStats.length === 0 ? (
+          <div className="text-xs text-gray-400 py-4 text-center">
+            {lang === 'ar' ? 'لا توجد بيانات حتى الآن' : 'No requests recorded yet'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[9px] text-gray-400 uppercase border-b border-gray-100">
+                  <th className="pb-1 text-left">{lang === 'ar' ? 'الخدمة' : 'Service'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'الطلبات' : 'Requests'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'قيد الانتظار' : 'Pending'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'مؤكد' : 'Confirmed'}</th>
+                  <th className="pb-1 text-center">{lang === 'ar' ? 'تم التسليم' : 'Delivered'}</th>
+                  <th className="pb-1 text-right">{lang === 'ar' ? 'الإيراد' : 'Revenue'}</th>
+                  <th className="pb-1"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {upsellStats.map(stat => (
+                  <React.Fragment key={stat.id}>
+                    <tr className={`border-b border-gray-50 hover:bg-gray-50 transition ${expandedStat === stat.id ? 'bg-amber-50' : ''}`}>
+                      <td className="py-2">
+                        <div className="font-semibold text-gray-800">{lang === 'ar' ? stat.name_ar : stat.name}</div>
+                        <div className="text-[9px] text-gray-400">{stat.category}</div>
+                      </td>
+                      <td className="py-2 text-center">
+                        <span className="font-bold text-gray-700">{stat.total_requests}</span>
+                        {stat.total_qty > 0 && <div className="text-[9px] text-gray-400">×{stat.total_qty} {lang === 'ar' ? 'قطعة' : 'units'}</div>}
+                      </td>
+                      <td className="py-2 text-center">
+                        {stat.pending_count > 0
+                          ? <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700">{stat.pending_count}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-center">
+                        {stat.confirmed_count > 0
+                          ? <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">{stat.confirmed_count}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-center">
+                        {stat.delivered_count > 0
+                          ? <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700">{stat.delivered_count}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-right font-semibold text-gray-700">
+                        {stat.total_revenue > 0 ? `${stat.total_revenue.toLocaleString()} SAR` : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="py-2 text-right">
+                        {stat.total_requests > 0 && (
+                          <button
+                            onClick={() => toggleRoomStats(stat.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                              expandedStat === stat.id
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200'
+                            }`}
+                          >
+                            {expandedStat === stat.id
+                              ? (lang === 'ar' ? '▲ إخفاء' : '▲ Hide')
+                              : (lang === 'ar' ? '▼ تفاصيل' : '▼ Details')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Per-room breakdown accordion */}
+                    {expandedStat === stat.id && (
+                      <tr>
+                        <td colSpan={7} className="p-0">
+                          <div className="bg-amber-50 border-b border-amber-100 px-4 py-3">
+                            <div className="text-[9px] text-amber-600 uppercase tracking-widest font-semibold mb-2">
+                              {lang === 'ar' ? `توزيع الطلبات على الغرف — ${stat.name_ar}` : `Room breakdown — ${stat.name}`}
+                            </div>
+                            {roomStatsLoading && !roomStats[stat.id] ? (
+                              <div className="text-xs text-gray-400 py-2">{lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</div>
+                            ) : !roomStats[stat.id] || roomStats[stat.id].length === 0 ? (
+                              <div className="text-xs text-gray-400 py-2">{lang === 'ar' ? 'لا توجد بيانات' : 'No room data'}</div>
+                            ) : (
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-[9px] text-amber-500 uppercase">
+                                    <th className="pb-1 text-left">{lang === 'ar' ? 'الغرفة' : 'Room'}</th>
+                                    <th className="pb-1 text-center">{lang === 'ar' ? 'الطلبات' : 'Requests'}</th>
+                                    <th className="pb-1 text-center">{lang === 'ar' ? 'الكمية' : 'Units'}</th>
+                                    <th className="pb-1 text-right">{lang === 'ar' ? 'الإيراد' : 'Revenue'}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {roomStats[stat.id].map(row => (
+                                    <tr key={row.room} className="border-t border-amber-100">
+                                      <td className="py-1 font-mono font-bold text-gray-700">{lang === 'ar' ? 'غرفة' : 'Rm'} {row.room}</td>
+                                      <td className="py-1 text-center text-gray-600">{row.total_requests}</td>
+                                      <td className="py-1 text-center text-gray-500">×{row.total_qty}</td>
+                                      <td className="py-1 text-right text-gray-700 font-semibold">{row.total_revenue > 0 ? `${row.total_revenue.toLocaleString()} SAR` : '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
