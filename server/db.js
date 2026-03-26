@@ -560,6 +560,13 @@ function initDB() {
     markMigration('026_reservation_extras');
   }
 
+  // ── Migration 027: room_types filter column on upsell_offers ──────────────
+  if (!hasMigration('027_upsell_room_types')) {
+    try { db.exec(`ALTER TABLE upsell_offers ADD COLUMN room_types TEXT DEFAULT NULL`); } catch {}
+    console.log('✓ Migration 027: upsell_offers.room_types column added');
+    markMigration('027_upsell_room_types');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (

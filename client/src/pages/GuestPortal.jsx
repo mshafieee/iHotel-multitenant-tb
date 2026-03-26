@@ -3,6 +3,7 @@ import { Building2 } from 'lucide-react';
 import RoomModal from '../components/RoomModal';
 import { api, clearTokens } from '../utils/api';
 import useHotelStore from '../store/hotelStore';
+import useLangStore from '../store/langStore';
 
 function LockoutScreen() {
   return (
@@ -34,6 +35,7 @@ export default function GuestPortal() {
   const [error, setError] = useState('');
 
   const rooms = useHotelStore(s => s.rooms);
+  const { lang, setLang } = useLangStore();
 
   // Step 1 — validate session and fetch live room data
   useEffect(() => {
@@ -114,9 +116,18 @@ export default function GuestPortal() {
           <div className="text-lg font-bold leading-tight">{hotelName}</div>
           <div className="text-[11px] text-blue-200">iHotel · Guest Portal</div>
         </div>
-        <div className="ml-auto text-right">
-          <div className="text-xs text-blue-200">Room</div>
-          <div className="text-base font-bold">{room}</div>
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+            className="px-2.5 py-1 rounded-lg bg-white/15 text-white text-xs font-bold hover:bg-white/25 transition border border-white/20"
+            title={lang === 'ar' ? 'Switch to English' : 'التبديل للعربية'}
+          >
+            {lang === 'ar' ? 'EN' : 'ع'}
+          </button>
+          <div className="text-right">
+            <div className="text-xs text-blue-200">{lang === 'ar' ? 'الغرفة' : 'Room'}</div>
+            <div className="text-base font-bold">{room}</div>
+          </div>
         </div>
       </header>
 

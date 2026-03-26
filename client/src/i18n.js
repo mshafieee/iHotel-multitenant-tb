@@ -161,9 +161,11 @@ const translations = {
   upsell_unit_person:     { ar: 'لكل شخص',                       en: 'Per Person' },
   upsell_saved_ok:        { ar: '✅ تم الحفظ',                   en: '✅ Saved' },
   upsell_delete_confirm:  { ar: 'إلغاء تفعيل هذا العرض؟',        en: 'Deactivate this offer?' },
-  upsell_extras_on_res:   { ar: 'الإضافات',                      en: 'Extras' },
-  upsell_quick_add:       { ar: 'إضافة يدوية',                   en: 'Quick Add' },
-  upsell_total:           { ar: 'المجموع',                       en: 'Total' },
+  upsell_extras_on_res:       { ar: 'الإضافات',                      en: 'Extras' },
+  upsell_quick_add:           { ar: 'إضافة يدوية',                   en: 'Quick Add' },
+  upsell_total:               { ar: 'المجموع',                       en: 'Total' },
+  upsell_refresh:             { ar: '↻ تحديث',                       en: '↻ Refresh' },
+  upsell_room_types_filter:   { ar: 'تظهر لأنواع الغرف',             en: 'Visible For' },
 
   // ── Room statuses ─────────────────────────────────────────────────────────
   status_vacant:       { ar: 'شاغرة',           en: 'Vacant' },

@@ -31,7 +31,7 @@ export default function HotelInfoPanel() {
 
   // Upsell catalog state
   const [catalog, setCatalog] = useState([]);
-  const [offerForm, setOfferForm] = useState({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0 });
+  const [offerForm, setOfferForm] = useState({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0, room_types: [] });
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [editingOffer, setEditingOffer] = useState(null);
   const [catalogSaved, setCatalogSaved] = useState(false);
@@ -139,7 +139,7 @@ export default function HotelInfoPanel() {
       }
       setShowOfferForm(false);
       setEditingOffer(null);
-      setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0 });
+      setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0, room_types: [] });
       setCatalogSaved(true);
       setTimeout(() => setCatalogSaved(false), 2000);
       loadCatalog();
@@ -156,7 +156,9 @@ export default function HotelInfoPanel() {
 
   function startEditOffer(offer) {
     setEditingOffer(offer.id);
-    setOfferForm({ name: offer.name, name_ar: offer.name_ar, category: offer.category, price: offer.price, unit: offer.unit, active: !!offer.active, sort_order: offer.sort_order });
+    let parsedRoomTypes = [];
+    try { parsedRoomTypes = offer.room_types ? JSON.parse(offer.room_types) : []; } catch {}
+    setOfferForm({ name: offer.name, name_ar: offer.name_ar, category: offer.category, price: offer.price, unit: offer.unit, active: !!offer.active, sort_order: offer.sort_order, room_types: parsedRoomTypes });
     setShowOfferForm(true);
   }
 
@@ -338,7 +340,7 @@ export default function HotelInfoPanel() {
           <h3 className="text-sm font-bold text-gray-700">{T('upsell_catalog_title')}</h3>
           <div className="flex items-center gap-2">
             {catalogSaved && <span className="text-xs text-emerald-600 font-semibold">{T('upsell_saved_ok')}</span>}
-            <button onClick={() => { setEditingOffer(null); setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0 }); setShowOfferForm(true); }}
+            <button onClick={() => { setEditingOffer(null); setOfferForm({ name: '', name_ar: '', category: 'SERVICE', price: '', unit: 'one-time', active: true, sort_order: 0, room_types: [] }); setShowOfferForm(true); }}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition">
               <Plus size={12} /> {T('upsell_add_offer')}
             </button>
@@ -383,6 +385,30 @@ export default function HotelInfoPanel() {
                   {lang === 'ar' ? 'نشط' : 'Active'}
                 </label>
               </div>
+              {/* Room type visibility filter — spans full row */}
+              <div className="col-span-2 md:col-span-3">
+                <div className="text-[9px] text-gray-400 uppercase mb-1.5">{T('upsell_room_types_filter')}</div>
+                <div className="flex flex-wrap gap-2">
+                  {roomTypes.length === 0 ? (
+                    <span className="text-[10px] text-gray-400 italic">{lang === 'ar' ? 'لا توجد أنواع غرف' : 'No room types found'}</span>
+                  ) : roomTypes.map(rt => {
+                    const checked = offerForm.room_types.includes(rt);
+                    return (
+                      <label key={rt} className={`flex items-center gap-1 px-2.5 py-1 rounded-full border cursor-pointer text-[10px] font-semibold transition ${checked ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
+                        <input type="checkbox" className="hidden" checked={checked}
+                          onChange={() => setOfferForm(f => ({
+                            ...f,
+                            room_types: checked
+                              ? f.room_types.filter(x => x !== rt)
+                              : [...f.room_types, rt]
+                          }))} />
+                        {rt}
+                      </label>
+                    );
+                  })}
+                  <span className="text-[9px] text-gray-300 self-center">{lang === 'ar' ? '(فارغ = جميع الغرف)' : '(empty = all rooms)'}</span>
+                </div>
+              </div>
             </div>
             <div className="flex gap-2 mt-3">
               <button onClick={saveOffer} className="btn btn-primary text-xs">{T('upsell_confirm')}</button>
@@ -404,6 +430,7 @@ export default function HotelInfoPanel() {
                   <th className="pb-1 text-left">{T('upsell_price')}</th>
                   <th className="pb-1 text-left">{lang === 'ar' ? 'الوحدة' : 'Unit'}</th>
                   <th className="pb-1 text-center">{lang === 'ar' ? 'نشط' : 'Active'}</th>
+                  <th className="pb-1 text-left">{T('upsell_room_types_filter')}</th>
                   <th className="pb-1"></th>
                 </tr>
               </thead>
@@ -418,6 +445,11 @@ export default function HotelInfoPanel() {
                     <td className="py-1.5">{offer.price} SAR</td>
                     <td className="py-1.5">{offer.unit}</td>
                     <td className="py-1.5 text-center">{offer.active ? '✓' : '—'}</td>
+                    <td className="py-1.5">
+                      {offer.room_types
+                        ? (() => { try { return JSON.parse(offer.room_types).join(', '); } catch { return offer.room_types; } })()
+                        : <span className="text-gray-300 text-[9px]">{lang === 'ar' ? 'الكل' : 'All'}</span>}
+                    </td>
                     <td className="py-1.5 text-right">
                       <div className="flex gap-1 justify-end">
                         <button onClick={() => startEditOffer(offer)}

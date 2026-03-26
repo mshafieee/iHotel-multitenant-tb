@@ -3253,9 +3253,30 @@ app.delete('/api/maintenance/:id', authenticate, requireRole('owner', 'admin'), 
 // Guest + staff: list active offers for the hotel (ordered by sort_order)
 app.get('/api/upsell/offers', authenticate, (req, res) => {
   const hotelId = req.user.hotelId;
-  const rows = db.prepare(
+  let rows = db.prepare(
     'SELECT * FROM upsell_offers WHERE hotel_id=? AND active=1 ORDER BY sort_order, id'
   ).all(hotelId);
+
+  // For guests, filter by room_types if set
+  if (req.user.role === 'guest' && req.user.room) {
+    const FLOOR_TYPE = { 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3 };
+    const ROOM_TYPES = ['STANDARD', 'SUPERIOR', 'DELUXE', 'SUITE'];
+    const hotelRoom = db.prepare(
+      'SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?'
+    ).get(hotelId, String(req.user.room));
+    const roomNum = String(req.user.room);
+    const guestRoomType = hotelRoom?.room_type
+      || ROOM_TYPES[FLOOR_TYPE[parseInt(roomNum.length <= 3 ? roomNum[0] : roomNum.slice(0, -2))] ?? 0];
+
+    rows = rows.filter(o => {
+      if (!o.room_types) return true; // null = visible to all
+      try {
+        const allowed = JSON.parse(o.room_types);
+        return Array.isArray(allowed) && allowed.includes(guestRoomType);
+      } catch { return true; }
+    });
+  }
+
   res.json(rows);
 });
 
@@ -3439,7 +3460,7 @@ app.get('/api/upsell/catalog', authenticate, requireRole('owner', 'admin'), (req
 // Owner: create a new offer
 app.post('/api/upsell/catalog', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
-  const { name, name_ar, description, description_ar, category = 'SERVICE', price, unit = 'one-time', active = 1, sort_order = 0 } = req.body;
+  const { name, name_ar, description, description_ar, category = 'SERVICE', price, unit = 'one-time', active = 1, sort_order = 0, room_types } = req.body;
 
   if (!name || !name_ar) return res.status(400).json({ error: 'name and name_ar are required' });
   if (price === undefined || isNaN(Number(price))) return res.status(400).json({ error: 'price is required' });
@@ -3447,10 +3468,12 @@ app.post('/api/upsell/catalog', authenticate, requireRole('owner'), (req, res) =
   const validCategories = ['FOOD', 'TRANSPORT', 'AMENITY', 'SERVICE'];
   if (!validCategories.includes(category)) return res.status(400).json({ error: 'Invalid category' });
 
+  const roomTypesVal = Array.isArray(room_types) && room_types.length > 0 ? JSON.stringify(room_types) : null;
+
   const result = db.prepare(`
-    INSERT INTO upsell_offers (hotel_id, name, name_ar, description, description_ar, category, price, unit, active, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(hotelId, name, name_ar, description || null, description_ar || null, category, Number(price), unit, active ? 1 : 0, sort_order);
+    INSERT INTO upsell_offers (hotel_id, name, name_ar, description, description_ar, category, price, unit, active, sort_order, room_types)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(hotelId, name, name_ar, description || null, description_ar || null, category, Number(price), unit, active ? 1 : 0, sort_order, roomTypesVal);
 
   const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=?').get(result.lastInsertRowid);
   addLog(hotelId, 'upsell', `Offer created: ${name} (${category}) by ${req.user.username}`, { user: req.user.username });
@@ -3464,11 +3487,16 @@ app.patch('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, r
   const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!offer) return res.status(404).json({ error: 'Offer not found' });
 
-  const fields = ['name', 'name_ar', 'description', 'description_ar', 'category', 'price', 'unit', 'active', 'sort_order'];
+  const fields = ['name', 'name_ar', 'description', 'description_ar', 'category', 'price', 'unit', 'active', 'sort_order', 'room_types'];
   const updates = [];
   const params  = [];
   for (const f of fields) {
-    if (req.body[f] !== undefined) { updates.push(`${f}=?`); params.push(req.body[f]); }
+    if (req.body[f] !== undefined) {
+      updates.push(`${f}=?`);
+      let val = req.body[f];
+      if (f === 'room_types') val = Array.isArray(val) && val.length > 0 ? JSON.stringify(val) : null;
+      params.push(val);
+    }
   }
   if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
   params.push(offer.id);
