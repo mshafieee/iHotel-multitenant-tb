@@ -228,8 +228,8 @@ function ManagerView({ T }) {
             {/* Housekeeper select */}
             <div className="mb-3">
               <label className="text-[9px] text-gray-400 uppercase block mb-1">{T('hk_select_hk')}</label>
-              <select className="input text-sm" value={assignTo} onChange={e => setAssignTo(e.target.value)}>
-                <option value="">{T('hk_select_placeholder')}</option>
+              <select dir="ltr" className="input text-sm" value={assignTo} onChange={e => setAssignTo(e.target.value)}>
+                <option value="">— {T('hk_select_placeholder')} —</option>
                 {hkHousekeepers.map(h => (
                   <option key={h.id} value={h.username}>
                     {h.full_name || h.username}
@@ -386,16 +386,17 @@ function ManagerView({ T }) {
                       </div>
                     </div>
                     <div className="shrink-0 flex flex-col gap-1 items-end">
-                      {/* Assign to maintenance worker */}
+                      {/* Assign to any staff member */}
                       <select
-                        className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[120px]"
+                        dir="ltr"
+                        className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[130px]"
                         defaultValue=""
                         onChange={e => { if (e.target.value) handleAssignTicket(ticket.id, e.target.value); }}
                         disabled={assigningTicket === ticket.id}
                       >
-                        <option value="">{maintWorkers.length ? 'Assign…' : 'No workers'}</option>
+                        <option value="">{maintWorkers.length ? 'Assign…' : 'No staff'}</option>
                         {maintWorkers.map(w => (
-                          <option key={w.id} value={w.username}>{w.full_name || w.username}</option>
+                          <option key={w.id} value={w.username}>[{w.role}] {w.full_name || w.username}</option>
                         ))}
                       </select>
                       <button onClick={() => handleResolveTicket(ticket.id)}

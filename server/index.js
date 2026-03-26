@@ -2845,11 +2845,11 @@ app.get('/api/housekeeping/housekeepers', authenticate, requireRole('owner', 'ad
 });
 
 // ── GET /api/housekeeping/maintenance-workers ─────────────────────────────
-// List active maintenance accounts for the ticket assignment dropdown.
+// List all assignable staff (admin, housekeeper, maintenance) for the ticket assignment dropdown.
 app.get('/api/housekeeping/maintenance-workers', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
   const hotelId = req.user.hotelId;
   const list = db.prepare(
-    "SELECT id, username, full_name FROM hotel_users WHERE hotel_id=? AND role='maintenance' AND active=1 ORDER BY full_name, username"
+    "SELECT id, username, full_name, role FROM hotel_users WHERE hotel_id=? AND role IN ('admin','housekeeper','maintenance') AND active=1 ORDER BY role, full_name, username"
   ).all(hotelId);
   res.json(list);
 });

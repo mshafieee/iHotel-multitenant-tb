@@ -157,6 +157,7 @@ export default function RoomTable({ onSelectRoom, role }) {
                   <td className="px-2 py-2.5" onClick={e => e.stopPropagation()}>
                     {canEditType ? (
                       <select
+                        dir="ltr"
                         value={r.type || r.roomType || 'STANDARD'}
                         onChange={e => updateRoomType(r.room, e.target.value)}
                         className="text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:border-brand-400"
@@ -199,7 +200,7 @@ export default function RoomTable({ onSelectRoom, role }) {
                           </button>
                         )}
                         {/* Status dropdown */}
-                        <select value={r.roomStatus ?? 0}
+                        <select dir="ltr" value={r.roomStatus ?? 0}
                           onChange={e => rpc(r.room, 'setRoomStatus', { roomStatus: +e.target.value })}
                           className="text-[10px] border border-gray-200 rounded px-0.5 py-0.5 bg-white max-w-[80px]">
                           {STATUSES.map((s, i) => <option key={i} value={i}>{STATUS_KEYS[i]}</option>)}
