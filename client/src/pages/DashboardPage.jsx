@@ -373,8 +373,8 @@ export default function DashboardPage() {
             <button className="text-red-400 hover:text-red-600 text-xs font-bold">✕</button>
           </div>
         ))}
-        {/* Command acknowledgement toasts */}
-        {commandAcks.map(ack => (
+        {/* Command acknowledgement toasts — owner/admin only */}
+        {(isOwner || isAdmin) && commandAcks.map(ack => (
           <div key={ack.ts}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg text-xs font-semibold border cursor-pointer transition-all ${
               ack.success
