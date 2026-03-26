@@ -2633,7 +2633,7 @@ app.post('/api/users', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const { username, password, role, fullName } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: 'Required: username, password, role' });
-  if (!['owner', 'admin', 'frontdesk', 'housekeeper'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (!['owner', 'admin', 'frontdesk', 'housekeeper', 'maintenance'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   try {
     const hash = bcrypt.hashSync(password, 10);
     db.prepare('INSERT INTO hotel_users (hotel_id, username, password_hash, role, full_name) VALUES (?,?,?,?,?)').run(hotelId, username, hash, role, fullName || null);
@@ -2646,7 +2646,7 @@ app.put('/api/users/:id', authenticate, requireRole('owner'), (req, res) => {
   const { fullName, role, active } = req.body;
   const user         = db.prepare('SELECT * FROM hotel_users WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  if (role && !['owner', 'admin', 'frontdesk', 'housekeeper'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (role && !['owner', 'admin', 'frontdesk', 'housekeeper', 'maintenance'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
   const isDeactivating = active === false && user.active === 1;
 
@@ -2844,6 +2844,16 @@ app.get('/api/housekeeping/housekeepers', authenticate, requireRole('owner', 'ad
   res.json(list);
 });
 
+// ── GET /api/housekeeping/maintenance-workers ─────────────────────────────
+// List active maintenance accounts for the ticket assignment dropdown.
+app.get('/api/housekeeping/maintenance-workers', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const list = db.prepare(
+    "SELECT id, username, full_name FROM hotel_users WHERE hotel_id=? AND role='maintenance' AND active=1 ORDER BY full_name, username"
+  ).all(hotelId);
+  res.json(list);
+});
+
 // ── POST /api/housekeeping/assign ─────────────────────────────────────────
 // Body: { rooms: ['101','102'], assignedTo: 'housekeeper_username', notes: '' }
 // Creates one assignment record per room, then notifies the housekeeper via SSE.
@@ -3035,8 +3045,8 @@ app.delete('/api/housekeeping/assignments/:id', authenticate, requireRole('owner
 
 // ═══ MAINTENANCE TICKETS ═══════════════════════════════════════════════════
 
-// GET /api/maintenance  — all roles except guest; housekeepers see own tickets
-app.get('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+// GET /api/maintenance  — all roles except guest; housekeepers see own tickets; maintenance workers see assigned tickets
+app.get('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper', 'maintenance'), (req, res) => {
   const hotelId   = req.user.hotelId;
   const isManager = ['owner', 'admin', 'frontdesk'].includes(req.user.role);
   const { status } = req.query;
@@ -3044,7 +3054,10 @@ app.get('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontde
   let sql  = 'SELECT * FROM maintenance_tickets WHERE hotel_id=?';
   const params = [hotelId];
 
-  if (!isManager) {
+  if (req.user.role === 'maintenance') {
+    sql += ' AND assigned_to=?';
+    params.push(req.user.username);
+  } else if (!isManager) {
     sql += ' AND reported_by=?';
     params.push(req.user.username);
   }
@@ -3057,8 +3070,8 @@ app.get('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontde
   res.json(db.prepare(sql).all(...params));
 });
 
-// POST /api/maintenance  — any staff (including housekeeper) can open a ticket
-app.post('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+// POST /api/maintenance  — any staff can open a ticket
+app.post('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper', 'maintenance'), (req, res) => {
   const hotelId = req.user.hotelId;
   const { room_number, category, description, priority = 'medium' } = req.body;
 
@@ -3086,19 +3099,32 @@ app.post('/api/maintenance', authenticate, requireRole('owner', 'admin', 'frontd
   addLog(hotelId, 'maintenance', `Ticket #${ticket.id} opened by ${req.user.username}: [${category}] ${description.slice(0, 60)}`, { user: req.user.username });
   sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'created', ticket }, ['owner', 'admin', 'frontdesk']);
 
+  // Auto-set room to MAINTENANCE (3) when a ticket specifies a room number
+  if (room_number) {
+    const devId = getDeviceRoomMap(hotelId)[String(room_number)];
+    if (devId) {
+      setImmediate(() => sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 3 }, req.user.username).catch(() => {}));
+    }
+  }
+
   res.status(201).json(ticket);
 });
 
-// PATCH /api/maintenance/:id  — managers can update status/assignment/notes; reporter can only update description
-app.patch('/api/maintenance/:id', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper'), (req, res) => {
+// PATCH /api/maintenance/:id  — managers: full edit; maintenance workers: update status on assigned tickets; reporters: edit description
+app.patch('/api/maintenance/:id', authenticate, requireRole('owner', 'admin', 'frontdesk', 'housekeeper', 'maintenance'), (req, res) => {
   const hotelId   = req.user.hotelId;
   const isManager = ['owner', 'admin', 'frontdesk'].includes(req.user.role);
+  const isMaintWorker = req.user.role === 'maintenance';
   const ticket    = db.prepare('SELECT * FROM maintenance_tickets WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
 
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
-  // Housekeepers can only edit their own tickets and only when open
-  if (!isManager && ticket.reported_by !== req.user.username) {
+  // Maintenance workers can only update tickets assigned to them
+  if (isMaintWorker && ticket.assigned_to !== req.user.username) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  // Housekeepers can only edit their own tickets
+  if (!isManager && !isMaintWorker && ticket.reported_by !== req.user.username) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -3115,6 +3141,13 @@ app.patch('/api/maintenance/:id', authenticate, requireRole('owner', 'admin', 'f
     if (priority)    { updates.push('priority=?');    params.push(priority); }
     if (description) { updates.push('description=?'); params.push(description); }
     if (status === 'resolved') { updates.push('resolved_at=?'); params.push(now); }
+  } else if (isMaintWorker) {
+    // Maintenance workers can mark in_progress or resolved
+    if (status && ['in_progress', 'resolved'].includes(status)) {
+      updates.push('status=?'); params.push(status);
+      if (status === 'resolved') { updates.push('resolved_at=?'); params.push(now); }
+    }
+    if (notes !== undefined) { updates.push('notes=?'); params.push(notes); }
   } else {
     if (description && ticket.status === 'open') { updates.push('description=?'); params.push(description); }
   }
@@ -3127,6 +3160,10 @@ app.patch('/api/maintenance/:id', authenticate, requireRole('owner', 'admin', 'f
   sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'updated', ticket: updated }, ['owner', 'admin', 'frontdesk']);
   if (ticket.reported_by !== req.user.username) {
     sseBroadcastUser(hotelId, ticket.reported_by, 'maintenance_update', { action: 'updated', ticket: updated });
+  }
+  // Notify the assigned maintenance worker when a ticket is assigned or updated
+  if (updated.assigned_to && updated.assigned_to !== req.user.username) {
+    sseBroadcastUser(hotelId, updated.assigned_to, 'maintenance_assigned', { ticket: updated });
   }
 
   res.json(updated);

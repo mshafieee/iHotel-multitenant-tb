@@ -19,10 +19,12 @@ const useHotelStore = create((set, get) => ({
   // hkAssignments  : active assignments (managers see all; housekeepers see own)
   // hkHousekeepers : list of housekeeper accounts (for assignment dropdown)
   // hkNotifications: incoming assignment alerts for the logged-in housekeeper
+  // maintWorkers   : list of maintenance worker accounts (for ticket assignment)
   hkQueue:         [],
   hkAssignments:   [],
   hkHousekeepers:  [],
   hkNotifications: [],  // { rooms, assignedBy, notes, ts } — desktop toast payloads
+  maintWorkers:    [],
 
   // Fetch overview — server always responds instantly with cached snapshot.
   // If data was stale, a background TB fetch runs on the server and delivers
@@ -346,6 +348,14 @@ const useHotelStore = create((set, get) => ({
     try {
       const data = await api('/api/housekeeping/housekeepers');
       set({ hkHousekeepers: data });
+    } catch {}
+  },
+
+  // Fetch list of maintenance worker accounts for the ticket assignment dropdown.
+  fetchMaintWorkers: async () => {
+    try {
+      const data = await api('/api/housekeeping/maintenance-workers');
+      set({ maintWorkers: data });
     } catch {}
   },
 

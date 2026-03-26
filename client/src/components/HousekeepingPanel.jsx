@@ -29,7 +29,7 @@ import useAuthStore  from '../store/authStore';
 import useLangStore  from '../store/langStore';
 import { t }         from '../i18n';
 import { getAccessToken, api } from '../utils/api';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Wrench } from 'lucide-react';
 
 // ── Web Push subscription helper ─────────────────────────────────────────────
 async function subscribeToPush(token) {
@@ -86,17 +86,19 @@ function fmtTime(ms) {
 // ─────────────────────────────────────────────────────────────────────────────
 function ManagerView({ T }) {
   const {
-    hkQueue, hkAssignments, hkHousekeepers,
-    fetchHKQueue, fetchHKAssignments, fetchHKHousekeepers,
+    hkQueue, hkAssignments, hkHousekeepers, maintWorkers,
+    fetchHKQueue, fetchHKAssignments, fetchHKHousekeepers, fetchMaintWorkers,
     hkAssign, hkCancel,
   } = useHotelStore();
 
-  const [innerTab, setInnerTab]         = useState('queue');   // 'queue' | 'active'
+  const [innerTab, setInnerTab]         = useState('queue');   // 'queue' | 'active' | 'tickets'
   const [selectedRooms, setSelectedRooms] = useState([]);
   const [assignTo, setAssignTo]         = useState('');
   const [note, setNote]                 = useState('');
   const [submitting, setSubmitting]     = useState(false);
   const [flash, setFlash]               = useState(null);      // { type: 'ok'|'err', msg }
+  const [maintTickets, setMaintTickets] = useState([]);
+  const [assigningTicket, setAssigningTicket] = useState(null); // ticket id being assigned
 
   const showFlash = useCallback((type, msg) => {
     setFlash({ type, msg });
@@ -108,7 +110,46 @@ function ManagerView({ T }) {
     fetchHKQueue();
     fetchHKAssignments();
     fetchHKHousekeepers();
-  }, [fetchHKQueue, fetchHKAssignments, fetchHKHousekeepers]);
+    fetchMaintWorkers();
+    fetchMaintTickets();
+  }, [fetchHKQueue, fetchHKAssignments, fetchHKHousekeepers, fetchMaintWorkers]);
+
+  const fetchMaintTickets = useCallback(async () => {
+    try {
+      const data = await api('/api/maintenance?status=open');
+      setMaintTickets(data);
+    } catch {}
+  }, []);
+
+  const handleAssignTicket = async (ticketId, workerUsername) => {
+    if (!workerUsername) return;
+    setAssigningTicket(ticketId);
+    try {
+      await api(`/api/maintenance/${ticketId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigned_to: workerUsername, status: 'in_progress' }),
+      });
+      showFlash('ok', 'Ticket assigned');
+      fetchMaintTickets();
+    } catch (e) {
+      showFlash('err', e.message || 'Failed to assign');
+    } finally {
+      setAssigningTicket(null);
+    }
+  };
+
+  const handleResolveTicket = async (ticketId) => {
+    try {
+      await api(`/api/maintenance/${ticketId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'resolved' }),
+      });
+      showFlash('ok', 'Ticket resolved');
+      fetchMaintTickets();
+    } catch (e) {
+      showFlash('err', e.message || 'Failed');
+    }
+  };
 
   const toggleRoom = (room) => {
     setSelectedRooms(prev =>
@@ -161,8 +202,9 @@ function ManagerView({ T }) {
       {/* Inner tabs */}
       <div className="flex gap-2 border-b border-gray-100 pb-0">
         {[
-          { id: 'queue',  label: `${T('hk_tab_dirty')} (${hkQueue.length})` },
-          { id: 'active', label: `${T('hk_tab_active')}${activeCount ? ` (${activeCount})` : ''}` },
+          { id: 'queue',   label: `${T('hk_tab_dirty')} (${hkQueue.length})` },
+          { id: 'active',  label: `${T('hk_tab_active')}${activeCount ? ` (${activeCount})` : ''}` },
+          { id: 'tickets', label: `🔧 Tickets${maintTickets.length ? ` (${maintTickets.length})` : ''}` },
         ].map(tb => (
           <button key={tb.id} onClick={() => setInnerTab(tb.id)}
             className={`px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
@@ -283,7 +325,10 @@ function ManagerView({ T }) {
                         <span className="font-extrabold font-mono text-lg text-gray-800">{a.room}</span>
                         <StatusBadge status={a.status} T={T} />
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5 truncate">{hkNameMap[a.assigned_to] || a.assigned_to}</div>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-[11px] text-gray-400">👤</span>
+                        <span className="text-xs font-semibold text-gray-700 truncate">{hkNameMap[a.assigned_to] || a.assigned_to}</span>
+                      </div>
                       {a.notes && (
                         <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 inline-block max-w-full truncate">
                           📋 {a.notes}
@@ -304,6 +349,64 @@ function ManagerView({ T }) {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── MAINTENANCE TICKETS TAB ── */}
+      {innerTab === 'tickets' && (
+        <div className="space-y-2">
+          {maintTickets.length === 0 ? (
+            <div className="card p-8 text-center text-sm text-gray-400">No open maintenance tickets</div>
+          ) : (
+            maintTickets.map(ticket => {
+              const PRIORITY_COLOR = { low: 'text-gray-400', medium: 'text-blue-500', high: 'text-amber-600', urgent: 'text-red-600 font-bold' };
+              return (
+                <div key={ticket.id} className={`card p-3 border-l-4 ${
+                  ticket.status === 'in_progress' ? 'border-l-amber-400' : 'border-l-red-300'
+                }`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-gray-600 bg-gray-100 rounded px-1.5">{ticket.category}</span>
+                        {ticket.room_number && (
+                          <span className="text-xs font-bold text-brand-600">Rm {ticket.room_number}</span>
+                        )}
+                        <span className={`text-[10px] ${PRIORITY_COLOR[ticket.priority] || 'text-gray-400'}`}>
+                          ● {ticket.priority}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          ticket.status === 'in_progress' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+                        }`}>{ticket.status}</span>
+                      </div>
+                      <div className="text-xs text-gray-700 mt-1 line-clamp-2">{ticket.description}</div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        reported by {ticket.reported_by}
+                        {ticket.assigned_to && <span className="ml-2">· assigned to <span className="font-semibold text-gray-600">{ticket.assigned_to}</span></span>}
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex flex-col gap-1 items-end">
+                      {/* Assign to maintenance worker */}
+                      <select
+                        className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[120px]"
+                        defaultValue=""
+                        onChange={e => { if (e.target.value) handleAssignTicket(ticket.id, e.target.value); }}
+                        disabled={assigningTicket === ticket.id}
+                      >
+                        <option value="">{maintWorkers.length ? 'Assign…' : 'No workers'}</option>
+                        {maintWorkers.map(w => (
+                          <option key={w.id} value={w.username}>{w.full_name || w.username}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => handleResolveTicket(ticket.id)}
+                        className="text-[10px] font-bold text-emerald-600 border border-emerald-200 hover:bg-emerald-50 rounded px-2 py-0.5 transition">
+                        ✓ Resolve
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}
@@ -695,6 +798,105 @@ function RoomTaskCard({ a, busy, onStart, onDone, onReport, T }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MAINTENANCE WORKER VIEW
+// ─────────────────────────────────────────────────────────────────────────────
+function MaintenanceWorkerView({ T }) {
+  const { user } = useAuthStore();
+  const [tickets, setTickets]   = useState([]);
+  const [busy, setBusy]         = useState(null);
+  const [flash, setFlash]       = useState(null);
+
+  const showFlash = useCallback((type, msg) => {
+    setFlash({ type, msg });
+    setTimeout(() => setFlash(null), 3500);
+  }, []);
+
+  const fetchTickets = useCallback(async () => {
+    try {
+      const data = await api('/api/maintenance');
+      setTickets(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => { fetchTickets(); }, [fetchTickets]);
+
+  const handleUpdate = async (id, status) => {
+    setBusy(id);
+    try {
+      await api(`/api/maintenance/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      showFlash('ok', status === 'resolved' ? 'Ticket resolved ✓' : 'Status updated');
+      fetchTickets();
+    } catch (e) {
+      showFlash('err', e.message || 'Failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const PRIORITY_COLOR = { low: 'text-gray-400', medium: 'text-blue-500', high: 'text-amber-600', urgent: 'text-red-600 font-bold' };
+  const openTickets = tickets.filter(t => t.status !== 'resolved');
+
+  return (
+    <div className="space-y-3">
+      {flash && (
+        <div className={`text-xs font-semibold rounded-lg px-3 py-2 ${flash.type === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+          {flash.msg}
+        </div>
+      )}
+      {openTickets.length === 0 ? (
+        <div className="card p-10 text-center">
+          <div className="text-4xl mb-3">✅</div>
+          <div className="text-sm font-semibold text-gray-600">No open tickets</div>
+          <div className="text-xs text-gray-400 mt-1">All assigned work is complete</div>
+        </div>
+      ) : (
+        openTickets.map(ticket => (
+          <div key={ticket.id} className={`card p-4 border-l-4 ${
+            ticket.status === 'in_progress' ? 'border-l-amber-400' : 'border-l-blue-300'
+          }`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-gray-600 bg-gray-100 rounded px-1.5">{ticket.category}</span>
+                  {ticket.room_number && (
+                    <span className="text-sm font-extrabold text-brand-600 font-mono">Rm {ticket.room_number}</span>
+                  )}
+                  <span className={`text-[10px] ${PRIORITY_COLOR[ticket.priority] || ''}`}>● {ticket.priority}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    ticket.status === 'in_progress' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+                  }`}>{ticket.status}</span>
+                </div>
+                <div className="text-sm text-gray-800 mt-1.5 font-medium">{ticket.description}</div>
+                {ticket.notes && (
+                  <div className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1.5">📋 {ticket.notes}</div>
+                )}
+              </div>
+              <div className="shrink-0 flex flex-col gap-1.5 items-end">
+                {ticket.status === 'open' && (
+                  <button onClick={() => handleUpdate(ticket.id, 'in_progress')} disabled={busy === ticket.id}
+                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition disabled:opacity-50">
+                    {busy === ticket.id ? '…' : '▶ Start'}
+                  </button>
+                )}
+                {ticket.status === 'in_progress' && (
+                  <button onClick={() => handleUpdate(ticket.id, 'resolved')} disabled={busy === ticket.id}
+                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition disabled:opacity-50">
+                    {busy === ticket.id ? '…' : '✓ Done'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ROOT EXPORT — selects the correct view based on role
 // ─────────────────────────────────────────────────────────────────────────────
 export default function HousekeepingPanel() {
@@ -702,20 +904,21 @@ export default function HousekeepingPanel() {
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
   const isManager = ['owner', 'admin', 'frontdesk'].includes(user?.role);
+  const isMaintenance = user?.role === 'maintenance';
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <span className="text-lg">🧹</span>
+        <span className="text-lg">{isMaintenance ? '🔧' : '🧹'}</span>
         <div>
-          <div className="font-bold text-gray-800">{T('hk_title')}</div>
+          <div className="font-bold text-gray-800">{isMaintenance ? 'Maintenance Tasks' : T('hk_title')}</div>
           <div className="text-[10px] text-gray-400">
-            {isManager ? T('hk_subtitle_mgr') : T('hk_subtitle_hk')}
+            {isManager ? T('hk_subtitle_mgr') : isMaintenance ? 'Your assigned maintenance tickets' : T('hk_subtitle_hk')}
           </div>
         </div>
       </div>
 
-      {isManager ? <ManagerView T={T} /> : <HousekeeperView T={T} />}
+      {isManager ? <ManagerView T={T} /> : isMaintenance ? <MaintenanceWorkerView T={T} /> : <HousekeeperView T={T} />}
     </div>
   );
 }

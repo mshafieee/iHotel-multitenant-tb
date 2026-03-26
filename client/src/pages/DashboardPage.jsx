@@ -79,7 +79,7 @@ export default function DashboardPage() {
   const { user, logout } = useAuthStore();
   const { lang, setLang } = useLangStore();
   const T = (key) => t(key, lang);
-  const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk'), housekeeper: T('role_housekeeper') };
+  const roleLabels = { owner: T('role_owner'), admin: T('role_admin'), frontdesk: T('role_frontdesk'), housekeeper: T('role_housekeeper'), maintenance: 'Maintenance' };
   const {
     startPolling, stopPolling, connectSSE,
     alerts, dismissAlert,
@@ -94,11 +94,12 @@ export default function DashboardPage() {
   const seenAlerts   = useRef(new Set());
   const seenHKNotifs = useRef(new Set());
 
-  const role          = user?.role;
-  const isOwner       = role === 'owner';
-  const isAdmin       = role === 'admin';
-  const isFrontdesk   = role === 'frontdesk';
-  const isHousekeeper = role === 'housekeeper';
+  const role            = user?.role;
+  const isOwner         = role === 'owner';
+  const isAdmin         = role === 'admin';
+  const isFrontdesk     = role === 'frontdesk';
+  const isHousekeeper   = role === 'housekeeper';
+  const isMaintenance   = role === 'maintenance';
   const [resettingAll, setResettingAll] = useState(false);
   const [roomSearch, setRoomSearch] = useState('');
   const [showRoomSearch, setShowRoomSearch] = useState(false);
@@ -123,19 +124,20 @@ export default function DashboardPage() {
     } catch (e) { alert('Reset failed: ' + e.message); }
     finally { setResettingAll(false); }
   };
-  const canSeeRooms        = !isHousekeeper; // Housekeepers go straight to their task list
+  const canSeeRooms        = !isHousekeeper && !isMaintenance; // Housekeepers/maintenance go straight to their task list
   const canSeePMS          = isOwner || isAdmin || isFrontdesk;
   const canSeeLogs         = isOwner || isAdmin;
   const canSeeFinance      = isOwner;
   const canSeeUsers        = isOwner;
   const canSeeShifts       = isOwner || isAdmin || isFrontdesk;
-  // Housekeeping tab: managers assign rooms; housekeepers see their own tasks
-  const canSeeHousekeeping = isOwner || isAdmin || isFrontdesk || isHousekeeper;
+  // Housekeeping tab: managers assign rooms; housekeepers/maintenance see their own tasks
+  const canSeeHousekeeping = isOwner || isAdmin || isFrontdesk || isHousekeeper || isMaintenance;
   const canSeeMaintenance  = isOwner || isAdmin || isFrontdesk || isHousekeeper;
 
   // Pending housekeeping assignments for the tab badge (manager view only)
   const hkPendingCount = isHousekeeper
     ? hkAssignments.filter(a => a.status === 'pending').length
+    : isMaintenance ? 0  // maintenance workers see their badge from maintOpenCount
     : hkAssignments.filter(a => ['pending', 'in_progress'].includes(a.status)).length;
 
   const [maintOpenCount, setMaintOpenCount] = useState(0);
@@ -166,8 +168,8 @@ export default function DashboardPage() {
   }, [user?.hotelName]);
 
   useEffect(() => {
-    // Housekeepers land directly on their task list; other roles start on rooms
-    if (isHousekeeper) setTab('housekeeping');
+    // Housekeepers and maintenance workers land directly on their task list
+    if (isHousekeeper || isMaintenance) setTab('housekeeping');
     startPolling();
     connectSSE();
     // Load housekeeping data for everyone who can see the tab

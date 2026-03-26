@@ -3,8 +3,8 @@ import { QrCode, X, RefreshCw, Copy, Check } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { api } from '../utils/api';
 
-const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', frontdesk: 'Front Desk', housekeeper: 'Housekeeper' };
-const ROLE_COLORS = { owner: 'bg-purple-50 text-purple-600', admin: 'bg-blue-50 text-blue-600', frontdesk: 'bg-emerald-50 text-emerald-600', housekeeper: 'bg-amber-50 text-amber-600' };
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', frontdesk: 'Front Desk', housekeeper: 'Housekeeper', maintenance: 'Maintenance' };
+const ROLE_COLORS = { owner: 'bg-purple-50 text-purple-600', admin: 'bg-blue-50 text-blue-600', frontdesk: 'bg-emerald-50 text-emerald-600', housekeeper: 'bg-amber-50 text-amber-600', maintenance: 'bg-red-50 text-red-600' };
 
 function QrModal({ user: u, onClose }) {
   const [qrData, setQrData] = useState(null);
@@ -36,10 +36,13 @@ function QrModal({ user: u, onClose }) {
     });
   };
 
-  // Build loginUrl client-side so it always uses the current host/IP,
-  // not the server's GUEST_URL_BASE (which may point to a different address).
+  // Build loginUrl using VITE_GUEST_HOST (LAN IP) so phones on the same network can scan it.
+  const _guestHost = import.meta.env.VITE_GUEST_HOST;
+  const _displayHost = _guestHost
+    ? `${_guestHost}${window.location.port ? ':' + window.location.port : ''}`
+    : window.location.host;
   const loginUrl = qrData?.token
-    ? `${window.location.protocol}//${window.location.host}/qr?t=${qrData.token}`
+    ? `${window.location.protocol}//${_displayHost}/qr?t=${qrData.token}`
     : qrData?.loginUrl || null;
   const qrImageUrl = loginUrl
     ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(loginUrl)}`
@@ -219,6 +222,7 @@ export default function UsersPanel() {
                 <label className="text-[9px] text-gray-400 uppercase">Role</label>
                 <select className="input" value={createForm.role} onChange={e => setCreateForm({ ...createForm, role: e.target.value })}>
                   <option value="housekeeper">Housekeeper</option>
+                  <option value="maintenance">Maintenance</option>
                   <option value="frontdesk">Front Desk</option>
                   <option value="admin">Admin</option>
                   <option value="owner">Owner</option>
