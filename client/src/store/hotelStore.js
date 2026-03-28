@@ -288,8 +288,11 @@ const useHotelStore = create((set, get) => ({
   },
 
   // Check out a room: cancel reservation, set status to SERVICE, notify guest
-  checkout: async (room) => {
-    const result = await api(`/api/rooms/${room}/checkout`, { method: 'POST' });
+  checkout: async (room, paymentMethod, thirdPartyChannel) => {
+    const result = await api(`/api/rooms/${room}/checkout`, {
+      method: 'POST',
+      body: JSON.stringify({ paymentMethod, thirdPartyChannel }),
+    });
     // Optimistic: update room status to SERVICE (2) in local store
     const rooms = { ...get().rooms };
     if (rooms[room]) {

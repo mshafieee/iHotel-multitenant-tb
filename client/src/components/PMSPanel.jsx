@@ -39,13 +39,13 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
   const T = (key) => t(key, lang);
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ room: '', guestName: '', checkIn: '', checkOut: '', paymentMethod: 'pending', ratePerNight: '' });
+  const [form, setForm] = useState({ room: '', guestName: '', checkIn: '', checkOut: '', paymentMethod: 'pending', thirdPartyChannel: '', ratePerNight: '' });
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [showQR, setShowQR] = useState(null);
   const [deletingHistory, setDeletingHistory] = useState(false);
   const [extendId, setExtendId] = useState(null);
-  const [extendForm, setExtendForm] = useState({ newCheckOut: '', paymentMethod: '' });
+  const [extendForm, setExtendForm] = useState({ newCheckOut: '', paymentMethod: '', thirdPartyChannel: '' });
   const [extendResult, setExtendResult] = useState(null);
   const [extendError, setExtendError] = useState('');
   const [extrasId, setExtrasId] = useState(null);
@@ -65,7 +65,7 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
       setResult(null);
       setShowQR(null);
       setExtendId(null);
-      setForm({ room: autoFillRoom, guestName: '', checkIn: today, checkOut: defaultCo, paymentMethod: 'pending', ratePerNight: '' });
+      setForm({ room: autoFillRoom, guestName: '', checkIn: today, checkOut: defaultCo, paymentMethod: 'pending', thirdPartyChannel: '', ratePerNight: '' });
       if (onAutoFillConsumed) onAutoFillConsumed();
     }
   }, [autoFillRoom]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -108,9 +108,11 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
   const getGuestUrl = (reservationToken) => `${GUEST_HOST}/guest?token=${encodeURIComponent(reservationToken)}`;
 
   const PM_LABELS = {
-    cash: T('pms_cash'),
-    visa: T('pms_visa'),
-    pending: T('pms_pending'),
+    cash:       T('pms_cash'),
+    visa:       T('pms_visa'),
+    thirdparty: T('pm_thirdparty'),
+    online:     T('pm_online'),
+    pending:    T('pms_pending'),
   };
 
   const create = async () => {
@@ -167,7 +169,7 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
     setExtendResult(null);
     setExtendError('');
     const nextDay = new Date(new Date(r.checkOut).getTime() + 86400000).toISOString().split('T')[0];
-    setExtendForm({ newCheckOut: nextDay, paymentMethod: r.paymentMethod || 'pending' });
+    setExtendForm({ newCheckOut: nextDay, paymentMethod: r.paymentMethod || 'pending', thirdPartyChannel: r.thirdPartyChannel || '' });
   };
 
   const submitExtend = async (id) => {
@@ -192,7 +194,7 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
             className="px-2 py-1 rounded text-[10px] font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-200 transition disabled:opacity-50">
             {deletingHistory ? T('pms_deleting') : T('pms_del_history')}
           </button>
-          <button onClick={() => { setShowForm(true); setResult(null); setShowQR(null); setExtendId(null); setForm({ room: '', guestName: '', checkIn: today, checkOut: defaultCo, paymentMethod: 'pending', ratePerNight: '' }); }}
+          <button onClick={() => { setShowForm(true); setResult(null); setShowQR(null); setExtendId(null); setForm({ room: '', guestName: '', checkIn: today, checkOut: defaultCo, paymentMethod: 'pending', thirdPartyChannel: '', ratePerNight: '' }); }}
             className="btn btn-primary text-xs">{T('pms_new')}</button>
         </div>
       </div>
@@ -267,15 +269,20 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
             </div>
             <div>
               <label className="text-[9px] text-gray-400 uppercase mb-1 block">{T('pms_payment')}</label>
-              <div className="flex gap-2 mt-1">
-                {['cash', 'visa', 'pending'].map(m => (
+              <div className="flex gap-2 mt-1 flex-wrap">
+                {['cash', 'visa', 'thirdparty', 'pending'].map(m => (
                   <label key={m} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-xs font-semibold transition ${form.paymentMethod === m ? 'bg-brand-500 text-white border-brand-500' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}>
                     <input type="radio" name="paymentMethod" value={m} checked={form.paymentMethod === m}
-                      onChange={() => setForm({ ...form, paymentMethod: m })} className="hidden" />
+                      onChange={() => setForm({ ...form, paymentMethod: m, thirdPartyChannel: '' })} className="hidden" />
                     {PM_LABELS[m]}
                   </label>
                 ))}
               </div>
+              {form.paymentMethod === 'thirdparty' && (
+                <input type="text" className="input text-xs mt-2" placeholder={T('pm_thirdparty_placeholder')}
+                  value={form.thirdPartyChannel}
+                  onChange={e => setForm({ ...form, thirdPartyChannel: e.target.value })} />
+              )}
             </div>
           </div>
           {error && <div className="text-xs text-red-500 mt-2">{error}</div>}
@@ -326,7 +333,10 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
                   </span>
                   <span className="text-xs text-gray-500">{r.guestName}</span>
                   {r.paymentMethod && r.paymentMethod !== 'pending' && (
-                    <span className="text-[9px] text-gray-400">{PM_LABELS[r.paymentMethod] || r.paymentMethod}</span>
+                    <span className="text-[9px] text-gray-400">
+                      {PM_LABELS[r.paymentMethod] || r.paymentMethod}
+                      {r.paymentMethod === 'thirdparty' && r.thirdPartyChannel && ` · ${r.thirdPartyChannel}`}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -382,15 +392,20 @@ export default function PMSPanel({ autoFillRoom, onAutoFillConsumed }) {
                     </div>
                     <div>
                       <label className="text-[9px] text-gray-400 uppercase mb-1 block">{T('pms_pay_label')}</label>
-                      <div className="flex gap-1">
-                        {['cash', 'visa', 'pending'].map(m => (
+                      <div className="flex gap-1 flex-wrap">
+                        {['cash', 'visa', 'thirdparty', 'pending'].map(m => (
                           <label key={m} className={`flex items-center px-2 py-1.5 rounded-lg border cursor-pointer text-[10px] font-semibold transition ${extendForm.paymentMethod === m ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
                             <input type="radio" name="extendPM" value={m} checked={extendForm.paymentMethod === m}
-                              onChange={() => setExtendForm({ ...extendForm, paymentMethod: m })} className="hidden" />
+                              onChange={() => setExtendForm({ ...extendForm, paymentMethod: m, thirdPartyChannel: '' })} className="hidden" />
                             {PM_LABELS[m]}
                           </label>
                         ))}
                       </div>
+                      {extendForm.paymentMethod === 'thirdparty' && (
+                        <input type="text" className="input text-xs mt-1" placeholder={T('pm_thirdparty_placeholder')}
+                          value={extendForm.thirdPartyChannel}
+                          onChange={e => setExtendForm({ ...extendForm, thirdPartyChannel: e.target.value })} />
+                      )}
                     </div>
                     <button onClick={() => submitExtend(r.id)} className="btn btn-primary text-xs">{T('confirm')}</button>
                     <button onClick={() => setExtendId(null)} className="btn btn-ghost text-xs">{T('cancel')}</button>

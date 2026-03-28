@@ -572,6 +572,25 @@ function initDB() {
   // "Room consumption since last reset" = current - baseline (never touches TB device).
   // hotel_profiles gets: meter_month (YYYY-MM), elec_month_start, water_month_start
   // — snapshotted on first request of each calendar month so monthly delta can be shown.
+  if (!hasMigration('030_checked_out_at')) {
+    const ilCols = db.pragma('table_info(income_log)').map(c => c.name);
+    if (!ilCols.includes('checked_out_at'))
+      db.exec("ALTER TABLE income_log ADD COLUMN checked_out_at TEXT DEFAULT NULL");
+    console.log('✓ Migration 030: checked_out_at column added to income_log');
+    markMigration('030_checked_out_at');
+  }
+
+  if (!hasMigration('029_thirdparty_channel')) {
+    const ilCols  = db.pragma('table_info(income_log)').map(c => c.name);
+    const resCols = db.pragma('table_info(reservations)').map(c => c.name);
+    if (!ilCols.includes('thirdparty_channel'))
+      db.exec("ALTER TABLE income_log ADD COLUMN thirdparty_channel TEXT DEFAULT ''");
+    if (!resCols.includes('thirdparty_channel'))
+      db.exec("ALTER TABLE reservations ADD COLUMN thirdparty_channel TEXT DEFAULT ''");
+    console.log('✓ Migration 029: thirdparty_channel column added');
+    markMigration('029_thirdparty_channel');
+  }
+
   if (!hasMigration('028_meter_baselines')) {
     const roomCols    = db.pragma('table_info(hotel_rooms)').map(c => c.name);
     const profileCols = db.pragma('table_info(hotel_profiles)').map(c => c.name);

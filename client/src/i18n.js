@@ -186,6 +186,14 @@ const translations = {
   kpi_elec:          { ar: 'كهرباء',              en: 'Electricity' },
   kpi_water:         { ar: 'ماء',                en: 'Water' },
   kpi_this_month:    { ar: 'هذا الشهر',          en: 'This month' },
+
+  // ── Payment method picker (RoomModal checkout) ────────────────────────────
+  pm_title:          { ar: 'اختر طريقة الدفع',       en: 'Select Payment Method' },
+  pm_subtitle:       { ar: 'للغرفة',                 en: 'Room' },
+  pm_online:         { ar: 'حجز إلكتروني',           en: 'iHotel Book' },
+  pm_thirdparty:     { ar: 'طرف ثالث',               en: 'Third-party' },
+  pm_confirm:              { ar: 'تأكيد وتسجيل المغادرة',  en: 'Confirm & Check Out' },
+  pm_thirdparty_placeholder: { ar: 'اسم القناة (مثل: Booking.com)', en: 'Channel name (e.g. Booking.com)' },
   kpi_dist_title:    { ar: 'توزيع حالات الغرف', en: 'Room Status Distribution' },
   kpi_service_flags: { ar: 'تنبيهات الخدمة',   en: 'Service Flags' },
   kpi_rooms_label:   { ar: 'غرفة',              en: 'Rooms' },

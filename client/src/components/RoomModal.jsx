@@ -79,8 +79,11 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const rooms = useHotelStore(s => s.rooms);
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [reviewUrl, setReviewUrl] = useState(null); // shown after checkout
+  const [checkingOut, setCheckingOut]         = useState(false);
+  const [reviewUrl, setReviewUrl]             = useState(null); // shown after checkout
+  const [showPaymentPicker, setShowPaymentPicker] = useState(false);
+  const [selectedPayment, setSelectedPayment]     = useState(null);
+  const [thirdPartyChannel, setThirdPartyChannel] = useState('');
   const [showHKPicker, setShowHKPicker]   = useState(false);
   const [hkList, setHkList]               = useState([]);
   const [hkAssigning, setHkAssigning]     = useState(false);
@@ -276,11 +279,24 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     r.murService || r.sosService || r.dndService || r.pdMode
   );
 
-  const handleCheckout = async () => {
-    if (!confirm(`Check out Room ${r.room}? This will cancel any reservations and set status to SERVICE.`)) return;
+  const handleCheckout = () => {
+    const existing = r.reservation?.paymentMethod;
+    if (existing && existing !== 'pending') {
+      // Payment already confirmed — skip picker and check out immediately
+      doCheckout(existing);
+    } else {
+      setSelectedPayment(null);
+      setThirdPartyChannel('');
+      setShowPaymentPicker(true);
+    }
+  };
+
+  const doCheckout = async (paymentMethod) => {
+    setShowPaymentPicker(false);
     setCheckingOut(true);
     try {
-      const result = await checkout(r.room);
+      const result = await checkout(r.room, paymentMethod,
+        paymentMethod === 'thirdparty' ? thirdPartyChannel.trim() : undefined);
       if (result?.reviewUrl) setReviewUrl(result.reviewUrl);
       else onClose();
     }
@@ -600,6 +616,61 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
       </div>
     </Section>
   );
+
+  // ── Payment method picker overlay ────────────────────────────────────────
+  const PAYMENT_OPTIONS = [
+    { key: 'cash',       label: T('pms_cash'),           icon: '💵', color: 'emerald' },
+    { key: 'visa',       label: T('pms_visa'),           icon: '💳', color: 'blue'    },
+    { key: 'online',     label: T('pm_online'),          icon: '🌐', color: 'purple'  },
+    { key: 'thirdparty', label: T('pm_thirdparty'),      icon: '🤝', color: 'orange'  },
+  ];
+  if (showPaymentPicker) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+          <h2 className="text-base font-bold text-gray-800 mb-1">{T('pm_title')}</h2>
+          <p className="text-xs text-gray-400 mb-4">{T('pm_subtitle')} {r.room}</p>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {PAYMENT_OPTIONS.map(opt => (
+              <button key={opt.key}
+                onClick={() => { setSelectedPayment(opt.key); setThirdPartyChannel(''); }}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-semibold text-sm transition
+                  ${selectedPayment === opt.key
+                    ? `border-${opt.color}-400 bg-${opt.color}-50 text-${opt.color}-700`
+                    : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'}`}>
+                <span className="text-2xl">{opt.icon}</span>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {selectedPayment === 'thirdparty' && (
+            <div className="mb-4">
+              <input
+                type="text"
+                autoFocus
+                placeholder={T('pm_thirdparty_placeholder')}
+                value={thirdPartyChannel}
+                onChange={e => setThirdPartyChannel(e.target.value)}
+                className="w-full border border-orange-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+              />
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button onClick={() => setShowPaymentPicker(false)}
+              className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 transition">
+              {T('cancel')}
+            </button>
+            <button
+              onClick={() => selectedPayment && doCheckout(selectedPayment)}
+              disabled={!selectedPayment || (selectedPayment === 'thirdparty' && !thirdPartyChannel.trim())}
+              className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 transition disabled:opacity-40 disabled:cursor-not-allowed">
+              {T('pm_confirm')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Review QR overlay shown right after checkout ─────────────────────────
   if (reviewUrl) {

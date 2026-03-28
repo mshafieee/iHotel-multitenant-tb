@@ -1079,7 +1079,7 @@ async function fetchAndBroadcast(hotelId) {
       relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
       relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
       doorUnlock: t.doorUnlock ?? relays.doorUnlock ?? false,
-      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
+      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null
     };
   });
 
@@ -1206,14 +1206,17 @@ app.get('/api/pms/reservations', authenticate, (req, res) => {
   res.json(rows.map(r => ({
     id: r.id, room: r.room, guestName: r.guest_name,
     checkIn: r.check_in, checkOut: r.check_out,
-    password: r.password, active: !!r.active, token: r.token
+    password: r.password, active: !!r.active, token: r.token,
+    paymentMethod: r.payment_method, thirdPartyChannel: r.thirdparty_channel || '',
   })));
 });
 
 app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
   const hotelId = req.user.hotelId;
-  const { room, guestName, checkIn, checkOut, paymentMethod, ratePerNight } = req.body;
+  const { room, guestName, checkIn, checkOut, paymentMethod, ratePerNight, thirdPartyChannel } = req.body;
   if (!room || !guestName || !checkIn || !checkOut) return res.status(400).json({ error: 'All fields required' });
+  const bookingChannel = (paymentMethod === 'thirdparty' && thirdPartyChannel)
+    ? String(thirdPartyChannel).trim().slice(0, 100) : '';
 
   // Validate dates
   if (new Date(checkOut) <= new Date(checkIn)) {
@@ -1253,18 +1256,18 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const totalAmount = resolvedRate ? nights * resolvedRate : null;
 
   db.prepare(`INSERT INTO reservations
-    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,thirdparty_channel,rate_per_night,elec_at_checkin,water_at_checkin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, hotelId, room, guestName, checkIn, checkOut, plainPassword, hashedPassword, token, req.user.username,
-      paymentMethod || 'pending', resolvedRate, elecAtCheckin, waterAtCheckin);
+      paymentMethod || 'pending', bookingChannel, resolvedRate, elecAtCheckin, waterAtCheckin);
 
   if (resolvedRate) {
     try {
       db.prepare(`INSERT INTO income_log
-        (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,created_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,thirdparty_channel,elec_at_checkin,water_at_checkin,created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(crypto.randomUUID(), hotelId, id, room, guestName, checkIn, checkOut,
-          nights, roomType, resolvedRate, totalAmount, paymentMethod || 'pending',
+          nights, roomType, resolvedRate, totalAmount, paymentMethod || 'pending', bookingChannel,
           elecAtCheckin, waterAtCheckin, req.user.username);
     } catch (e) { console.error('Income log write at reservation failed:', e.message); }
   }
@@ -1282,10 +1285,10 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   // before the 60-second background overview refresh runs.
   const loNew = getLastOverviewRooms(hotelId);
   if (loNew[String(room)]) {
-    loNew[String(room)].reservation = { id, guestName, checkIn, checkOut };
+    loNew[String(room)].reservation = { id, guestName, checkIn, checkOut, paymentMethod: paymentMethod || 'pending' };
     // Broadcast so all connected clients see the reservation badge without polling delay.
     const devIdNew = getDeviceRoomMap(hotelId)[String(room)];
-    if (devIdNew) sseBroadcast(hotelId, 'telemetry', { room: String(room), deviceId: devIdNew, data: { reservation: { id, guestName, checkIn, checkOut } } });
+    if (devIdNew) sseBroadcast(hotelId, 'telemetry', { room: String(room), deviceId: devIdNew, data: { reservation: { id, guestName, checkIn, checkOut, paymentMethod: paymentMethod || 'pending' } } });
   }
   // Room stays VACANT until guest physically arrives (door open → OCCUPIED)
 });
@@ -1344,7 +1347,7 @@ app.delete('/api/pms/reservations/:id', authenticate, (req, res) => {
 
 app.post('/api/pms/reservations/:id/extend', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
   const hotelId        = req.user.hotelId;
-  const { newCheckOut, paymentMethod } = req.body;
+  const { newCheckOut, paymentMethod, thirdPartyChannel } = req.body;
   if (!newCheckOut) return res.status(400).json({ error: 'newCheckOut required' });
 
   const ar = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=? AND active=1').get(req.params.id, hotelId);
@@ -1358,10 +1361,12 @@ app.post('/api/pms/reservations/:id/extend', authenticate, requireRole('owner', 
   const nights        = Math.max(1, Math.round((new Date(newCheckOut) - new Date(ar.check_in)) / 86400000));
   const totalAmount   = nights * ratePerNight;
   const pm            = paymentMethod || ar.payment_method;
+  const extChannel    = (pm === 'thirdparty' && thirdPartyChannel)
+    ? String(thirdPartyChannel).trim().slice(0, 100) : (ar.thirdparty_channel || '');
 
-  db.prepare('UPDATE reservations SET check_out=?, payment_method=? WHERE id=?').run(newCheckOut, pm, ar.id);
-  db.prepare('UPDATE income_log SET check_out=?, nights=?, total_amount=?, payment_method=? WHERE reservation_id=?')
-    .run(newCheckOut, nights, totalAmount, pm, ar.id);
+  db.prepare('UPDATE reservations SET check_out=?, payment_method=?, thirdparty_channel=? WHERE id=?').run(newCheckOut, pm, extChannel, ar.id);
+  db.prepare('UPDATE income_log SET check_out=?, nights=?, total_amount=?, payment_method=?, thirdparty_channel=? WHERE reservation_id=?')
+    .run(newCheckOut, nights, totalAmount, pm, extChannel, ar.id);
 
   addLog(hotelId, 'pms', `Stay extended Rm${ar.room}: ${ar.check_out} → ${newCheckOut} (${nights}n, ${totalAmount} SAR)`, { room: ar.room, user: req.user.username });
   res.json({ success: true, newCheckOut, nights, totalAmount, ratePerNight, paymentMethod: pm });
@@ -1376,9 +1381,15 @@ app.post('/api/rooms/:room/lockdown', authenticate, requireRole('owner', 'admin'
 });
 
 app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin', 'frontdesk'), async (req, res) => {
-  const hotelId  = req.user.hotelId;
-  const { room } = req.params;
-  const ar       = db.prepare('SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1').get(hotelId, room);
+  const hotelId      = req.user.hotelId;
+  const { room }     = req.params;
+  const { paymentMethod, thirdPartyChannel } = req.body || {};
+  const VALID_PM     = ['cash', 'visa', 'online', 'thirdparty'];
+  const resolvedPM   = VALID_PM.includes(paymentMethod) ? paymentMethod : null;
+  const resolvedChannel = (resolvedPM === 'thirdparty' && thirdPartyChannel)
+    ? String(thirdPartyChannel).trim().slice(0, 100) : '';
+
+  const ar = db.prepare('SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1').get(hotelId, room);
   db.prepare('UPDATE reservations SET active=0 WHERE hotel_id=? AND room=? AND active=1').run(hotelId, room);
 
   if (ar) {
@@ -1394,10 +1405,19 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
         'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
       ).run(elecOut ?? 0, waterOut ?? 0, hotelId, room);
 
+      // Use the staff-selected payment method; fall back to what was on the reservation.
+      const finalPM = resolvedPM || (ar.payment_method !== 'pending' ? ar.payment_method : 'pending');
+
+      // Also persist chosen payment method on the reservation record.
+      if (resolvedPM) {
+        db.prepare('UPDATE reservations SET payment_method=?, thirdparty_channel=? WHERE id=?')
+          .run(resolvedPM, resolvedChannel, ar.id);
+      }
+
       const existing = db.prepare('SELECT id FROM income_log WHERE reservation_id=?').get(ar.id);
       if (existing) {
-        db.prepare('UPDATE income_log SET elec_at_checkout=?, water_at_checkout=? WHERE reservation_id=?')
-          .run(elecOut, waterOut, ar.id);
+        db.prepare("UPDATE income_log SET elec_at_checkout=?, water_at_checkout=?, payment_method=?, thirdparty_channel=?, checked_out_at=datetime('now') WHERE reservation_id=?")
+          .run(elecOut, waterOut, finalPM, resolvedChannel, ar.id);
       } else {
         const hotelRoom = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, room);
         const roomType  = hotelRoom?.room_type || ROOM_TYPES[FLOOR_TYPE[parseInt(room.length <= 3 ? room[0] : room.slice(0, -2))] ?? 0];
@@ -1406,10 +1426,10 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
         const ci = new Date(ar.check_in); const co = new Date(ar.check_out);
         const nights = Math.max(1, Math.round((co - ci) / 86400000));
         db.prepare(`INSERT INTO income_log
-          (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,elec_at_checkout,water_at_checkout,created_by)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,thirdparty_channel,elec_at_checkin,water_at_checkin,elec_at_checkout,water_at_checkout,checked_out_at,created_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)`)
           .run(crypto.randomUUID(), hotelId, ar.id, room, ar.guest_name, ar.check_in, ar.check_out,
-            nights, roomType, ratePerNight, nights * ratePerNight, ar.payment_method || 'pending',
+            nights, roomType, ratePerNight, nights * ratePerNight, finalPM, resolvedChannel,
             ar.elec_at_checkin ?? null, ar.water_at_checkin ?? null, elecOut, waterOut, req.user.username);
       }
     } catch (e) { console.error('Income log update at checkout failed:', e.message); }
@@ -1807,7 +1827,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
     (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, hotel.id, room, guestName, checkIn, checkOut, plainPassword, hashedPassword, token, 'self-booking',
-      'pending', ratePerNight, roomData.elecConsumption ?? null, roomData.waterConsumption ?? null);
+      'online', ratePerNight, roomData.elecConsumption ?? null, roomData.waterConsumption ?? null);
 
   // Income log
   if (ratePerNight) {
@@ -1816,7 +1836,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
         (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,created_by)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(crypto.randomUUID(), hotel.id, id, room, guestName, checkIn, checkOut,
-          nights, roomType, ratePerNight, totalAmount, 'pending',
+          nights, roomType, ratePerNight, totalAmount, 'online',
           roomData.elecConsumption ?? null, roomData.waterConsumption ?? null, 'self-booking');
     } catch (e) { console.error('Income log from self-booking failed:', e.message); }
   }
@@ -2180,7 +2200,7 @@ app.get('/api/guest/room/data', authenticate, async (req, res) => {
       relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
       relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
       doorUnlock: relays.doorUnlock ?? false,
-      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
+      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null
     };
     lastOverview[roomNum] = roomData;
     res.json(roomData);
