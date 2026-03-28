@@ -52,9 +52,9 @@ export default function KPIRow({ role }) {
       { label: 'SOS', count: alerts, pct: Math.round(alerts / n * 100), color: '#DC2626' },
     ].filter(f => f.count > 0);
 
-    // Total consumption across all rooms
-    const totalKwh = +(roomArr.reduce((s, r) => s + (r.elecConsumption || 0), 0)).toFixed(2);
-    const totalM3  = +(roomArr.reduce((s, r) => s + (r.waterConsumption || 0), 0)).toFixed(3);
+    // Total consumption since last reset across all rooms (delta from baseline)
+    const totalKwh = +(roomArr.reduce((s, r) => s + Math.max(0, (r.elecConsumption || 0) - (r.elecMeterBaseline || 0)), 0)).toFixed(2);
+    const totalM3  = +(roomArr.reduce((s, r) => s + Math.max(0, (r.waterConsumption || 0) - (r.waterMeterBaseline || 0)), 0)).toFixed(3);
 
     return { n, occ, or, alerts, offline, avgTemp, rev, mur, dnd, dist, flags, totalKwh, totalM3 };
   }, [rooms]);

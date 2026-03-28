@@ -801,11 +801,11 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               {curtainsSection}
               {servicesSection}
 
-              {/* Consumption — staff only */}
+              {/* Consumption — current stay (since last reset) */}
               <Section title={T('rm_consumption')}>
                 <div className="grid grid-cols-2 gap-4 text-center">
-                  <Stat label="kWh" value={(r.elecConsumption || 0).toFixed(2)} color="text-amber-500" />
-                  <Stat label="m³" value={(r.waterConsumption || 0).toFixed(3)} color="text-blue-500" />
+                  <Stat label="kWh" value={Math.max(0, (r.elecConsumption || 0) - (r.elecMeterBaseline || 0)).toFixed(2)} color="text-amber-500" />
+                  <Stat label="m³"  value={Math.max(0, (r.waterConsumption || 0) - (r.waterMeterBaseline || 0)).toFixed(3)} color="text-blue-500" />
                 </div>
               </Section>
 

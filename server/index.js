@@ -158,6 +158,16 @@ function processTelemetry(hotelId, roomNum, deviceId, data) {
   const lastOverview = getLastOverviewRooms(hotelId);
   detectAndLogChanges(hotelId, roomNum, data);
 
+  // First time this room appears in live telemetry — seed baseline from DB so
+  // consumption delta is correct before the next full overview fetch runs.
+  if (!lastOverview[roomNum]) {
+    const dbRoom = db.prepare('SELECT elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, roomNum);
+    lastOverview[roomNum] = {
+      elecMeterBaseline:  dbRoom?.elec_meter_baseline  ?? 0,
+      waterMeterBaseline: dbRoom?.water_meter_baseline ?? 0,
+    };
+  }
+
   // Capture previous state BEFORE applying updates (for scene fromValues matching)
   const prevState = {};
   if (lastOverview[roomNum]) {
@@ -800,16 +810,16 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
     tb.saveAttributes(deviceId, sharedAttrs).catch(e => console.error('TB attr write failed:', e.message));
   }
 
-  // ── When room becomes Booked (NOT_OCCUPIED): apply power-save immediately ───
+  // ── When room becomes Not-Occupied: lights off, AC standby 26°C, curtains closed ─
+  // Do NOT set pdMode — that locks out all device controls and prevents the guest
+  // from being able to use the room when they arrive (door open won't wake it).
   if (telemetry.roomStatus === 4) {
     const BOOKED_POWER_SAVE = {
-      pdMode: true,
       line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0,
       acMode: 1, acTemperatureSet: 26, fanSpeed: 0
     };
     lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...BOOKED_POWER_SAVE };
     if (lastOverviewCtl[roomNum]) Object.assign(lastOverviewCtl[roomNum], BOOKED_POWER_SAVE);
-    pdState[roomNum] = true;
     sseBatchTelemetry(hotelId, roomNum, deviceId, BOOKED_POWER_SAVE);
     tb.saveTelemetry(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save telemetry write failed:', e.message));
     tb.saveAttributes(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save attr write failed:', e.message));
@@ -1020,9 +1030,9 @@ async function fetchAndBroadcast(hotelId) {
   const reservationMap = {};
   activeResRows.forEach(ar => { reservationMap[ar.room] = ar; });
 
-  const hotelRoomRows = db.prepare('SELECT room_number, room_type FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
+  const hotelRoomRows = db.prepare('SELECT room_number, room_type, elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
   const hotelRoomMap  = {};
-  hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r.room_type; });
+  hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r; });
 
   const rooms = {};
   devices.forEach(d => {
@@ -1035,8 +1045,9 @@ async function fetchAndBroadcast(hotelId) {
     const ar     = reservationMap[rn] || null;
     detectAndLogChanges(hotelId, rn, t);
 
-    const roomType = hotelRoomMap[rn];
-    const typeId   = roomType ? ROOM_TYPES.indexOf(roomType) : (FLOOR_TYPE[floor] ?? 0);
+    const hotelRoom = hotelRoomMap[rn];
+    const roomType  = hotelRoom?.room_type;
+    const typeId    = roomType ? ROOM_TYPES.indexOf(roomType) : (FLOOR_TYPE[floor] ?? 0);
 
     rooms[rn] = {
       room: rn, floor, type: ROOM_TYPES[typeId] || 'STANDARD', typeId, deviceId: d.id.id, deviceName: d.name,
@@ -1046,6 +1057,7 @@ async function fetchAndBroadcast(hotelId) {
       doorLockBattery: t.doorLockBattery ?? null, doorContactsBattery: t.doorContactsBattery ?? null,
       airQualityBattery: t.airQualityBattery ?? null,
       elecConsumption: t.elecConsumption ?? 0, waterConsumption: t.waterConsumption ?? 0,
+      elecMeterBaseline: hotelRoom?.elec_meter_baseline ?? 0, waterMeterBaseline: hotelRoom?.water_meter_baseline ?? 0,
       waterMeterBattery: t.waterMeterBattery ?? null,
       // Device telemetry is the source of truth; shared attributes are the fallback
       // for keys the device hasn't reported yet (e.g. brand-new device, or keys not
@@ -1105,8 +1117,8 @@ app.get('/api/hotel/meter-stats', authenticate, requireRole('owner', 'admin'), (
 
   // Build per-room delta (consumption since last reset)
   const rooms = {};
-  let hotelElecTotal = 0;
-  let hotelWaterTotal = 0;
+  let hotelElecDelta = 0;
+  let hotelWaterDelta = 0;
   for (const r of roomRows) {
     const live = liveData[r.room_number] || {};
     const elec  = live.elecConsumption  || 0;
@@ -1114,28 +1126,28 @@ app.get('/api/hotel/meter-stats', authenticate, requireRole('owner', 'admin'), (
     const elecDelta  = Math.max(0, elec  - (r.elec_meter_baseline  || 0));
     const waterDelta = Math.max(0, water - (r.water_meter_baseline || 0));
     rooms[r.room_number] = { elecDelta: +elecDelta.toFixed(3), waterDelta: +waterDelta.toFixed(3) };
-    hotelElecTotal  += elec;
-    hotelWaterTotal += water;
+    hotelElecDelta  += elecDelta;
+    hotelWaterDelta += waterDelta;
   }
 
-  // Monthly snapshot (auto-reset on first request of a new month)
+  // Monthly snapshot: track cumulative delta totals across the month.
+  // On new month, reset the running totals to 0.
   const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
   let profile = db.prepare('SELECT meter_month, elec_month_start, water_month_start FROM hotel_profiles WHERE hotel_id=?').get(hotelId);
   if (!profile) {
-    // hotel_profiles row may not exist yet — upsert with zeros
     db.prepare('INSERT OR IGNORE INTO hotel_profiles (hotel_id) VALUES (?)').run(hotelId);
     profile = { meter_month: '', elec_month_start: 0, water_month_start: 0 };
   }
   if ((profile.meter_month || '') !== currentMonth) {
-    // New month — snapshot current totals as month-start baseline
+    // New month — snapshot current delta totals as the month-start baseline (effectively 0 since we use deltas)
     db.prepare(
       'UPDATE hotel_profiles SET meter_month=?, elec_month_start=?, water_month_start=? WHERE hotel_id=?'
-    ).run(currentMonth, hotelElecTotal, hotelWaterTotal, hotelId);
-    profile = { meter_month: currentMonth, elec_month_start: hotelElecTotal, water_month_start: hotelWaterTotal };
+    ).run(currentMonth, hotelElecDelta, hotelWaterDelta, hotelId);
+    profile = { meter_month: currentMonth, elec_month_start: hotelElecDelta, water_month_start: hotelWaterDelta };
   }
 
-  const monthlyKwh = +Math.max(0, hotelElecTotal  - (profile.elec_month_start  || 0)).toFixed(3);
-  const monthlyM3  = +Math.max(0, hotelWaterTotal - (profile.water_month_start || 0)).toFixed(3);
+  const monthlyKwh = +Math.max(0, hotelElecDelta  - (profile.elec_month_start  || 0)).toFixed(3);
+  const monthlyM3  = +Math.max(0, hotelWaterDelta - (profile.water_month_start || 0)).toFixed(3);
 
   res.json({ rooms, monthlyKwh, monthlyM3, month: currentMonth });
 });
@@ -1375,6 +1387,12 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
       const roomData     = lastOverview[room] || {};
       const elecOut  = roomData.elecConsumption ?? null;
       const waterOut = roomData.waterConsumption ?? null;
+
+      // Soft-reset meters: snapshot current absolute reading as new baseline
+      // so the next guest's consumption starts from 0 (physical device unchanged).
+      db.prepare(
+        'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
+      ).run(elecOut ?? 0, waterOut ?? 0, hotelId, room);
 
       const existing = db.prepare('SELECT id FROM income_log WHERE reservation_id=?').get(ar.id);
       if (existing) {
