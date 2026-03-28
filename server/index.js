@@ -1092,6 +1092,54 @@ async function fetchAndBroadcast(hotelId) {
 }
 
 // Hotel overview — always responds instantly with cached snapshot.
+// ── GET /api/hotel/meter-stats ─────────────────────────────────────────────
+// Returns per-room consumption since last reset and current-month hotel totals.
+// Monthly snapshot: if today's YYYY-MM differs from what's stored in hotel_profiles,
+// the current total is snapshotted as the new month-start and the month resets.
+app.get('/api/hotel/meter-stats', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId  = req.user.hotelId;
+  const liveData = getLastOverviewRooms(hotelId);
+  const roomRows = db.prepare(
+    'SELECT room_number, elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=?'
+  ).all(hotelId);
+
+  // Build per-room delta (consumption since last reset)
+  const rooms = {};
+  let hotelElecTotal = 0;
+  let hotelWaterTotal = 0;
+  for (const r of roomRows) {
+    const live = liveData[r.room_number] || {};
+    const elec  = live.elecConsumption  || 0;
+    const water = live.waterConsumption || 0;
+    const elecDelta  = Math.max(0, elec  - (r.elec_meter_baseline  || 0));
+    const waterDelta = Math.max(0, water - (r.water_meter_baseline || 0));
+    rooms[r.room_number] = { elecDelta: +elecDelta.toFixed(3), waterDelta: +waterDelta.toFixed(3) };
+    hotelElecTotal  += elec;
+    hotelWaterTotal += water;
+  }
+
+  // Monthly snapshot (auto-reset on first request of a new month)
+  const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  let profile = db.prepare('SELECT meter_month, elec_month_start, water_month_start FROM hotel_profiles WHERE hotel_id=?').get(hotelId);
+  if (!profile) {
+    // hotel_profiles row may not exist yet — upsert with zeros
+    db.prepare('INSERT OR IGNORE INTO hotel_profiles (hotel_id) VALUES (?)').run(hotelId);
+    profile = { meter_month: '', elec_month_start: 0, water_month_start: 0 };
+  }
+  if ((profile.meter_month || '') !== currentMonth) {
+    // New month — snapshot current totals as month-start baseline
+    db.prepare(
+      'UPDATE hotel_profiles SET meter_month=?, elec_month_start=?, water_month_start=? WHERE hotel_id=?'
+    ).run(currentMonth, hotelElecTotal, hotelWaterTotal, hotelId);
+    profile = { meter_month: currentMonth, elec_month_start: hotelElecTotal, water_month_start: hotelWaterTotal };
+  }
+
+  const monthlyKwh = +Math.max(0, hotelElecTotal  - (profile.elec_month_start  || 0)).toFixed(3);
+  const monthlyM3  = +Math.max(0, hotelWaterTotal - (profile.water_month_start || 0)).toFixed(3);
+
+  res.json({ rooms, monthlyKwh, monthlyM3, month: currentMonth });
+});
+
 // If data is stale (> OVERVIEW_CACHE_TTL), kicks off background TB fetch;
 // fresh data is pushed to the client via SSE 'snapshot' event when ready.
 app.get('/api/hotel/overview', authenticate, async (req, res) => {
@@ -2345,7 +2393,13 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
     await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, req.user.username);
     await sendControl(hotelId, devId, 'resetServices', { services: ['dndService', 'murService', 'sosService'] }, req.user.username);
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
-    await sendControl(hotelId, devId, 'resetMeters', {}, req.user.username);
+    // Soft-reset meters: store current absolute reading as new baseline so the
+    // next guest's consumption starts from 0 without touching the physical device.
+    const liveData = getLastOverviewRooms(hotelId);
+    const liveRoom = liveData[room] || {};
+    db.prepare(
+      'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
+    ).run(liveRoom.elecConsumption || 0, liveRoom.waterConsumption || 0, hotelId, room);
     // Cancel any active reservation for this room
     db.prepare('UPDATE reservations SET active=0 WHERE hotel_id=? AND room=? AND active=1').run(hotelId, room);
     sseBroadcast(hotelId, 'lockout', { room });
@@ -3012,6 +3066,14 @@ app.post('/api/housekeeping/assignments/:id/complete', authenticate, requireRole
       // Don't fail the HTTP response — DB is already marked done
     }
   }
+
+  // Soft-reset meters: snapshot current absolute reading as new baseline
+  // so the next guest's consumption starts from 0 (physical device unchanged).
+  const liveRooms2 = getLastOverviewRooms(hotelId);
+  const liveRoom2  = liveRooms2[row.room] || {};
+  db.prepare(
+    'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
+  ).run(liveRoom2.elecConsumption || 0, liveRoom2.waterConsumption || 0, hotelId, row.room);
 
   addLog(hotelId, 'housekeeping',
     `Rm${row.room} cleaned by ${req.user.username} → VACANT`,

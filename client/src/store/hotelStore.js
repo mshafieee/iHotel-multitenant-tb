@@ -48,6 +48,9 @@ const useHotelStore = create((set, get) => ({
   // ── Upsell state ─────────────────────────────────────────────────────────
   upsellPending:   [],   // pending extras across all reservations (managers)
 
+  // ── Meter stats (owner/admin only) ───────────────────────────────────────
+  meterStats: null,  // { rooms, monthlyKwh, monthlyM3, month }
+
   // Fetch overview — server always responds instantly with cached snapshot.
   // If data was stale, a background TB fetch runs on the server and delivers
   // fresh data via SSE 'snapshot'. So we always update from HTTP here, and
@@ -59,6 +62,13 @@ const useHotelStore = create((set, get) => ({
         set({ rooms: d.rooms, deviceCount: d.deviceCount, source: 'live' });
       }
     } catch (e) { console.error('Overview fetch:', e.message); }
+  },
+
+  fetchMeterStats: async () => {
+    try {
+      const data = await api('/api/hotel/meter-stats');
+      set({ meterStats: data });
+    } catch {}
   },
 
   fetchReservations: async () => {

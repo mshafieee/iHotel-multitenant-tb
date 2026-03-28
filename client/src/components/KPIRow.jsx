@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import useHotelStore from '../store/hotelStore';
 import useLangStore from '../store/langStore';
 import { t } from '../i18n';
@@ -11,8 +11,19 @@ export default function KPIRow({ role }) {
   // Select the rooms map (not Object.values) — Object.values creates a new
   // array every call, defeating Zustand's equality check and causing a re-render
   // on every unrelated store update.  useMemo below derives the array once.
-  const rooms = useHotelStore(s => s.rooms);
+  const rooms          = useHotelStore(s => s.rooms);
+  const meterStats     = useHotelStore(s => s.meterStats);
+  const fetchMeterStats = useHotelStore(s => s.fetchMeterStats);
   const lang = useLangStore(s => s.lang);
+
+  // Fetch meter stats for owner/admin; refresh every 5 min
+  useEffect(() => {
+    if (role === 'owner' || role === 'admin') {
+      fetchMeterStats();
+      const id = setInterval(fetchMeterStats, 5 * 60 * 1000);
+      return () => clearInterval(id);
+    }
+  }, [role, fetchMeterStats]);
   const T = (key) => t(key, lang);
   const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied')];
 
@@ -57,8 +68,20 @@ export default function KPIRow({ role }) {
     { icon: '🧹', label: T('kpi_mur'), value: stats.mur, color: stats.mur > 0 ? 'text-amber-500' : 'text-gray-400' },
     { icon: '🔕', label: T('kpi_dnd'), value: stats.dnd, color: stats.dnd > 0 ? 'text-orange-500' : 'text-gray-400' },
     ...((role === 'owner' || role === 'admin') ? [
-      { icon: '⚡', label: T('kpi_elec'), value: `${stats.totalKwh.toLocaleString()} kWh`, color: 'text-amber-600' },
-      { icon: '💧', label: T('kpi_water'), value: `${stats.totalM3.toLocaleString()} m³`, color: 'text-blue-600' },
+      {
+        icon: '⚡',
+        label: T('kpi_elec'),
+        value: meterStats ? `${meterStats.monthlyKwh.toLocaleString()} kWh` : `${stats.totalKwh.toLocaleString()} kWh`,
+        sub: meterStats ? T('kpi_this_month') : undefined,
+        color: 'text-amber-600'
+      },
+      {
+        icon: '💧',
+        label: T('kpi_water'),
+        value: meterStats ? `${meterStats.monthlyM3.toLocaleString()} m³` : `${stats.totalM3.toLocaleString()} m³`,
+        sub: meterStats ? T('kpi_this_month') : undefined,
+        color: 'text-blue-600'
+      },
     ] : []),
   ];
 

@@ -567,6 +567,28 @@ function initDB() {
     markMigration('027_upsell_room_types');
   }
 
+  // ── Migration 028: meter baselines (soft-reset after checkout/clean) ───────
+  // elec_meter_baseline / water_meter_baseline: absolute TB reading at last reset.
+  // "Room consumption since last reset" = current - baseline (never touches TB device).
+  // hotel_profiles gets: meter_month (YYYY-MM), elec_month_start, water_month_start
+  // — snapshotted on first request of each calendar month so monthly delta can be shown.
+  if (!hasMigration('028_meter_baselines')) {
+    const roomCols    = db.pragma('table_info(hotel_rooms)').map(c => c.name);
+    const profileCols = db.pragma('table_info(hotel_profiles)').map(c => c.name);
+    if (!roomCols.includes('elec_meter_baseline'))
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN elec_meter_baseline REAL DEFAULT 0');
+    if (!roomCols.includes('water_meter_baseline'))
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN water_meter_baseline REAL DEFAULT 0');
+    if (!profileCols.includes('meter_month'))
+      db.exec("ALTER TABLE hotel_profiles ADD COLUMN meter_month TEXT DEFAULT ''");
+    if (!profileCols.includes('elec_month_start'))
+      db.exec('ALTER TABLE hotel_profiles ADD COLUMN elec_month_start REAL DEFAULT 0');
+    if (!profileCols.includes('water_month_start'))
+      db.exec('ALTER TABLE hotel_profiles ADD COLUMN water_month_start REAL DEFAULT 0');
+    console.log('✓ Migration 028: meter baseline columns added');
+    markMigration('028_meter_baselines');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (

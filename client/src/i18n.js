@@ -185,6 +185,7 @@ const translations = {
   kpi_dnd:           { ar: 'عدم الإزعاج',       en: 'DND' },
   kpi_elec:          { ar: 'كهرباء',              en: 'Electricity' },
   kpi_water:         { ar: 'ماء',                en: 'Water' },
+  kpi_this_month:    { ar: 'هذا الشهر',          en: 'This month' },
   kpi_dist_title:    { ar: 'توزيع حالات الغرف', en: 'Room Status Distribution' },
   kpi_service_flags: { ar: 'تنبيهات الخدمة',   en: 'Service Flags' },
   kpi_rooms_label:   { ar: 'غرفة',              en: 'Rooms' },
