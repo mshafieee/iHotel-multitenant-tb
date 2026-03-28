@@ -2565,14 +2565,14 @@ app.get('/api/finance/income', authenticate, requireRole('owner', 'admin'), (req
 app.get('/api/finance/income/export', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const rows    = db.prepare('SELECT * FROM income_log WHERE hotel_id=? ORDER BY created_at DESC').all(hotelId);
-  const header  = 'Room,Guest,Check-In,Check-Out,Nights,Type,Rate/Night,Total,Payment,Elec-In,Elec-Out,Water-In,Water-Out,Date,Staff';
+  const header  = 'Room,Guest,Check-In,Planned-Check-Out,Actual-Checkout,Nights,Type,Rate/Night,Total,Payment,Elec-In,Elec-Out,Water-In,Water-Out,Staff';
   const csv     = rows.map(r => [
     r.room, `"${(r.guest_name||'').replace(/"/g,'""')}"`,
-    r.check_in, r.check_out, r.nights, r.room_type,
+    r.check_in, r.check_out, r.created_at, r.nights, r.room_type,
     r.rate_per_night, r.total_amount, r.payment_method,
     r.elec_at_checkin ?? '', r.elec_at_checkout ?? '',
     r.water_at_checkin ?? '', r.water_at_checkout ?? '',
-    r.created_at, r.created_by || ''
+    r.created_by || ''
   ].join(','));
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="income-${new Date().toISOString().slice(0,10)}.csv"`);

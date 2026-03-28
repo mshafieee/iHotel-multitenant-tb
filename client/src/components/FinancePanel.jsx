@@ -217,7 +217,7 @@ export default function FinancePanel() {
                     <th className="pb-2 text-left">Room</th>
                     <th className="pb-2 text-left">Guest</th>
                     <th className="pb-2 text-left">Check-In</th>
-                    <th className="pb-2 text-left">Check-Out</th>
+                    <th className="pb-2 text-left">Checked Out</th>
                     <th className="pb-2 text-center">Nights</th>
                     <th className="pb-2 text-center">Rate</th>
                     <th className="pb-2 text-center">Total</th>
@@ -239,7 +239,12 @@ export default function FinancePanel() {
                         <td className="py-2 font-mono font-bold">{row.room}</td>
                         <td className="py-2 text-gray-600">{row.guest_name}</td>
                         <td className="py-2 text-gray-400">{row.check_in}</td>
-                        <td className="py-2 text-gray-400">{row.check_out}</td>
+                        <td className="py-2 text-gray-400">
+                          <div>{row.created_at ? row.created_at.slice(0, 16).replace('T', ' ') : row.check_out}</div>
+                          {row.created_at && row.check_out && row.created_at.slice(0, 10) !== row.check_out && (
+                            <div className="text-[9px] text-amber-400">planned {row.check_out}</div>
+                          )}
+                        </td>
                         <td className="py-2 text-center">{row.nights}</td>
                         <td className="py-2 text-center">{(row.rate_per_night || 0).toLocaleString()}</td>
                         <td className="py-2 text-center font-bold text-emerald-600">{(row.total_amount || 0).toLocaleString()}</td>
