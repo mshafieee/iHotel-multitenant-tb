@@ -20,7 +20,7 @@ export default function HotelInfoPanel() {
     phone: '', email: '', website: '', amenities: [],
     checkInTime: '15:00', checkOutTime: '12:00', currency: 'SAR',
     bookingEnabled: false, bookingTerms: '', bookingTermsAr: '',
-    heroImageUrl: null
+    heroImageUrl: null, publicUrl: ''
   });
   const [roomTypeInfo, setRoomTypeInfo] = useState([]);
   const [images, setImages] = useState([]);
@@ -73,7 +73,8 @@ export default function HotelInfoPanel() {
           checkInTime: p.check_in_time || '15:00', checkOutTime: p.check_out_time || '12:00',
           currency: p.currency || 'SAR', bookingEnabled: !!p.booking_enabled,
           bookingTerms: p.booking_terms || '', bookingTermsAr: p.booking_terms_ar || '',
-          heroImageUrl: p.hero_image_url || null
+          heroImageUrl: p.hero_image_url || null,
+          publicUrl: p.public_url || ''
         });
       }
       setRoomTypeInfo(data.roomTypeInfo || []);
@@ -327,6 +328,19 @@ export default function HotelInfoPanel() {
           <Field label={lang === 'ar' ? 'الموقع الإلكتروني' : 'Website'}>
             <input value={profile.website} onChange={e => setProfile(p => ({ ...p, website: e.target.value }))}
               className="input-field" dir="ltr" />
+          </Field>
+          <Field label={lang === 'ar' ? 'عنوان الخادم العام (للقنوات)' : 'Public Server URL (for Channel Manager)'}>
+            <input
+              value={profile.publicUrl}
+              onChange={e => setProfile(p => ({ ...p, publicUrl: e.target.value }))}
+              placeholder="https://hotel.example.com"
+              className="input-field" dir="ltr"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              {lang === 'ar'
+                ? 'النطاق العام للخادم — يُستخدم لإنشاء روابط iCal وWebhook قابلة للمشاركة مع OTAs'
+                : 'Your server\'s public domain — used to generate shareable iCal & webhook URLs for OTAs'}
+            </p>
           </Field>
           <Field label={lang === 'ar' ? 'العملة' : 'Currency'}>
             <input value={profile.currency} onChange={e => setProfile(p => ({ ...p, currency: e.target.value }))}
@@ -758,14 +772,27 @@ export default function HotelInfoPanel() {
           </div>
         )}
 
+        {/* Public URL warning */}
+        {!profile.publicUrl && (
+          <div className="mb-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-[11px] text-amber-700">
+            <span className="font-bold text-amber-500 mt-0.5">⚠</span>
+            <span>
+              {lang === 'ar'
+                ? 'لم يتم تعيين عنوان الخادم العام. روابط iCal وWebhook ستستخدم localhost وهو غير قابل للوصول من OTAs. أضف عنوان الخادم في الإعدادات العامة أعلاه.'
+                : 'Public Server URL is not set. iCal & webhook URLs will use localhost, which OTAs cannot reach. Add your server\'s public domain in General settings above, then save.'}
+            </span>
+          </div>
+        )}
+
         {/* Channel list */}
         {channels.length === 0 && !showChannelForm ? (
           <p className="text-xs text-gray-400 text-center py-4">{T('channel_no_channels')}</p>
         ) : (
           <div className="space-y-3">
             {channels.map(ch => {
-              const icalUrl = `${window.location.origin}/api/channel/ical/${encodeURIComponent(ch.hotel_id)}/${ch.ical_token}.ics`;
-              const webhookUrl = `${window.location.origin}/api/channel/webhook/${ch.id}`;
+              const base = profile.publicUrl || window.location.origin;
+              const icalUrl = `${base}/api/channel/ical/${encodeURIComponent(ch.hotel_id)}/${ch.ical_token}.ics`;
+              const webhookUrl = `${base}/api/channel/webhook/${ch.id}`;
               const secretVisible = showSecrets[ch.id];
               return (
                 <div key={ch.id} className={`border rounded-xl p-3 ${ch.active ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>

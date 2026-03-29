@@ -1951,27 +1951,30 @@ app.put('/api/hotel/profile', authenticate, requireRole('owner'), (req, res) => 
   const {
     description, descriptionAr, location, locationAr, phone, email, website,
     amenities, checkInTime, checkOutTime, currency, bookingEnabled,
-    bookingTerms, bookingTermsAr, heroImageUrl
+    bookingTerms, bookingTermsAr, heroImageUrl, publicUrl
   } = req.body;
 
-  db.prepare(`INSERT INTO hotel_profiles (hotel_id, description, description_ar, location, location_ar, phone, email, website, amenities, check_in_time, check_out_time, currency, booking_enabled, booking_terms, booking_terms_ar, hero_image_url, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+  // Normalize publicUrl: strip trailing slash, ensure starts with http if non-empty
+  const cleanPublicUrl = publicUrl ? String(publicUrl).replace(/\/+$/, '') : null;
+
+  db.prepare(`INSERT INTO hotel_profiles (hotel_id, description, description_ar, location, location_ar, phone, email, website, amenities, check_in_time, check_out_time, currency, booking_enabled, booking_terms, booking_terms_ar, hero_image_url, public_url, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
     ON CONFLICT(hotel_id) DO UPDATE SET
       description=?, description_ar=?, location=?, location_ar=?, phone=?, email=?, website=?,
       amenities=?, check_in_time=?, check_out_time=?, currency=?, booking_enabled=?,
-      booking_terms=?, booking_terms_ar=?, hero_image_url=?, updated_at=datetime('now')`)
+      booking_terms=?, booking_terms_ar=?, hero_image_url=?, public_url=?, updated_at=datetime('now')`)
     .run(
       hotelId, description || null, descriptionAr || null, location || null, locationAr || null,
       phone || null, email || null, website || null,
       JSON.stringify(amenities || []), checkInTime || '15:00', checkOutTime || '12:00',
       currency || 'SAR', bookingEnabled ? 1 : 0, bookingTerms || null, bookingTermsAr || null,
-      heroImageUrl || null,
+      heroImageUrl || null, cleanPublicUrl,
       // ON CONFLICT values:
       description || null, descriptionAr || null, location || null, locationAr || null,
       phone || null, email || null, website || null,
       JSON.stringify(amenities || []), checkInTime || '15:00', checkOutTime || '12:00',
       currency || 'SAR', bookingEnabled ? 1 : 0, bookingTerms || null, bookingTermsAr || null,
-      heroImageUrl || null
+      heroImageUrl || null, cleanPublicUrl
     );
   res.json({ success: true });
 });

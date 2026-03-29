@@ -594,6 +594,15 @@ function initDB() {
     markMigration('031_channel_connections');
   }
 
+  // ── Migration 032: public_url on hotel_profiles (for Channel Manager iCal links) ──
+  if (!hasMigration('032_public_url')) {
+    const profCols = db.pragma('table_info(hotel_profiles)').map(c => c.name);
+    if (!profCols.includes('public_url'))
+      db.exec("ALTER TABLE hotel_profiles ADD COLUMN public_url TEXT DEFAULT NULL");
+    console.log('✓ Migration 032: public_url column added to hotel_profiles');
+    markMigration('032_public_url');
+  }
+
   if (!hasMigration('030_checked_out_at')) {
     const ilCols = db.pragma('table_info(income_log)').map(c => c.name);
     if (!ilCols.includes('checked_out_at'))
