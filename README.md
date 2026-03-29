@@ -16,6 +16,8 @@ A multi-tenant SaaS hotel management platform. Each hotel (tenant) gets its own 
 - [Scenes Engine](#scenes-engine)
 - [Maintenance Tracking](#maintenance-tracking)
 - [Guest Portal](#guest-portal)
+- [Upsell Engine](#upsell-engine)
+- [Channel Manager](#channel-manager)
 - [Platform Admin Portal](#platform-admin-portal)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -119,8 +121,10 @@ Full access to all hotels: create, suspend, configure, manage users and rooms.
 - **Users** — create/deactivate hotel users; owner can reset any user's password
 - **Shifts** — shift handover accounting with force-close modal (collects actual Cash and Visa amounts, compares to expected, flags discrepancies)
 - **Scenes** — create automation scenes triggered by time, status change, or sensor thresholds; apply a single scene to all rooms at once via "Apply to all rooms" checkbox
-- **Hotel Info** — owner-only tab to configure the hotel's public booking profile: description, location, phone, amenities, hero image, room type descriptions and photo galleries, check-in/out times, and online booking toggle
+- **Hotel Info** — owner-only tab to configure the hotel's public booking profile: description, location, phone, amenities, hero image, room type descriptions and photo galleries, check-in/out times, online booking toggle, and public server URL for Channel Manager
 - **Maintenance Tracking** — housekeepers report issues (AC, Plumbing, Electrical, Furniture, Cleaning) directly from their task card; managers track and resolve via a dedicated tab with status workflow (open → in progress → resolved), staff assignment, and internal notes
+- **Upsell Engine** — configurable in-room extras catalog (breakfast, airport transfer, minibar, spa, etc.) with guest-facing request flow in the portal and staff fulfilment queue in PMS; revenue tracked in Finance panel with `thirdparty` payment support
+- **Channel Manager** — iCal feed export (RFC 5545) per hotel for availability sync to any OTA; webhook receiver auto-creates reservations from Booking.com/Expedia/Airbnb; per-channel config (name, secret, active toggle) managed from Hotel Info
 - **Simulator** — inject mock telemetry from the browser for testing; works with any room number even without physical IoT hardware (virtual mode with SSE broadcast)
 - **Mobile-friendly tab bar** — scrollable tab navigation optimised for small screens
 
@@ -345,6 +349,60 @@ https://hotel.example.com/book/hayat
 
 ---
 
+## Upsell Engine
+
+Increase ancillary revenue by letting guests request paid extras directly from their room portal.
+
+### Setup (Owner — Hotel Info → Upsell Offers)
+
+1. Add offers with name (EN + AR), category, price, unit (one-time / per night), and optional room-type restriction
+2. Categories: `SERVICE`, `FOOD`, `TRANSPORT`, `SPA`, `OTHER` — each gets an emoji label in the portal
+3. Offers with a room-type restriction are only visible to guests in matching room types
+
+### Guest Flow
+
+1. Guest opens portal → taps **Services & Extras**
+2. Browses catalog grouped by category, taps **Request** (free) or **Add** (paid)
+3. Staff see a **⊕ N pending** amber badge on the reservation card in PMS
+4. Staff open the extras drawer: confirm, deliver, or decline each item; add a staff note
+
+### Finance Tracking
+
+Extras revenue is logged to `income_log` with `nights = 0` (flags it as ancillary). Finance panel sums it naturally alongside room revenue with a separate badge per payment method.
+
+---
+
+## Channel Manager
+
+Connect your hotel's live availability to Booking.com, Expedia, Airbnb, and any other OTA without manual updates.
+
+### How It Works
+
+| Component | Description |
+|-----------|-------------|
+| **iCal Feed** | `GET /api/channel/ical/:hotelId/:token.ics` — RFC 5545 calendar with all active reservations as `BLOCKED` events. OTAs pull this URL to mark dates unavailable. |
+| **Webhook Receiver** | `POST /api/channel/webhook/:channelId` — OTA sends a booking payload; iHotel validates the HMAC signature, checks availability, auto-assigns a room, and creates a reservation with `payment_method = 'thirdparty'`. |
+| **Channel Config** | Owner creates channels (name, webhook secret) in Hotel Info. Each channel gets a unique iCal token and webhook ID. |
+
+### Setup (Owner — Hotel Info → Channels)
+
+1. Set **Public Server URL** in General settings (e.g. `https://hotel.example.com`) — required for shareable URLs
+2. Go to **Channels** tab → click **Add Channel** → name it (e.g. "Booking.com")
+3. Copy the **iCal URL** and paste into the OTA's calendar import / sync field
+4. Copy the **Webhook URL** and paste into the OTA's webhook delivery settings; add a shared secret for HMAC verification
+5. OTA bookings arrive as reservations in PMS with an orange "Booking.com" badge in Finance
+
+### Supported OTAs (iCal import)
+
+| OTA | Where to paste |
+|-----|---------------|
+| Booking.com | Extranet → Rates & Availability → Calendar sync |
+| Airbnb | Calendar → Availability → Import calendar |
+| Expedia | Partner Central → Calendar → Import |
+| Any other | Any platform that supports iCal / `.ics` URL import |
+
+---
+
 ## Platform Admin Portal
 
 Access at `/platform/login`. Provides:
@@ -507,8 +565,8 @@ server {
 ```
 iHotel/
 ├── server/
-│   ├── index.js          Main Express server — all API routes, SSE, scenes engine, control logic
-│   ├── db.js             SQLite schema, migrations, tenant seeding
+│   ├── index.js          Main Express server — all API routes, SSE, scenes engine, upsell engine, channel manager
+│   ├── db.js             SQLite schema, migrations 010–032, tenant seeding
 │   ├── auth.js           JWT middleware — token generation, verification, roles
 │   ├── thingsboard.js    ThingsBoard REST API client (per-hotel instances)
 │   ├── platform.js       Platform super-admin router (hotel CRUD, metrics)
@@ -539,12 +597,12 @@ iHotel/
 │   │   ├── HousekeepingPanel.jsx Manager assignment view + housekeeper task list + report issue
 │   │   ├── MaintenancePanel.jsx  Admin maintenance ticket tracker with filter tabs + detail drawer
 │   │   ├── ReviewsPanel.jsx      Guest review management
-│   │   ├── HotelInfoPanel.jsx    Owner hotel profile editor (public booking page config)
+│   │   ├── HotelInfoPanel.jsx    Owner hotel profile, upsell catalog, service stats, channel manager
 │   │   ├── SimulatorPanel.jsx    Browser-based telemetry injector (virtual + hardware modes)
 │   │   └── AlertToast.jsx        SOS / MUR notification banners
 │   └── store/
 │       ├── authStore.js      Login state, JWT, hotel info
-│       ├── hotelStore.js     Rooms, SSE, polling, alerts
+│       ├── hotelStore.js     Rooms, SSE, polling, alerts, upsell pending, channel connections
 │       └── platformStore.js  Super-admin state (hotels, metrics)
 │
 ├── Firmware/
@@ -631,12 +689,40 @@ iHotel/
 | GET | `/api/public/book/:slug/availability` | — | Room availability by type for date range |
 | POST | `/api/public/book/:slug` | — | Create self-booking reservation (rate-limited) |
 
+### Upsell Engine
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/upsell/catalog` | owner | List all offers in the hotel's catalog |
+| POST | `/api/upsell/catalog` | owner | Create offer (name, category, price, unit, room_types filter) |
+| PATCH | `/api/upsell/catalog/:id` | owner | Update offer |
+| DELETE | `/api/upsell/catalog/:id` | owner | Delete offer |
+| GET | `/api/upsell/offers` | guest JWT | Offers visible to the guest's room type |
+| GET | `/api/upsell/my-extras` | guest JWT | Guest's own requested extras for the active stay |
+| POST | `/api/upsell/my-extras` | guest JWT | Guest requests an extra |
+| GET | `/api/upsell/pending` | any staff | All pending (requested) extras for the hotel |
+| GET | `/api/upsell/extras/:reservationId` | any staff | Extras for a specific reservation |
+| PATCH | `/api/upsell/extras/:id` | any staff | Update extra status (confirmed/delivered/declined) + staff note |
+| GET | `/api/upsell/stats` | owner | Per-offer request count totals |
+| GET | `/api/upsell/stats/:offerId/rooms` | owner | Per-room breakdown for a specific offer |
+
+### Channel Manager
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/channel/ical/:hotelId/:token.ics` | — (token auth) | Live iCal feed (RFC 5545) of all blocked dates for the hotel |
+| POST | `/api/channel/webhook/:channelId` | — (HMAC-SHA256) | Receive OTA booking; validates signature, auto-assigns room, creates reservation |
+| GET | `/api/channel/connections` | JWT | List channel connections for the hotel |
+| POST | `/api/channel/connections` | owner/admin | Create a channel connection (auto-generates `ical_token`) |
+| PATCH | `/api/channel/connections/:id` | owner/admin | Update channel name, secret, notes, active toggle |
+| DELETE | `/api/channel/connections/:id` | owner/admin | Delete channel connection |
+
 ### Hotel Profile (Owner)
 
 | Method | Endpoint | Role | Description |
 |--------|----------|------|-------------|
 | GET | `/api/hotel/profile` | owner | Get hotel profile, room type info, and images |
-| PUT | `/api/hotel/profile` | owner | Update hotel public profile |
+| PUT | `/api/hotel/profile` | owner | Update hotel public profile (incl. `publicUrl` for Channel Manager) |
 | PUT | `/api/hotel/room-type-info/:type` | owner | Update room type descriptions and details |
 | POST | `/api/hotel/room-type-images/:type` | owner | Upload room type image |
 | DELETE | `/api/hotel/room-type-images/:id` | owner | Delete room type image |
@@ -731,3 +817,9 @@ iHotel/
 | DND and MUR both active | Update to latest — DND/MUR are now mutually exclusive; activating one auto-cancels the other |
 | `/book/slug` shows "Booking Not Available" | Owner must enable online booking in the Hotel Info tab and save the profile |
 | Self-booking shows no room types | Rooms must be imported/discovered first in Platform Admin; room types come from `hotel_rooms` table |
+| iCal URL shows `localhost` | Set **Public Server URL** in Hotel Info → General settings → save; channel URLs will update |
+| OTA can't pull iCal feed | Ensure the server is publicly reachable (deployed to VPS, not localhost); check firewall port 3000/443 |
+| Webhook booking returns 409 | No room of the requested type is available for those dates; OTA will not confirm the booking |
+| Webhook returns 401 | `X-Webhook-Signature` header doesn't match the configured HMAC secret — verify the shared secret in both iHotel and the OTA |
+| Upsell extras don't appear for guest | Check that the offer's room_types filter includes the guest's room type, or set it to NULL (all rooms) |
+| PMS shows no pending badge | Ensure `fetchUpsellPending` is called on mount; check browser console for API errors |

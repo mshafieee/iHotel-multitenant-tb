@@ -2,6 +2,154 @@
 
 ---
 
+## Session: 2026-03-29 — Upsell Engine + Channel Manager
+
+### Summary
+Two major revenue-focused features delivered on branch `feat-channel-manager` (continued from `feat-upsell-engine`):
+
+**Upsell Engine** — complete in-room extras system: guest-facing catalog in the portal, staff fulfilment queue in PMS, owner catalog management with room-type visibility filters, service statistics dashboard, bilingual Arabic/English support.
+
+**Channel Manager** — OTA sync infrastructure: iCal feed export (RFC 5545), webhook receiver for automated booking ingestion, per-channel config UI in Hotel Info, public server URL setting for generating shareable links.
+
+---
+
+### Upsell Engine
+
+#### 1. Database (`server/db.js`)
+- **Migration 025**: `upsell_offers` — catalog table (hotel_id, name, name_ar, category, price, unit, active, sort_order)
+- **Migration 026**: `reservation_extras` — guest request log (reservation_id, offer_id, quantity, status, note, staff_note, delivered_at)
+- **Migration 027**: `room_types TEXT DEFAULT NULL` column on `upsell_offers` — NULL = all rooms, JSON array = specific types
+- **Migration 029**: `thirdparty_channel` on `reservations` + `income_log` (safe ALTER TABLE with `table_info` guard)
+- **Migration 030**: `checked_out_at` on `income_log`
+
+#### 2. API (`server/index.js`)
+12 new endpoints under `/api/upsell/`:
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/upsell/catalog` | owner | Owner's full offer catalog |
+| POST | `/api/upsell/catalog` | owner | Create offer with room_types filter |
+| PATCH | `/api/upsell/catalog/:id` | owner | Update offer |
+| DELETE | `/api/upsell/catalog/:id` | owner | Hard delete |
+| GET | `/api/upsell/offers` | guest JWT | Offers filtered by guest's room type |
+| GET | `/api/upsell/my-extras` | guest JWT | Guest's extras for active stay |
+| POST | `/api/upsell/my-extras` | guest JWT | Request an extra |
+| GET | `/api/upsell/pending` | any staff | All pending extras for hotel |
+| GET | `/api/upsell/extras/:reservationId` | any staff | Extras for reservation |
+| PATCH | `/api/upsell/extras/:id` | any staff | Confirm/deliver/decline + staff note |
+| GET | `/api/upsell/stats` | owner | Per-offer request count totals |
+| GET | `/api/upsell/stats/:offerId/rooms` | owner | Per-room breakdown for an offer |
+
+Revenue flagged with `nights = 0` in `income_log` to distinguish from room revenue without schema changes.
+
+#### 3. PMSPanel (`client/src/components/PMSPanel.jsx`)
+- Amber **⊕ N pending** badge on each reservation card
+- **Extras Drawer**: accordion with confirm / deliver / decline actions, staff note field, Quick Add form
+- `thirdPartyChannel` field in create/extend forms
+- SSE listeners: `upsell_request` + `upsell_update` → auto-refresh pending list
+
+#### 4. Guest Portal — GuestExtrasWidget (`client/src/components/RoomModal.jsx`)
+- `GuestExtrasWidget` lifted **outside** `RoomModal` to fix React closure anti-pattern (was causing full remount on every 5s poll)
+- Offers grouped by category with emoji+label headers
+- Manual ↻ Refresh button (no SSE auto-refresh to prevent flashing)
+- Bilingual name/description with AR acronyms per category
+
+#### 5. HotelInfoPanel (`client/src/components/HotelInfoPanel.jsx`)
+- **Upsell Offers** card: CRUD with room-type pill checkboxes for visibility filtering
+- **📊 Service Statistics** card: per-offer table with request counts, ▼ Details accordion per room
+
+#### 6. UX Fixes
+- Language toggle (EN/ع) added inside RoomModal sticky blue header (visible even when modal covers portal header)
+- `truncate` → `break-words leading-snug` for offer names and staff notes (was clipping long text)
+
+#### 7. i18n (`client/src/i18n.js`)
+37 new `upsell_*` keys + payment picker keys in Arabic and English.
+
+---
+
+### Channel Manager
+
+#### 1. Database (`server/db.js`)
+- **Migration 031**: `channel_connections` table — id, hotel_id (FK), name, type, webhook_secret, api_key, ical_token (random UUID), last_sync_at, active, notes
+- **Migration 032**: `public_url TEXT DEFAULT NULL` column on `hotel_profiles` — owner sets their VPS domain so iCal/webhook URLs are shareable
+
+#### 2. API (`server/index.js`)
+6 new endpoints:
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/channel/ical/:hotelId/:token.ics` | token | RFC 5545 iCal feed — all reservations as BLOCKED events |
+| POST | `/api/channel/webhook/:channelId` | HMAC-SHA256 | Receive OTA booking, validate signature, auto-assign room, create reservation |
+| GET | `/api/channel/connections` | JWT | List channels for hotel |
+| POST | `/api/channel/connections` | owner/admin | Create channel (generates `ical_token` via `crypto.randomUUID()`) |
+| PATCH | `/api/channel/connections/:id` | owner/admin | Update name, secret, active, notes |
+| DELETE | `/api/channel/connections/:id` | owner/admin | Delete channel |
+
+Webhook receiver reuses availability overlap query from public booking. Auto-assigns lowest floor available room. Sets `payment_method = 'thirdparty'` + `thirdparty_channel = channel.name`. Broadcasts `channel_booking` SSE event.
+
+`PUT /api/hotel/profile` updated to accept and persist `publicUrl`.
+
+#### 3. HotelInfoPanel — Channels Tab (`client/src/components/HotelInfoPanel.jsx`)
+- **General settings**: new "Public Server URL" input field (owner enters `https://hotel.example.com` once)
+- **Channels section**: per-channel cards with:
+  - iCal URL (read-only + 📋 Copy) — uses `publicUrl` from profile, falls back to `window.location.origin`
+  - Webhook URL (read-only + 📋 Copy)
+  - Webhook secret (masked, reveal toggle)
+  - Active toggle, edit/delete buttons
+  - Collapsible setup instructions for Booking.com / Airbnb / Expedia
+- **Warning banner** when `publicUrl` is not set: guides owner to configure it before sharing URLs
+
+#### 4. Zustand Store (`client/src/store/hotelStore.js`)
+- `channels: []` state
+- `fetchChannels`, `createChannel`, `updateChannel`, `deleteChannel` actions
+
+#### 5. i18n (`client/src/i18n.js`)
+20 new `channel_*` keys in Arabic and English.
+
+#### 6. Bug fix
+`auth` → `authenticate` (correct middleware name imported from `./auth`) in all 4 channel CRUD routes — server crashed on start without this fix.
+
+---
+
+### Landing Page Updates (`client/src/pages/LandingPage.jsx`)
+- New hero slide: "Sync Your Rooms to Every OTA in Real-Time" (EN + AR, rose/pink/fuchsia accent)
+- Features list: replaced 2 generic items with **Channel Manager** and **Upsell Engine** cards (both EN + AR)
+- CTA sub-text updated to mention Channel Manager and Upsell Engine
+
+---
+
+### Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| iCal pull model | Zero OTA-specific API keys needed; every major OTA supports RFC 5545; no periodic jobs required |
+| `ical_token` in URL path | Secures the public iCal endpoint without requiring authentication; each channel has a unique random token |
+| HMAC-SHA256 webhook validation | Standard OTA pattern; prevents replay attacks; webhook_secret stored per channel |
+| `public_url` on hotel_profiles | iCal/webhook URLs must use the public domain, not `localhost:5173`; owner sets it once in General settings |
+| `nights = 0` for extras in income_log | Revenue tracking without schema changes; Finance panel sums naturally; can be filtered by nights field |
+| Component lifted outside RoomModal | React sees a new component type on every render when defined inside a function — causes full remount/flash; top-level declaration fixes this |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/db.js` | Migrations 025–032: upsell tables, channel_connections, public_url |
+| `server/index.js` | 12 upsell endpoints + 6 channel endpoints + auth middleware fix + profile publicUrl |
+| `server/platform.js` | Hotel creation seeds default upsell offers |
+| `client/src/components/PMSPanel.jsx` | Extras drawer, pending badge, thirdPartyChannel, SSE listeners |
+| `client/src/components/RoomModal.jsx` | GuestExtrasWidget lifted out, language toggle, text wrapping fix |
+| `client/src/components/HotelInfoPanel.jsx` | Upsell catalog CRUD, service stats, channels section, publicUrl field |
+| `client/src/components/FinancePanel.jsx` | `checked_out_at` display, color-coded payment badges, thirdparty_channel label |
+| `client/src/pages/DashboardPage.jsx` | PMS tab badge includes upsell pending count |
+| `client/src/pages/GuestPortal.jsx` | Language toggle (superseded by RoomModal toggle) |
+| `client/src/store/hotelStore.js` | upsellPending state+actions, channels state+actions, SSE listeners |
+| `client/src/i18n.js` | 37 upsell_* keys + 20 channel_* keys + payment picker keys (EN + AR) |
+| `client/src/pages/LandingPage.jsx` | New Channel Manager hero slide, updated features list, updated CTA |
+
+---
+
 ## Session: 2026-03-26 — Landing Page Redesign + Maintenance Ticket Tracking
 
 ### Summary
