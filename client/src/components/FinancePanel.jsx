@@ -217,7 +217,7 @@ export default function FinancePanel() {
                     <th className="pb-2 text-left">Room</th>
                     <th className="pb-2 text-left">Guest</th>
                     <th className="pb-2 text-left">Check-In</th>
-                    <th className="pb-2 text-left">Check-Out</th>
+                    <th className="pb-2 text-left">Checked Out</th>
                     <th className="pb-2 text-center">Nights</th>
                     <th className="pb-2 text-center">Rate</th>
                     <th className="pb-2 text-center">Total</th>
@@ -239,14 +239,32 @@ export default function FinancePanel() {
                         <td className="py-2 font-mono font-bold">{row.room}</td>
                         <td className="py-2 text-gray-600">{row.guest_name}</td>
                         <td className="py-2 text-gray-400">{row.check_in}</td>
-                        <td className="py-2 text-gray-400">{row.check_out}</td>
+                        <td className="py-2 text-gray-400">
+                          {row.checked_out_at
+                            ? <>
+                                <div>{row.checked_out_at.slice(0, 16).replace('T', ' ')}</div>
+                                {row.checked_out_at.slice(0, 10) !== row.check_out && (
+                                  <div className="text-[9px] text-amber-400">planned {row.check_out}</div>
+                                )}
+                              </>
+                            : <span className="text-[9px] text-gray-300">—</span>
+                          }
+                        </td>
                         <td className="py-2 text-center">{row.nights}</td>
                         <td className="py-2 text-center">{(row.rate_per_night || 0).toLocaleString()}</td>
                         <td className="py-2 text-center font-bold text-emerald-600">{(row.total_amount || 0).toLocaleString()}</td>
                         <td className="py-2 text-center">
-                          <span className={`badge text-[9px] ${row.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-600' : row.payment_method === 'visa' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                            {row.payment_method || 'pending'}
+                          <span className={`badge text-[9px] ${
+                            row.payment_method === 'cash'        ? 'bg-emerald-50 text-emerald-600' :
+                            row.payment_method === 'visa'        ? 'bg-blue-50 text-blue-600' :
+                            row.payment_method === 'online'      ? 'bg-purple-50 text-purple-600' :
+                            row.payment_method === 'thirdparty'  ? 'bg-orange-50 text-orange-600' :
+                                                                   'bg-gray-100 text-gray-400'}`}>
+                            {row.payment_method === 'online' ? 'iHotel Book' : (row.payment_method || 'pending')}
                           </span>
+                          {row.payment_method === 'thirdparty' && row.thirdparty_channel && (
+                            <div className="text-[9px] text-orange-500 mt-0.5">{row.thirdparty_channel}</div>
+                          )}
                         </td>
                         <td className="py-2 text-right text-gray-500">
                           {elecDelta} kWh

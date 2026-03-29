@@ -158,6 +158,16 @@ function processTelemetry(hotelId, roomNum, deviceId, data) {
   const lastOverview = getLastOverviewRooms(hotelId);
   detectAndLogChanges(hotelId, roomNum, data);
 
+  // First time this room appears in live telemetry — seed baseline from DB so
+  // consumption delta is correct before the next full overview fetch runs.
+  if (!lastOverview[roomNum]) {
+    const dbRoom = db.prepare('SELECT elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, roomNum);
+    lastOverview[roomNum] = {
+      elecMeterBaseline:  dbRoom?.elec_meter_baseline  ?? 0,
+      waterMeterBaseline: dbRoom?.water_meter_baseline ?? 0,
+    };
+  }
+
   // Capture previous state BEFORE applying updates (for scene fromValues matching)
   const prevState = {};
   if (lastOverview[roomNum]) {
@@ -800,16 +810,16 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
     tb.saveAttributes(deviceId, sharedAttrs).catch(e => console.error('TB attr write failed:', e.message));
   }
 
-  // ── When room becomes Booked (NOT_OCCUPIED): apply power-save immediately ───
+  // ── When room becomes Not-Occupied: lights off, AC standby 26°C, curtains closed ─
+  // Do NOT set pdMode — that locks out all device controls and prevents the guest
+  // from being able to use the room when they arrive (door open won't wake it).
   if (telemetry.roomStatus === 4) {
     const BOOKED_POWER_SAVE = {
-      pdMode: true,
       line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0,
       acMode: 1, acTemperatureSet: 26, fanSpeed: 0
     };
     lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...BOOKED_POWER_SAVE };
     if (lastOverviewCtl[roomNum]) Object.assign(lastOverviewCtl[roomNum], BOOKED_POWER_SAVE);
-    pdState[roomNum] = true;
     sseBatchTelemetry(hotelId, roomNum, deviceId, BOOKED_POWER_SAVE);
     tb.saveTelemetry(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save telemetry write failed:', e.message));
     tb.saveAttributes(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save attr write failed:', e.message));
@@ -1020,9 +1030,9 @@ async function fetchAndBroadcast(hotelId) {
   const reservationMap = {};
   activeResRows.forEach(ar => { reservationMap[ar.room] = ar; });
 
-  const hotelRoomRows = db.prepare('SELECT room_number, room_type FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
+  const hotelRoomRows = db.prepare('SELECT room_number, room_type, elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
   const hotelRoomMap  = {};
-  hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r.room_type; });
+  hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r; });
 
   const rooms = {};
   devices.forEach(d => {
@@ -1035,8 +1045,9 @@ async function fetchAndBroadcast(hotelId) {
     const ar     = reservationMap[rn] || null;
     detectAndLogChanges(hotelId, rn, t);
 
-    const roomType = hotelRoomMap[rn];
-    const typeId   = roomType ? ROOM_TYPES.indexOf(roomType) : (FLOOR_TYPE[floor] ?? 0);
+    const hotelRoom = hotelRoomMap[rn];
+    const roomType  = hotelRoom?.room_type;
+    const typeId    = roomType ? ROOM_TYPES.indexOf(roomType) : (FLOOR_TYPE[floor] ?? 0);
 
     rooms[rn] = {
       room: rn, floor, type: ROOM_TYPES[typeId] || 'STANDARD', typeId, deviceId: d.id.id, deviceName: d.name,
@@ -1046,6 +1057,7 @@ async function fetchAndBroadcast(hotelId) {
       doorLockBattery: t.doorLockBattery ?? null, doorContactsBattery: t.doorContactsBattery ?? null,
       airQualityBattery: t.airQualityBattery ?? null,
       elecConsumption: t.elecConsumption ?? 0, waterConsumption: t.waterConsumption ?? 0,
+      elecMeterBaseline: hotelRoom?.elec_meter_baseline ?? 0, waterMeterBaseline: hotelRoom?.water_meter_baseline ?? 0,
       waterMeterBattery: t.waterMeterBattery ?? null,
       // Device telemetry is the source of truth; shared attributes are the fallback
       // for keys the device hasn't reported yet (e.g. brand-new device, or keys not
@@ -1067,7 +1079,7 @@ async function fetchAndBroadcast(hotelId) {
       relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
       relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
       doorUnlock: t.doorUnlock ?? relays.doorUnlock ?? false,
-      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
+      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null
     };
   });
 
@@ -1092,6 +1104,54 @@ async function fetchAndBroadcast(hotelId) {
 }
 
 // Hotel overview — always responds instantly with cached snapshot.
+// ── GET /api/hotel/meter-stats ─────────────────────────────────────────────
+// Returns per-room consumption since last reset and current-month hotel totals.
+// Monthly snapshot: if today's YYYY-MM differs from what's stored in hotel_profiles,
+// the current total is snapshotted as the new month-start and the month resets.
+app.get('/api/hotel/meter-stats', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId  = req.user.hotelId;
+  const liveData = getLastOverviewRooms(hotelId);
+  const roomRows = db.prepare(
+    'SELECT room_number, elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=?'
+  ).all(hotelId);
+
+  // Build per-room delta (consumption since last reset)
+  const rooms = {};
+  let hotelElecDelta = 0;
+  let hotelWaterDelta = 0;
+  for (const r of roomRows) {
+    const live = liveData[r.room_number] || {};
+    const elec  = live.elecConsumption  || 0;
+    const water = live.waterConsumption || 0;
+    const elecDelta  = Math.max(0, elec  - (r.elec_meter_baseline  || 0));
+    const waterDelta = Math.max(0, water - (r.water_meter_baseline || 0));
+    rooms[r.room_number] = { elecDelta: +elecDelta.toFixed(3), waterDelta: +waterDelta.toFixed(3) };
+    hotelElecDelta  += elecDelta;
+    hotelWaterDelta += waterDelta;
+  }
+
+  // Monthly snapshot: track cumulative delta totals across the month.
+  // On new month, reset the running totals to 0.
+  const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  let profile = db.prepare('SELECT meter_month, elec_month_start, water_month_start FROM hotel_profiles WHERE hotel_id=?').get(hotelId);
+  if (!profile) {
+    db.prepare('INSERT OR IGNORE INTO hotel_profiles (hotel_id) VALUES (?)').run(hotelId);
+    profile = { meter_month: '', elec_month_start: 0, water_month_start: 0 };
+  }
+  if ((profile.meter_month || '') !== currentMonth) {
+    // New month — snapshot current delta totals as the month-start baseline (effectively 0 since we use deltas)
+    db.prepare(
+      'UPDATE hotel_profiles SET meter_month=?, elec_month_start=?, water_month_start=? WHERE hotel_id=?'
+    ).run(currentMonth, hotelElecDelta, hotelWaterDelta, hotelId);
+    profile = { meter_month: currentMonth, elec_month_start: hotelElecDelta, water_month_start: hotelWaterDelta };
+  }
+
+  const monthlyKwh = +Math.max(0, hotelElecDelta  - (profile.elec_month_start  || 0)).toFixed(3);
+  const monthlyM3  = +Math.max(0, hotelWaterDelta - (profile.water_month_start || 0)).toFixed(3);
+
+  res.json({ rooms, monthlyKwh, monthlyM3, month: currentMonth });
+});
+
 // If data is stale (> OVERVIEW_CACHE_TTL), kicks off background TB fetch;
 // fresh data is pushed to the client via SSE 'snapshot' event when ready.
 app.get('/api/hotel/overview', authenticate, async (req, res) => {
@@ -1146,14 +1206,17 @@ app.get('/api/pms/reservations', authenticate, (req, res) => {
   res.json(rows.map(r => ({
     id: r.id, room: r.room, guestName: r.guest_name,
     checkIn: r.check_in, checkOut: r.check_out,
-    password: r.password, active: !!r.active, token: r.token
+    password: r.password, active: !!r.active, token: r.token,
+    paymentMethod: r.payment_method, thirdPartyChannel: r.thirdparty_channel || '',
   })));
 });
 
 app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
   const hotelId = req.user.hotelId;
-  const { room, guestName, checkIn, checkOut, paymentMethod, ratePerNight } = req.body;
+  const { room, guestName, checkIn, checkOut, paymentMethod, ratePerNight, thirdPartyChannel } = req.body;
   if (!room || !guestName || !checkIn || !checkOut) return res.status(400).json({ error: 'All fields required' });
+  const bookingChannel = (paymentMethod === 'thirdparty' && thirdPartyChannel)
+    ? String(thirdPartyChannel).trim().slice(0, 100) : '';
 
   // Validate dates
   if (new Date(checkOut) <= new Date(checkIn)) {
@@ -1193,18 +1256,18 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   const totalAmount = resolvedRate ? nights * resolvedRate : null;
 
   db.prepare(`INSERT INTO reservations
-    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,thirdparty_channel,rate_per_night,elec_at_checkin,water_at_checkin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, hotelId, room, guestName, checkIn, checkOut, plainPassword, hashedPassword, token, req.user.username,
-      paymentMethod || 'pending', resolvedRate, elecAtCheckin, waterAtCheckin);
+      paymentMethod || 'pending', bookingChannel, resolvedRate, elecAtCheckin, waterAtCheckin);
 
   if (resolvedRate) {
     try {
       db.prepare(`INSERT INTO income_log
-        (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,created_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,thirdparty_channel,elec_at_checkin,water_at_checkin,created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(crypto.randomUUID(), hotelId, id, room, guestName, checkIn, checkOut,
-          nights, roomType, resolvedRate, totalAmount, paymentMethod || 'pending',
+          nights, roomType, resolvedRate, totalAmount, paymentMethod || 'pending', bookingChannel,
           elecAtCheckin, waterAtCheckin, req.user.username);
     } catch (e) { console.error('Income log write at reservation failed:', e.message); }
   }
@@ -1222,10 +1285,10 @@ app.post('/api/pms/reservations', authenticate, requireRole('owner', 'admin', 'f
   // before the 60-second background overview refresh runs.
   const loNew = getLastOverviewRooms(hotelId);
   if (loNew[String(room)]) {
-    loNew[String(room)].reservation = { id, guestName, checkIn, checkOut };
+    loNew[String(room)].reservation = { id, guestName, checkIn, checkOut, paymentMethod: paymentMethod || 'pending' };
     // Broadcast so all connected clients see the reservation badge without polling delay.
     const devIdNew = getDeviceRoomMap(hotelId)[String(room)];
-    if (devIdNew) sseBroadcast(hotelId, 'telemetry', { room: String(room), deviceId: devIdNew, data: { reservation: { id, guestName, checkIn, checkOut } } });
+    if (devIdNew) sseBroadcast(hotelId, 'telemetry', { room: String(room), deviceId: devIdNew, data: { reservation: { id, guestName, checkIn, checkOut, paymentMethod: paymentMethod || 'pending' } } });
   }
   // Room stays VACANT until guest physically arrives (door open → OCCUPIED)
 });
@@ -1284,7 +1347,7 @@ app.delete('/api/pms/reservations/:id', authenticate, (req, res) => {
 
 app.post('/api/pms/reservations/:id/extend', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
   const hotelId        = req.user.hotelId;
-  const { newCheckOut, paymentMethod } = req.body;
+  const { newCheckOut, paymentMethod, thirdPartyChannel } = req.body;
   if (!newCheckOut) return res.status(400).json({ error: 'newCheckOut required' });
 
   const ar = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=? AND active=1').get(req.params.id, hotelId);
@@ -1298,10 +1361,12 @@ app.post('/api/pms/reservations/:id/extend', authenticate, requireRole('owner', 
   const nights        = Math.max(1, Math.round((new Date(newCheckOut) - new Date(ar.check_in)) / 86400000));
   const totalAmount   = nights * ratePerNight;
   const pm            = paymentMethod || ar.payment_method;
+  const extChannel    = (pm === 'thirdparty' && thirdPartyChannel)
+    ? String(thirdPartyChannel).trim().slice(0, 100) : (ar.thirdparty_channel || '');
 
-  db.prepare('UPDATE reservations SET check_out=?, payment_method=? WHERE id=?').run(newCheckOut, pm, ar.id);
-  db.prepare('UPDATE income_log SET check_out=?, nights=?, total_amount=?, payment_method=? WHERE reservation_id=?')
-    .run(newCheckOut, nights, totalAmount, pm, ar.id);
+  db.prepare('UPDATE reservations SET check_out=?, payment_method=?, thirdparty_channel=? WHERE id=?').run(newCheckOut, pm, extChannel, ar.id);
+  db.prepare('UPDATE income_log SET check_out=?, nights=?, total_amount=?, payment_method=?, thirdparty_channel=? WHERE reservation_id=?')
+    .run(newCheckOut, nights, totalAmount, pm, extChannel, ar.id);
 
   addLog(hotelId, 'pms', `Stay extended Rm${ar.room}: ${ar.check_out} → ${newCheckOut} (${nights}n, ${totalAmount} SAR)`, { room: ar.room, user: req.user.username });
   res.json({ success: true, newCheckOut, nights, totalAmount, ratePerNight, paymentMethod: pm });
@@ -1316,9 +1381,15 @@ app.post('/api/rooms/:room/lockdown', authenticate, requireRole('owner', 'admin'
 });
 
 app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin', 'frontdesk'), async (req, res) => {
-  const hotelId  = req.user.hotelId;
-  const { room } = req.params;
-  const ar       = db.prepare('SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1').get(hotelId, room);
+  const hotelId      = req.user.hotelId;
+  const { room }     = req.params;
+  const { paymentMethod, thirdPartyChannel } = req.body || {};
+  const VALID_PM     = ['cash', 'visa', 'online', 'thirdparty'];
+  const resolvedPM   = VALID_PM.includes(paymentMethod) ? paymentMethod : null;
+  const resolvedChannel = (resolvedPM === 'thirdparty' && thirdPartyChannel)
+    ? String(thirdPartyChannel).trim().slice(0, 100) : '';
+
+  const ar = db.prepare('SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1').get(hotelId, room);
   db.prepare('UPDATE reservations SET active=0 WHERE hotel_id=? AND room=? AND active=1').run(hotelId, room);
 
   if (ar) {
@@ -1328,10 +1399,25 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
       const elecOut  = roomData.elecConsumption ?? null;
       const waterOut = roomData.waterConsumption ?? null;
 
+      // Soft-reset meters: snapshot current absolute reading as new baseline
+      // so the next guest's consumption starts from 0 (physical device unchanged).
+      db.prepare(
+        'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
+      ).run(elecOut ?? 0, waterOut ?? 0, hotelId, room);
+
+      // Use the staff-selected payment method; fall back to what was on the reservation.
+      const finalPM = resolvedPM || (ar.payment_method !== 'pending' ? ar.payment_method : 'pending');
+
+      // Also persist chosen payment method on the reservation record.
+      if (resolvedPM) {
+        db.prepare('UPDATE reservations SET payment_method=?, thirdparty_channel=? WHERE id=?')
+          .run(resolvedPM, resolvedChannel, ar.id);
+      }
+
       const existing = db.prepare('SELECT id FROM income_log WHERE reservation_id=?').get(ar.id);
       if (existing) {
-        db.prepare('UPDATE income_log SET elec_at_checkout=?, water_at_checkout=? WHERE reservation_id=?')
-          .run(elecOut, waterOut, ar.id);
+        db.prepare("UPDATE income_log SET elec_at_checkout=?, water_at_checkout=?, payment_method=?, thirdparty_channel=?, checked_out_at=datetime('now') WHERE reservation_id=?")
+          .run(elecOut, waterOut, finalPM, resolvedChannel, ar.id);
       } else {
         const hotelRoom = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, room);
         const roomType  = hotelRoom?.room_type || ROOM_TYPES[FLOOR_TYPE[parseInt(room.length <= 3 ? room[0] : room.slice(0, -2))] ?? 0];
@@ -1340,10 +1426,10 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
         const ci = new Date(ar.check_in); const co = new Date(ar.check_out);
         const nights = Math.max(1, Math.round((co - ci) / 86400000));
         db.prepare(`INSERT INTO income_log
-          (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,elec_at_checkout,water_at_checkout,created_by)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,thirdparty_channel,elec_at_checkin,water_at_checkin,elec_at_checkout,water_at_checkout,checked_out_at,created_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)`)
           .run(crypto.randomUUID(), hotelId, ar.id, room, ar.guest_name, ar.check_in, ar.check_out,
-            nights, roomType, ratePerNight, nights * ratePerNight, ar.payment_method || 'pending',
+            nights, roomType, ratePerNight, nights * ratePerNight, finalPM, resolvedChannel,
             ar.elec_at_checkin ?? null, ar.water_at_checkin ?? null, elecOut, waterOut, req.user.username);
       }
     } catch (e) { console.error('Income log update at checkout failed:', e.message); }
@@ -1741,7 +1827,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
     (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,created_by,payment_method,rate_per_night,elec_at_checkin,water_at_checkin)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, hotel.id, room, guestName, checkIn, checkOut, plainPassword, hashedPassword, token, 'self-booking',
-      'pending', ratePerNight, roomData.elecConsumption ?? null, roomData.waterConsumption ?? null);
+      'online', ratePerNight, roomData.elecConsumption ?? null, roomData.waterConsumption ?? null);
 
   // Income log
   if (ratePerNight) {
@@ -1750,7 +1836,7 @@ app.post('/api/public/book/:slug', bookingLimiter, (req, res) => {
         (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,rate_per_night,total_amount,payment_method,elec_at_checkin,water_at_checkin,created_by)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(crypto.randomUUID(), hotel.id, id, room, guestName, checkIn, checkOut,
-          nights, roomType, ratePerNight, totalAmount, 'pending',
+          nights, roomType, ratePerNight, totalAmount, 'online',
           roomData.elecConsumption ?? null, roomData.waterConsumption ?? null, 'self-booking');
     } catch (e) { console.error('Income log from self-booking failed:', e.message); }
   }
@@ -2114,7 +2200,7 @@ app.get('/api/guest/room/data', authenticate, async (req, res) => {
       relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
       relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
       doorUnlock: relays.doorUnlock ?? false,
-      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out } : null
+      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null
     };
     lastOverview[roomNum] = roomData;
     res.json(roomData);
@@ -2345,7 +2431,13 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
     await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, req.user.username);
     await sendControl(hotelId, devId, 'resetServices', { services: ['dndService', 'murService', 'sosService'] }, req.user.username);
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 0 }, req.user.username);
-    await sendControl(hotelId, devId, 'resetMeters', {}, req.user.username);
+    // Soft-reset meters: store current absolute reading as new baseline so the
+    // next guest's consumption starts from 0 without touching the physical device.
+    const liveData = getLastOverviewRooms(hotelId);
+    const liveRoom = liveData[room] || {};
+    db.prepare(
+      'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
+    ).run(liveRoom.elecConsumption || 0, liveRoom.waterConsumption || 0, hotelId, room);
     // Cancel any active reservation for this room
     db.prepare('UPDATE reservations SET active=0 WHERE hotel_id=? AND room=? AND active=1').run(hotelId, room);
     sseBroadcast(hotelId, 'lockout', { room });
@@ -2493,14 +2585,14 @@ app.get('/api/finance/income', authenticate, requireRole('owner', 'admin'), (req
 app.get('/api/finance/income/export', authenticate, requireRole('owner'), (req, res) => {
   const hotelId = req.user.hotelId;
   const rows    = db.prepare('SELECT * FROM income_log WHERE hotel_id=? ORDER BY created_at DESC').all(hotelId);
-  const header  = 'Room,Guest,Check-In,Check-Out,Nights,Type,Rate/Night,Total,Payment,Elec-In,Elec-Out,Water-In,Water-Out,Date,Staff';
+  const header  = 'Room,Guest,Check-In,Planned-Check-Out,Actual-Checkout,Nights,Type,Rate/Night,Total,Payment,Elec-In,Elec-Out,Water-In,Water-Out,Staff';
   const csv     = rows.map(r => [
     r.room, `"${(r.guest_name||'').replace(/"/g,'""')}"`,
-    r.check_in, r.check_out, r.nights, r.room_type,
+    r.check_in, r.check_out, r.created_at, r.nights, r.room_type,
     r.rate_per_night, r.total_amount, r.payment_method,
     r.elec_at_checkin ?? '', r.elec_at_checkout ?? '',
     r.water_at_checkin ?? '', r.water_at_checkout ?? '',
-    r.created_at, r.created_by || ''
+    r.created_by || ''
   ].join(','));
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="income-${new Date().toISOString().slice(0,10)}.csv"`);
@@ -3013,6 +3105,14 @@ app.post('/api/housekeeping/assignments/:id/complete', authenticate, requireRole
     }
   }
 
+  // Soft-reset meters: snapshot current absolute reading as new baseline
+  // so the next guest's consumption starts from 0 (physical device unchanged).
+  const liveRooms2 = getLastOverviewRooms(hotelId);
+  const liveRoom2  = liveRooms2[row.room] || {};
+  db.prepare(
+    'UPDATE hotel_rooms SET elec_meter_baseline=?, water_meter_baseline=? WHERE hotel_id=? AND room_number=?'
+  ).run(liveRoom2.elecConsumption || 0, liveRoom2.waterConsumption || 0, hotelId, row.room);
+
   addLog(hotelId, 'housekeeping',
     `Rm${row.room} cleaned by ${req.user.username} → VACANT`,
     { room: row.room, user: req.user.username }
@@ -3245,6 +3345,323 @@ app.delete('/api/maintenance/:id', authenticate, requireRole('owner', 'admin'), 
   sseBroadcastRoles(hotelId, 'maintenance_update', { action: 'deleted', id: ticket.id }, ['owner', 'admin', 'frontdesk']);
 
   res.json({ success: true });
+});
+
+// ═══ UPSELL ENGINE ═════════════════════════════════════════════════════════
+
+// ── GET /api/upsell/offers ────────────────────────────────────────────────
+// Guest + staff: list active offers for the hotel (ordered by sort_order)
+app.get('/api/upsell/offers', authenticate, (req, res) => {
+  const hotelId = req.user.hotelId;
+  let rows = db.prepare(
+    'SELECT * FROM upsell_offers WHERE hotel_id=? AND active=1 ORDER BY sort_order, id'
+  ).all(hotelId);
+
+  // For guests, filter by room_types if set
+  if (req.user.role === 'guest' && req.user.room) {
+    const FLOOR_TYPE = { 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3 };
+    const ROOM_TYPES = ['STANDARD', 'SUPERIOR', 'DELUXE', 'SUITE'];
+    const hotelRoom = db.prepare(
+      'SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?'
+    ).get(hotelId, String(req.user.room));
+    const roomNum = String(req.user.room);
+    const guestRoomType = hotelRoom?.room_type
+      || ROOM_TYPES[FLOOR_TYPE[parseInt(roomNum.length <= 3 ? roomNum[0] : roomNum.slice(0, -2))] ?? 0];
+
+    rows = rows.filter(o => {
+      if (!o.room_types) return true; // null = visible to all
+      try {
+        const allowed = JSON.parse(o.room_types);
+        return Array.isArray(allowed) && allowed.includes(guestRoomType);
+      } catch { return true; }
+    });
+  }
+
+  res.json(rows);
+});
+
+// ── GET /api/upsell/my-extras ─────────────────────────────────────────────
+// Guest JWT: list own extras for the active reservation
+app.get('/api/upsell/my-extras', authenticate, (req, res) => {
+  const hotelId = req.user.hotelId;
+
+  // For guests, find their active reservation via room
+  let reservationId;
+  if (req.user.role === 'guest') {
+    const res_ = db.prepare(
+      "SELECT id FROM reservations WHERE hotel_id=? AND room=? AND active=1 LIMIT 1"
+    ).get(hotelId, String(req.user.room));
+    if (!res_) return res.json([]);
+    reservationId = res_.id;
+  } else {
+    return res.status(403).json({ error: 'Use /api/upsell/reservations/:id/extras for staff' });
+  }
+
+  const rows = db.prepare(
+    'SELECT * FROM reservation_extras WHERE hotel_id=? AND reservation_id=? ORDER BY created_at DESC'
+  ).all(hotelId, reservationId);
+  res.json(rows);
+});
+
+// ── POST /api/upsell/extras ───────────────────────────────────────────────
+// Guest or staff: submit an extras request
+// Body: { offerId, quantity, reservationId? }
+// Guests: reservationId inferred from room; staff must provide reservationId
+app.post('/api/upsell/extras', authenticate, (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { offerId, quantity = 1, reservationId: bodyResId } = req.body;
+
+  if (!offerId) return res.status(400).json({ error: 'offerId is required' });
+  if (!Number.isInteger(Number(quantity)) || quantity < 1) {
+    return res.status(400).json({ error: 'quantity must be a positive integer' });
+  }
+
+  // Validate offer belongs to this hotel and is active
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=? AND active=1').get(offerId, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found or inactive' });
+
+  // Resolve reservation
+  let reservation;
+  if (req.user.role === 'guest') {
+    reservation = db.prepare(
+      "SELECT * FROM reservations WHERE hotel_id=? AND room=? AND active=1 LIMIT 1"
+    ).get(hotelId, String(req.user.room));
+  } else {
+    if (!bodyResId) return res.status(400).json({ error: 'reservationId is required for staff' });
+    reservation = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=?').get(bodyResId, hotelId);
+  }
+  if (!reservation) return res.status(404).json({ error: 'No active reservation found' });
+
+  const totalPrice = Math.round(offer.price * quantity * 100) / 100;
+  const requestedBy = req.user.role === 'guest' ? 'guest' : req.user.username;
+
+  const result = db.prepare(`
+    INSERT INTO reservation_extras
+      (hotel_id, reservation_id, offer_id, offer_name, offer_name_ar,
+       quantity, unit_price, total_price, status, requested_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+  `).run(hotelId, reservation.id, offer.id, offer.name, offer.name_ar,
+         quantity, offer.price, totalPrice, requestedBy);
+
+  const extra = db.prepare('SELECT * FROM reservation_extras WHERE id=?').get(result.lastInsertRowid);
+
+  addLog(hotelId, 'upsell',
+    `Extra requested: [${offer.category}] ${offer.name} ×${quantity} by ${requestedBy} (Rm ${reservation.room})`,
+    { room: reservation.room, user: requestedBy }
+  );
+
+  // Notify managers in real-time
+  sseBroadcastRoles(hotelId, 'upsell_request', {
+    extra, room: reservation.room, guestName: reservation.guest_name
+  }, ['owner', 'admin', 'frontdesk']);
+
+  res.status(201).json(extra);
+});
+
+// ── GET /api/upsell/reservations/:resId/extras ────────────────────────────
+// Staff: list all extras for a specific reservation
+app.get('/api/upsell/reservations/:resId/extras', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const reservation = db.prepare('SELECT * FROM reservations WHERE id=? AND hotel_id=?').get(req.params.resId, hotelId);
+  if (!reservation) return res.status(404).json({ error: 'Reservation not found' });
+
+  const rows = db.prepare(
+    'SELECT * FROM reservation_extras WHERE reservation_id=? AND hotel_id=? ORDER BY created_at DESC'
+  ).all(req.params.resId, hotelId);
+  res.json(rows);
+});
+
+// ── GET /api/upsell/pending ───────────────────────────────────────────────
+// Staff: all pending extras across all reservations (for badge + quick view)
+app.get('/api/upsell/pending', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(`
+    SELECT re.*, r.room, r.guest_name
+    FROM reservation_extras re
+    JOIN reservations r ON re.reservation_id = r.id
+    WHERE re.hotel_id=? AND re.status='pending'
+    ORDER BY re.created_at DESC
+  `).all(hotelId);
+  res.json(rows);
+});
+
+// ── PATCH /api/upsell/extras/:id ──────────────────────────────────────────
+// Staff: update extra status (confirmed / delivered / cancelled) + optional note
+app.patch('/api/upsell/extras/:id', authenticate, requireRole('owner', 'admin', 'frontdesk'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const extra = db.prepare('SELECT * FROM reservation_extras WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!extra) return res.status(404).json({ error: 'Extra not found' });
+
+  const { status, staffNote } = req.body;
+  const validStatuses = ['confirmed', 'delivered', 'cancelled'];
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const updates = ['updated_at=?'];
+  const params  = [now];
+  if (status)                   { updates.push('status=?');     params.push(status); }
+  if (staffNote !== undefined)  { updates.push('staff_note=?'); params.push(staffNote); }
+  params.push(extra.id);
+
+  db.prepare(`UPDATE reservation_extras SET ${updates.join(', ')} WHERE id=?`).run(...params);
+  const updated = db.prepare('SELECT * FROM reservation_extras WHERE id=?').get(extra.id);
+
+  // On confirm: log revenue to income_log
+  if (status === 'confirmed') {
+    const reservation = db.prepare('SELECT * FROM reservations WHERE id=?').get(extra.reservation_id);
+    if (reservation) {
+      const room       = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, reservation.room);
+      const roomType   = room?.room_type || 'STANDARD';
+      const todayISO   = new Date().toISOString().slice(0, 10);
+      try {
+        const crypto = require('crypto');
+        db.prepare(`INSERT INTO income_log
+          (id, hotel_id, reservation_id, room, guest_name, nights, room_type,
+           rate_per_night, total_amount, payment_method, created_by,
+           check_in, check_out, created_at)
+          VALUES (?,?,?,?,?,0,?,?,?,?,?,?,?, datetime('now'))`)
+          .run(crypto.randomUUID(), hotelId, reservation.id, reservation.room,
+               reservation.guest_name, roomType, extra.unit_price,
+               updated.total_price, reservation.payment_method,
+               req.user.username, todayISO, todayISO);
+      } catch (e) { console.error('upsell income_log write failed:', e.message); }
+    }
+  }
+
+  addLog(hotelId, 'upsell',
+    `Extra #${extra.id} (${extra.offer_name}) ${status || 'updated'} by ${req.user.username}`,
+    { user: req.user.username }
+  );
+
+  // Notify managers + the guest (if they have an SSE connection)
+  sseBroadcastRoles(hotelId, 'upsell_update', { extra: updated }, ['owner', 'admin', 'frontdesk']);
+  // Notify guest's SSE channel by room
+  const reservation = db.prepare('SELECT room FROM reservations WHERE id=?').get(extra.reservation_id);
+  if (reservation) {
+    sseBroadcast(hotelId, 'upsell_update', { extra: updated, room: reservation.room });
+  }
+
+  res.json(updated);
+});
+
+// ── GET /api/upsell/catalog ───────────────────────────────────────────────
+// Owner/admin: list all offers (including inactive)
+app.get('/api/upsell/catalog', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(
+    'SELECT * FROM upsell_offers WHERE hotel_id=? ORDER BY sort_order, id'
+  ).all(hotelId);
+  res.json(rows);
+});
+
+// ── POST /api/upsell/catalog ──────────────────────────────────────────────
+// Owner: create a new offer
+app.post('/api/upsell/catalog', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { name, name_ar, description, description_ar, category = 'SERVICE', price, unit = 'one-time', active = 1, sort_order = 0, room_types } = req.body;
+
+  if (!name || !name_ar) return res.status(400).json({ error: 'name and name_ar are required' });
+  if (price === undefined || isNaN(Number(price))) return res.status(400).json({ error: 'price is required' });
+
+  const validCategories = ['FOOD', 'TRANSPORT', 'AMENITY', 'SERVICE'];
+  if (!validCategories.includes(category)) return res.status(400).json({ error: 'Invalid category' });
+
+  const roomTypesVal = Array.isArray(room_types) && room_types.length > 0 ? JSON.stringify(room_types) : null;
+
+  const result = db.prepare(`
+    INSERT INTO upsell_offers (hotel_id, name, name_ar, description, description_ar, category, price, unit, active, sort_order, room_types)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(hotelId, name, name_ar, description || null, description_ar || null, category, Number(price), unit, active ? 1 : 0, sort_order, roomTypesVal);
+
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=?').get(result.lastInsertRowid);
+  addLog(hotelId, 'upsell', `Offer created: ${name} (${category}) by ${req.user.username}`, { user: req.user.username });
+  res.status(201).json(offer);
+});
+
+// ── PATCH /api/upsell/catalog/:id ─────────────────────────────────────────
+// Owner: update an offer
+app.patch('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  const fields = ['name', 'name_ar', 'description', 'description_ar', 'category', 'price', 'unit', 'active', 'sort_order', 'room_types'];
+  const updates = [];
+  const params  = [];
+  for (const f of fields) {
+    if (req.body[f] !== undefined) {
+      updates.push(`${f}=?`);
+      let val = req.body[f];
+      if (f === 'room_types') val = Array.isArray(val) && val.length > 0 ? JSON.stringify(val) : null;
+      params.push(val);
+    }
+  }
+  if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+  params.push(offer.id);
+
+  db.prepare(`UPDATE upsell_offers SET ${updates.join(', ')} WHERE id=?`).run(...params);
+  const updated = db.prepare('SELECT * FROM upsell_offers WHERE id=?').get(offer.id);
+  addLog(hotelId, 'upsell', `Offer updated: ${updated.name} by ${req.user.username}`, { user: req.user.username });
+  res.json(updated);
+});
+
+// ── DELETE /api/upsell/catalog/:id ────────────────────────────────────────
+// Owner: hard-delete the offer
+app.delete('/api/upsell/catalog/:id', authenticate, requireRole('owner'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT * FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.id, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  db.prepare('DELETE FROM upsell_offers WHERE id=?').run(offer.id);
+  addLog(hotelId, 'upsell', `Offer deleted: ${offer.name} by ${req.user.username}`, { user: req.user.username });
+  res.json({ success: true });
+});
+
+// ── GET /api/upsell/stats ─────────────────────────────────────────────────
+// Owner/admin: per-offer request counts + revenue totals
+app.get('/api/upsell/stats', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const rows = db.prepare(`
+    SELECT
+      o.id, o.name, o.name_ar, o.category, o.price, o.unit,
+      COUNT(e.id)                                                AS total_requests,
+      COALESCE(SUM(e.quantity), 0)                              AS total_qty,
+      COALESCE(SUM(e.total_price), 0)                           AS total_revenue,
+      COUNT(CASE WHEN e.status = 'pending'   THEN 1 END)        AS pending_count,
+      COUNT(CASE WHEN e.status = 'confirmed' THEN 1 END)        AS confirmed_count,
+      COUNT(CASE WHEN e.status = 'delivered' THEN 1 END)        AS delivered_count,
+      COUNT(CASE WHEN e.status = 'cancelled' THEN 1 END)        AS cancelled_count
+    FROM upsell_offers o
+    LEFT JOIN reservation_extras e ON e.offer_id = o.id AND e.hotel_id = o.hotel_id
+    WHERE o.hotel_id = ?
+    GROUP BY o.id
+    ORDER BY total_requests DESC, o.sort_order
+  `).all(hotelId);
+  res.json(rows);
+});
+
+// ── GET /api/upsell/stats/:offerId/rooms ──────────────────────────────────
+// Owner/admin: per-room breakdown for one offer
+app.get('/api/upsell/stats/:offerId/rooms', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const offer = db.prepare('SELECT id FROM upsell_offers WHERE id=? AND hotel_id=?').get(req.params.offerId, hotelId);
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+
+  const rows = db.prepare(`
+    SELECT
+      r.room,
+      COUNT(e.id)            AS total_requests,
+      COALESCE(SUM(e.quantity), 0)   AS total_qty,
+      COALESCE(SUM(e.total_price), 0) AS total_revenue
+    FROM reservation_extras e
+    JOIN reservations r ON r.id = e.reservation_id
+    WHERE e.hotel_id = ? AND e.offer_id = ?
+    GROUP BY r.room
+    ORDER BY total_requests DESC
+  `).all(hotelId, offer.id);
+  res.json(rows);
 });
 
 // ═══ SCENES CRUD ═══

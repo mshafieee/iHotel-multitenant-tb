@@ -133,8 +133,9 @@ export default function SimulatorPanel() {
     setCo2(r.co2                   ?? 600);
     setPir(!!r.pirMotionStatus);
     setDoor(!!r.doorStatus);
-    setElec(r.elecConsumption      ?? 0);
-    setWater(r.waterConsumption    ?? 0);
+    // Show consumption SINCE last reset (delta), not absolute TB reading
+    setElec(Math.max(0, (r.elecConsumption || 0) - (r.elecMeterBaseline || 0)));
+    setWater(Math.max(0, (r.waterConsumption || 0) - (r.waterMeterBaseline || 0)));
     setRoomStatus(r.roomStatus     ?? 0);
     setLine1(!!r.line1);
     setLine2(!!r.line2);
@@ -184,16 +185,6 @@ export default function SimulatorPanel() {
     } finally { setSending(false); }
   };
 
-  const injectAll = () => inject({
-    temperature, humidity, co2,
-    pirMotionStatus: pir, doorStatus: door,
-    elecConsumption: elec, waterConsumption: water,
-    roomStatus, line1, line2, line3, dimmer1, dimmer2,
-    acMode, acTemperatureSet: acTemp, fanSpeed,
-    curtainsPosition: curtains, blindsPosition: blinds,
-    dndService: dnd, murService: mur, sosService: sos, pdMode: pd,
-  });
-
   const applyPreset = (preset) => {
     // Update local state from preset
     const t = preset.telemetry;
@@ -221,7 +212,21 @@ export default function SimulatorPanel() {
     inject(t);
   };
 
-  const liveRoom = rooms[roomNum];
+  const liveRoom  = rooms[roomNum];
+  // Meters: sliders show delta (consumption since last reset).
+  // Inject absolute = baseline + delta so RoomModal shows the correct delta.
+  const elecBase  = liveRoom?.elecMeterBaseline  || 0;
+  const waterBase = liveRoom?.waterMeterBaseline || 0;
+
+  const injectAll = () => inject({
+    temperature, humidity, co2,
+    pirMotionStatus: pir, doorStatus: door,
+    elecConsumption: elecBase + elec, waterConsumption: waterBase + water,
+    roomStatus, line1, line2, line3, dimmer1, dimmer2,
+    acMode, acTemperatureSet: acTemp, fanSpeed,
+    curtainsPosition: curtains, blindsPosition: blinds,
+    dndService: dnd, murService: mur, sosService: sos, pdMode: pd,
+  });
 
   return (
     <div className="space-y-4">
@@ -326,9 +331,9 @@ export default function SimulatorPanel() {
             <Slider label="Electric" value={parseFloat(elec.toFixed(2))} min={0} max={500} step={0.1} unit=" kWh" onChange={setElec} />
             <Slider label="Water" value={parseFloat(water.toFixed(3))} min={0} max={50} step={0.01} unit=" m³" onChange={setWater} />
             <div className="flex gap-2 mt-1">
-              <button onClick={() => inject({ elecConsumption: elec, waterConsumption: water })}
+              <button onClick={() => inject({ elecConsumption: elecBase + elec, waterConsumption: waterBase + water })}
                 disabled={sending} className="btn btn-ghost flex-1 text-xs">Apply Meters</button>
-              <button onClick={() => { setElec(0); setWater(0); inject({ elecConsumption: 0, waterConsumption: 0 }); }}
+              <button onClick={() => { setElec(0); setWater(0); inject({ elecConsumption: elecBase, waterConsumption: waterBase }); }}
                 disabled={sending} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition">
                 Reset to 0
               </button>

@@ -511,6 +511,103 @@ function initDB() {
     markMigration('024_maintenance_tickets');
   }
 
+  // ── Migration 025: upsell offers catalog ─────────────────────────────────
+  if (!hasMigration('025_upsell_offers')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS upsell_offers (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        hotel_id       TEXT    NOT NULL,
+        name           TEXT    NOT NULL,
+        name_ar        TEXT    NOT NULL,
+        description    TEXT,
+        description_ar TEXT,
+        category       TEXT    NOT NULL DEFAULT 'SERVICE',
+        price          REAL    NOT NULL DEFAULT 0,
+        unit           TEXT    NOT NULL DEFAULT 'one-time',
+        active         INTEGER NOT NULL DEFAULT 1,
+        sort_order     INTEGER NOT NULL DEFAULT 0,
+        created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+      )
+    `);
+    console.log('✓ Migration 025: created upsell_offers table');
+    markMigration('025_upsell_offers');
+  }
+
+  // ── Migration 026: reservation extras (guest orders) ─────────────────────
+  if (!hasMigration('026_reservation_extras')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS reservation_extras (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        hotel_id         TEXT    NOT NULL,
+        reservation_id   TEXT    NOT NULL,
+        offer_id         INTEGER NOT NULL,
+        offer_name       TEXT    NOT NULL,
+        offer_name_ar    TEXT    NOT NULL,
+        quantity         INTEGER NOT NULL DEFAULT 1,
+        unit_price       REAL    NOT NULL,
+        total_price      REAL    NOT NULL,
+        status           TEXT    NOT NULL DEFAULT 'pending',
+        requested_by     TEXT    NOT NULL,
+        staff_note       TEXT,
+        created_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY (hotel_id)       REFERENCES hotels(id),
+        FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+      )
+    `);
+    console.log('✓ Migration 026: created reservation_extras table');
+    markMigration('026_reservation_extras');
+  }
+
+  // ── Migration 027: room_types filter column on upsell_offers ──────────────
+  if (!hasMigration('027_upsell_room_types')) {
+    try { db.exec(`ALTER TABLE upsell_offers ADD COLUMN room_types TEXT DEFAULT NULL`); } catch {}
+    console.log('✓ Migration 027: upsell_offers.room_types column added');
+    markMigration('027_upsell_room_types');
+  }
+
+  // ── Migration 028: meter baselines (soft-reset after checkout/clean) ───────
+  // elec_meter_baseline / water_meter_baseline: absolute TB reading at last reset.
+  // "Room consumption since last reset" = current - baseline (never touches TB device).
+  // hotel_profiles gets: meter_month (YYYY-MM), elec_month_start, water_month_start
+  // — snapshotted on first request of each calendar month so monthly delta can be shown.
+  if (!hasMigration('030_checked_out_at')) {
+    const ilCols = db.pragma('table_info(income_log)').map(c => c.name);
+    if (!ilCols.includes('checked_out_at'))
+      db.exec("ALTER TABLE income_log ADD COLUMN checked_out_at TEXT DEFAULT NULL");
+    console.log('✓ Migration 030: checked_out_at column added to income_log');
+    markMigration('030_checked_out_at');
+  }
+
+  if (!hasMigration('029_thirdparty_channel')) {
+    const ilCols  = db.pragma('table_info(income_log)').map(c => c.name);
+    const resCols = db.pragma('table_info(reservations)').map(c => c.name);
+    if (!ilCols.includes('thirdparty_channel'))
+      db.exec("ALTER TABLE income_log ADD COLUMN thirdparty_channel TEXT DEFAULT ''");
+    if (!resCols.includes('thirdparty_channel'))
+      db.exec("ALTER TABLE reservations ADD COLUMN thirdparty_channel TEXT DEFAULT ''");
+    console.log('✓ Migration 029: thirdparty_channel column added');
+    markMigration('029_thirdparty_channel');
+  }
+
+  if (!hasMigration('028_meter_baselines')) {
+    const roomCols    = db.pragma('table_info(hotel_rooms)').map(c => c.name);
+    const profileCols = db.pragma('table_info(hotel_profiles)').map(c => c.name);
+    if (!roomCols.includes('elec_meter_baseline'))
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN elec_meter_baseline REAL DEFAULT 0');
+    if (!roomCols.includes('water_meter_baseline'))
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN water_meter_baseline REAL DEFAULT 0');
+    if (!profileCols.includes('meter_month'))
+      db.exec("ALTER TABLE hotel_profiles ADD COLUMN meter_month TEXT DEFAULT ''");
+    if (!profileCols.includes('elec_month_start'))
+      db.exec('ALTER TABLE hotel_profiles ADD COLUMN elec_month_start REAL DEFAULT 0');
+    if (!profileCols.includes('water_month_start'))
+      db.exec('ALTER TABLE hotel_profiles ADD COLUMN water_month_start REAL DEFAULT 0');
+    console.log('✓ Migration 028: meter baseline columns added');
+    markMigration('028_meter_baselines');
+  }
+
   // ── Utility costs (hotel-scoped) — cost per kWh and cost per m³ ───────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS utility_costs (
@@ -678,6 +775,17 @@ function seedHotelRates(db, hotelId) {
   ins.run(hotelId, 'VIP',     2500);
 }
 
+// ── Seed default upsell offers for a new hotel ──────────────────────────────
+function seedHotelUpsellOffers(db, hotelId) {
+  const ins = db.prepare(`INSERT OR IGNORE INTO upsell_offers
+    (hotel_id, name, name_ar, category, price, unit, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  ins.run(hotelId, 'Breakfast in Bed',         'إفطار في الغرفة',         'FOOD',      75,  'per-person', 0);
+  ins.run(hotelId, 'Airport Transfer',          'توصيل المطار',            'TRANSPORT', 150, 'one-time',   1);
+  ins.run(hotelId, 'Welcome Flowers & Fruits',  'زهور وفاكهة ترحيبية',     'AMENITY',   120, 'one-time',   2);
+  ins.run(hotelId, 'Laundry Service',           'خدمة الغسيل',             'SERVICE',   60,  'one-time',   3);
+}
+
 // ── Seed default staff users for a new hotel ────────────────────────────────
 function seedHotelUsers(db, hotelId, slug = '') {
   const password = slug ? `iHotel-${slug}-2026` : 'iHotel2026!';
@@ -722,4 +830,4 @@ function seedRoomDefaultScenes(db, hotelId, roomNumber) {
   );
 }
 
-module.exports = { initDB, seedHotelRates, seedHotelUsers, seedRoomDefaultScenes };
+module.exports = { initDB, seedHotelRates, seedHotelUpsellOffers, seedHotelUsers, seedRoomDefaultScenes };
