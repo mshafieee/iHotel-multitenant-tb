@@ -48,6 +48,9 @@ const useHotelStore = create((set, get) => ({
   // ── Upsell state ─────────────────────────────────────────────────────────
   upsellPending:   [],   // pending extras across all reservations (managers)
 
+  // ── Channel Manager state (owner/admin only) ─────────────────────────────
+  channels: [],
+
   // ── Meter stats (owner/admin only) ───────────────────────────────────────
   meterStats: null,  // { rooms, monthlyKwh, monthlyM3, month }
 
@@ -261,6 +264,12 @@ const useHotelStore = create((set, get) => ({
     es2.addEventListener('upsell_request', () => { get().fetchUpsellPending(); });
     es2.addEventListener('upsell_update',  () => { get().fetchUpsellPending(); });
 
+    // Channel Manager: refresh reservations when an OTA webhook creates a booking
+    es2.addEventListener('channel_booking', () => {
+      get().fetchReservations?.();
+      get().fetchUpsellPending?.();
+    });
+
     es2.onerror = () => {
       setTimeout(() => get().connectSSE(), 5000);
     };
@@ -435,6 +444,37 @@ const useHotelStore = create((set, get) => ({
       const data = await api('/api/upsell/pending');
       set({ upsellPending: data });
     } catch {}
+  },
+
+  // ── Channel Manager actions ─────────────────────────────────────────────
+  fetchChannels: async () => {
+    try {
+      const data = await api('/api/channel/connections');
+      set({ channels: data });
+    } catch {}
+  },
+
+  createChannel: async (payload) => {
+    const data = await api('/api/channel/connections', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    set({ channels: [...get().channels, data] });
+    return data;
+  },
+
+  updateChannel: async (id, payload) => {
+    const data = await api(`/api/channel/connections/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    set({ channels: get().channels.map(c => c.id === id ? data : c) });
+    return data;
+  },
+
+  deleteChannel: async (id) => {
+    await api(`/api/channel/connections/${id}`, { method: 'DELETE' });
+    set({ channels: get().channels.filter(c => c.id !== id) });
   },
 
   // Manager: assign a list of rooms to a housekeeper.

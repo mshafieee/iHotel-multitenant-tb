@@ -572,6 +572,28 @@ function initDB() {
   // "Room consumption since last reset" = current - baseline (never touches TB device).
   // hotel_profiles gets: meter_month (YYYY-MM), elec_month_start, water_month_start
   // — snapshotted on first request of each calendar month so monthly delta can be shown.
+  // ── Migration 031: channel_connections (Channel Manager) ─────────────────
+  if (!hasMigration('031_channel_connections')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_connections (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        hotel_id       TEXT    NOT NULL,
+        name           TEXT    NOT NULL,
+        type           TEXT    NOT NULL DEFAULT 'ical',
+        webhook_secret TEXT,
+        api_key        TEXT,
+        ical_token     TEXT    NOT NULL,
+        last_sync_at   INTEGER DEFAULT NULL,
+        active         INTEGER NOT NULL DEFAULT 1,
+        notes          TEXT,
+        created_at     INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY (hotel_id) REFERENCES hotels(id)
+      )
+    `);
+    console.log('✓ Migration 031: channel_connections table created');
+    markMigration('031_channel_connections');
+  }
+
   if (!hasMigration('030_checked_out_at')) {
     const ilCols = db.pragma('table_info(income_log)').map(c => c.name);
     if (!ilCols.includes('checked_out_at'))

@@ -3799,6 +3799,243 @@ app.get('*', (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// ═══ CHANNEL MANAGER ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
+
+// ── iCal feed — public, secured by per-channel token in URL ──────────
+// GET /api/channel/ical/:hotelId/:token.ics
+app.get('/api/channel/ical/:hotelId/:tokenFile', (req, res) => {
+  const { hotelId, tokenFile } = req.params;
+  // strip ".ics" extension if present
+  const token = tokenFile.endsWith('.ics') ? tokenFile.slice(0, -4) : tokenFile;
+
+  const channel = db.prepare(
+    `SELECT id FROM channel_connections WHERE hotel_id=? AND ical_token=? AND active=1`
+  ).get(hotelId, token);
+  if (!channel) return res.status(404).send('Not found');
+
+  const hotel = db.prepare('SELECT name FROM hotels WHERE id=?').get(hotelId);
+  if (!hotel) return res.status(404).send('Not found');
+
+  // Fetch all active + future reservations for the hotel
+  const today = new Date().toISOString().slice(0, 10);
+  const reservations = db.prepare(
+    `SELECT id, room, guest_name, check_in, check_out
+     FROM reservations WHERE hotel_id=? AND active=1 AND check_out >= ?`
+  ).all(hotelId, today);
+
+  // Build RFC-5545 iCal
+  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//iHotel//Channel Manager//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${hotel.name} - Availability`,
+    'X-WR-TIMEZONE:UTC',
+  ];
+  for (const r of reservations) {
+    const dtStart = r.check_in.replace(/-/g, '');
+    const dtEnd   = r.check_out.replace(/-/g, '');
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${r.id}@ihotel`);
+    lines.push(`DTSTAMP:${now}Z`);
+    lines.push(`DTSTART;VALUE=DATE:${dtStart}`);
+    lines.push(`DTEND;VALUE=DATE:${dtEnd}`);
+    lines.push(`SUMMARY:Blocked - Room ${r.room}`);
+    lines.push(`STATUS:CONFIRMED`);
+    lines.push('END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+
+  // Update last_sync_at
+  db.prepare('UPDATE channel_connections SET last_sync_at=? WHERE id=?')
+    .run(Math.floor(Date.now() / 1000), channel.id);
+
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${hotel.name}-availability.ics"`);
+  res.send(lines.join('\r\n'));
+});
+
+// ── Webhook receiver — OTA pushes new booking to us ──────────────────
+// POST /api/channel/webhook/:channelId
+app.post('/api/channel/webhook/:channelId', express.json(), (req, res) => {
+  const channelId = parseInt(req.params.channelId);
+  if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel' });
+
+  const channel = db.prepare(
+    'SELECT * FROM channel_connections WHERE id=? AND active=1'
+  ).get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+  // HMAC-SHA256 signature verification (optional — skip if no secret configured)
+  if (channel.webhook_secret) {
+    const sig = req.headers['x-webhook-signature'] || req.headers['x-hub-signature-256'] || '';
+    const body = JSON.stringify(req.body);
+    const expected = 'sha256=' + crypto.createHmac('sha256', channel.webhook_secret).update(body).digest('hex');
+    if (sig !== expected) return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  const { reservation_id, check_in, checkIn, check_out, checkOut,
+          room_type, roomType, guest_name, guestName,
+          guest_email, guestEmail, total_amount, totalAmount } = req.body;
+
+  // Normalize field names (different OTAs use different naming)
+  const ci = check_in || checkIn;
+  const co = check_out || checkOut;
+  const rt = room_type || roomType;
+  const gn = guest_name || guestName || 'OTA Guest';
+  const ge = guest_email || guestEmail || '';
+  const ta = total_amount || totalAmount || null;
+
+  if (!ci || !co || !rt) {
+    return res.status(400).json({ error: 'check_in, check_out, room_type required' });
+  }
+
+  // Validate dates
+  const ciDate = new Date(ci);
+  const coDate = new Date(co);
+  if (isNaN(ciDate) || isNaN(coDate) || coDate <= ciDate) {
+    return res.status(400).json({ error: 'Invalid dates' });
+  }
+
+  // Find an available room of the requested type — lowest floor first
+  const allRooms = db.prepare(
+    'SELECT room_number, floor FROM hotel_rooms WHERE hotel_id=? AND room_type=? ORDER BY floor ASC, CAST(room_number AS INTEGER) ASC'
+  ).all(channel.hotel_id, rt);
+  if (!allRooms.length) return res.status(409).json({ error: `No rooms of type ${rt}` });
+
+  const occupied = db.prepare(
+    'SELECT DISTINCT room FROM reservations WHERE hotel_id=? AND active=1 AND check_in < ? AND check_out > ?'
+  ).all(channel.hotel_id, co, ci).map(r => String(r.room));
+  const occupiedSet = new Set(occupied);
+
+  const availableRoom = allRooms.find(r => !occupiedSet.has(String(r.room_number)));
+  if (!availableRoom) return res.status(409).json({ error: 'No rooms available for the selected dates' });
+
+  const room = availableRoom.room_number;
+
+  // Double-check
+  const doubleCheck = db.prepare(
+    'SELECT id FROM reservations WHERE hotel_id=? AND room=? AND active=1 AND check_in < ? AND check_out > ?'
+  ).get(channel.hotel_id, String(room), co, ci);
+  if (doubleCheck) return res.status(409).json({ error: 'No rooms available for the selected dates' });
+
+  // Rate
+  const rateRow = db.prepare('SELECT rate_per_night FROM night_rates WHERE hotel_id=? AND room_type=?').get(channel.hotel_id, rt);
+  const ratePerNight = rateRow ? rateRow.rate_per_night : null;
+  const nights = Math.max(1, Math.round((coDate - ciDate) / 86400000));
+  const totalAmt = ta || (ratePerNight ? nights * ratePerNight : null);
+
+  // Create reservation
+  const id = crypto.randomUUID();
+  const plainPassword = crypto.randomInt(100000, 999999).toString();
+  const hashedPassword = bcrypt.hashSync(plainPassword, 10);
+  const token = crypto.randomBytes(16).toString('hex');
+
+  db.prepare(`INSERT INTO reservations
+    (id,hotel_id,room,guest_name,check_in,check_out,password,password_hash,token,
+     created_by,payment_method,thirdparty_channel,rate_per_night)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, channel.hotel_id, String(room), gn, ci, co, plainPassword, hashedPassword, token,
+      'channel-manager', 'thirdparty', channel.name, ratePerNight);
+
+  // Income log
+  if (ratePerNight) {
+    try {
+      db.prepare(`INSERT INTO income_log
+        (id,hotel_id,reservation_id,room,guest_name,check_in,check_out,nights,room_type,
+         rate_per_night,total_amount,payment_method,thirdparty_channel,created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(crypto.randomUUID(), channel.hotel_id, id, String(room), gn, ci, co,
+          nights, rt, ratePerNight, totalAmt, 'thirdparty', channel.name, 'channel-manager');
+    } catch (e) { console.error('Income log from webhook failed:', e.message); }
+  }
+
+  // Update last_sync_at on channel
+  db.prepare('UPDATE channel_connections SET last_sync_at=? WHERE id=?')
+    .run(Math.floor(Date.now() / 1000), channel.id);
+
+  addLog(channel.hotel_id, 'pms',
+    `Channel booking [${channel.name}]: Rm${room} ${gn} (${nights}n)`,
+    { room, user: 'channel-manager' }
+  );
+
+  // Notify staff via SSE
+  sseBroadcastRoles(channel.hotel_id, 'channel_booking', {
+    channel: channel.name, room, guestName: gn, checkIn: ci, checkOut: co
+  }, ['owner', 'admin', 'frontdesk']);
+
+  res.json({ success: true, reservationId: id, room, guestName: gn, checkIn: ci, checkOut: co });
+});
+
+// ── Channel CRUD — owner/admin only ──────────────────────────────────
+
+// GET /api/channel/connections — list all channels for the hotel
+app.get('/api/channel/connections', auth, (req, res) => {
+  const hotelId = req.user.hotelId;
+  const channels = db.prepare(
+    'SELECT * FROM channel_connections WHERE hotel_id=? ORDER BY created_at ASC'
+  ).all(hotelId);
+  res.json(channels);
+});
+
+// POST /api/channel/connections — create a new channel
+app.post('/api/channel/connections', auth, (req, res) => {
+  if (!['owner', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  const hotelId = req.user.hotelId;
+  const { name, type = 'ical', webhook_secret, api_key, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Channel name required' });
+
+  const ical_token = crypto.randomUUID().replace(/-/g, '');
+  const result = db.prepare(
+    `INSERT INTO channel_connections (hotel_id, name, type, webhook_secret, api_key, ical_token, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(hotelId, name.trim(), type, webhook_secret || null, api_key || null, ical_token, notes || null);
+
+  const created = db.prepare('SELECT * FROM channel_connections WHERE id=?').get(result.lastInsertRowid);
+  res.status(201).json(created);
+});
+
+// PATCH /api/channel/connections/:id — update a channel
+app.patch('/api/channel/connections/:id', auth, (req, res) => {
+  if (!['owner', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  const hotelId = req.user.hotelId;
+  const id = parseInt(req.params.id);
+  const channel = db.prepare('SELECT * FROM channel_connections WHERE id=? AND hotel_id=?').get(id, hotelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+  const { name, type, webhook_secret, api_key, active, notes } = req.body;
+  const updated = {
+    name: name !== undefined ? String(name).trim() : channel.name,
+    type: type !== undefined ? type : channel.type,
+    webhook_secret: webhook_secret !== undefined ? (webhook_secret || null) : channel.webhook_secret,
+    api_key: api_key !== undefined ? (api_key || null) : channel.api_key,
+    active: active !== undefined ? (active ? 1 : 0) : channel.active,
+    notes: notes !== undefined ? (notes || null) : channel.notes,
+  };
+
+  db.prepare(
+    `UPDATE channel_connections SET name=?, type=?, webhook_secret=?, api_key=?, active=?, notes=? WHERE id=?`
+  ).run(updated.name, updated.type, updated.webhook_secret, updated.api_key, updated.active, updated.notes, id);
+
+  const row = db.prepare('SELECT * FROM channel_connections WHERE id=?').get(id);
+  res.json(row);
+});
+
+// DELETE /api/channel/connections/:id
+app.delete('/api/channel/connections/:id', auth, (req, res) => {
+  if (!['owner', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  const hotelId = req.user.hotelId;
+  const id = parseInt(req.params.id);
+  const channel = db.prepare('SELECT id FROM channel_connections WHERE id=? AND hotel_id=?').get(id, hotelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  db.prepare('DELETE FROM channel_connections WHERE id=?').run(id);
+  res.json({ success: true });
+});
+
 // ═══ WEBSOCKET (TB proxy — per hotel) ═══
 const wss = new WebSocket.Server({ server, path: '/ws/telemetry' });
 wss.on('connection', async (cws, req) => {
