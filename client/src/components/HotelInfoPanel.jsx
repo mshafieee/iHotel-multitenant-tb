@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../utils/api';
 import useLangStore from '../store/langStore';
+import useHotelStore from '../store/hotelStore';
 import { t } from '../i18n';
-import { Save, Upload, Trash2, Plus, Globe, ExternalLink } from 'lucide-react';
+import { Save, Upload, Trash2, Plus, Globe, ExternalLink, Link2, Copy, Check, Eye, EyeOff } from 'lucide-react';
 
 const AMENITY_OPTIONS = [
   'WiFi', 'Pool', 'Gym', 'Spa', 'Restaurant', 'Bar', 'Room Service',
@@ -19,7 +20,7 @@ export default function HotelInfoPanel() {
     phone: '', email: '', website: '', amenities: [],
     checkInTime: '15:00', checkOutTime: '12:00', currency: 'SAR',
     bookingEnabled: false, bookingTerms: '', bookingTermsAr: '',
-    heroImageUrl: null
+    heroImageUrl: null, publicUrl: ''
   });
   const [roomTypeInfo, setRoomTypeInfo] = useState([]);
   const [images, setImages] = useState([]);
@@ -42,7 +43,22 @@ export default function HotelInfoPanel() {
   const [roomStats, setRoomStats] = useState({});            // { [offerId]: rows[] }
   const [roomStatsLoading, setRoomStatsLoading] = useState(false);
 
-  useEffect(() => { load(); loadCatalog(); loadStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Channel Manager state
+  const { channels, fetchChannels, createChannel, updateChannel, deleteChannel } = useHotelStore(s => ({
+    channels: s.channels,
+    fetchChannels: s.fetchChannels,
+    createChannel: s.createChannel,
+    updateChannel: s.updateChannel,
+    deleteChannel: s.deleteChannel,
+  }));
+  const [showChannelForm, setShowChannelForm] = useState(false);
+  const [channelForm, setChannelForm] = useState({ name: '', webhook_secret: '', notes: '' });
+  const [channelSaving, setChannelSaving] = useState(false);
+  const [editingChannel, setEditingChannel] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);      // which field was just copied
+  const [showSecrets, setShowSecrets] = useState({});  // { [channelId]: bool }
+
+  useEffect(() => { load(); loadCatalog(); loadStats(); fetchChannels(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     try {
@@ -57,7 +73,8 @@ export default function HotelInfoPanel() {
           checkInTime: p.check_in_time || '15:00', checkOutTime: p.check_out_time || '12:00',
           currency: p.currency || 'SAR', bookingEnabled: !!p.booking_enabled,
           bookingTerms: p.booking_terms || '', bookingTermsAr: p.booking_terms_ar || '',
-          heroImageUrl: p.hero_image_url || null
+          heroImageUrl: p.hero_image_url || null,
+          publicUrl: p.public_url || ''
         });
       }
       setRoomTypeInfo(data.roomTypeInfo || []);
@@ -178,6 +195,54 @@ export default function HotelInfoPanel() {
     } catch (e) { alert('Delete failed: ' + e.message); }
   }
 
+  // ── Channel Manager helpers ────────────────────────────────────────────────
+  async function saveChannel() {
+    if (!channelForm.name.trim()) return;
+    setChannelSaving(true);
+    try {
+      if (editingChannel) {
+        await updateChannel(editingChannel, channelForm);
+      } else {
+        await createChannel(channelForm);
+      }
+      setShowChannelForm(false);
+      setEditingChannel(null);
+      setChannelForm({ name: '', webhook_secret: '', notes: '' });
+    } catch (e) { alert('Save failed: ' + e.message); }
+    finally { setChannelSaving(false); }
+  }
+
+  function startEditChannel(ch) {
+    setEditingChannel(ch.id);
+    setChannelForm({ name: ch.name, webhook_secret: ch.webhook_secret || '', notes: ch.notes || '' });
+    setShowChannelForm(true);
+  }
+
+  async function handleDeleteChannel(id) {
+    if (!confirm(T('channel_delete_confirm'))) return;
+    try { await deleteChannel(id); } catch (e) { alert('Delete failed: ' + e.message); }
+  }
+
+  async function toggleChannelActive(ch) {
+    try { await updateChannel(ch.id, { active: !ch.active }); } catch {}
+  }
+
+  function copyToClipboard(text, key) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(key);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  }
+
+  function relativeTime(unixSec) {
+    if (!unixSec) return T('channel_never');
+    const diff = Math.floor(Date.now() / 1000) - unixSec;
+    if (diff < 60) return lang === 'ar' ? 'الآن' : 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
+
   function startEditOffer(offer) {
     setEditingOffer(offer.id);
     let parsedRoomTypes = [];
@@ -263,6 +328,19 @@ export default function HotelInfoPanel() {
           <Field label={lang === 'ar' ? 'الموقع الإلكتروني' : 'Website'}>
             <input value={profile.website} onChange={e => setProfile(p => ({ ...p, website: e.target.value }))}
               className="input-field" dir="ltr" />
+          </Field>
+          <Field label={lang === 'ar' ? 'عنوان الخادم العام (للقنوات)' : 'Public Server URL (for Channel Manager)'}>
+            <input
+              value={profile.publicUrl}
+              onChange={e => setProfile(p => ({ ...p, publicUrl: e.target.value }))}
+              placeholder="https://hotel.example.com"
+              className="input-field" dir="ltr"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              {lang === 'ar'
+                ? 'النطاق العام للخادم — يُستخدم لإنشاء روابط iCal وWebhook قابلة للمشاركة مع OTAs'
+                : 'Your server\'s public domain — used to generate shareable iCal & webhook URLs for OTAs'}
+            </p>
           </Field>
           <Field label={lang === 'ar' ? 'العملة' : 'Currency'}>
             <input value={profile.currency} onChange={e => setProfile(p => ({ ...p, currency: e.target.value }))}
@@ -613,6 +691,208 @@ export default function HotelInfoPanel() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Channel Manager ──────────────────────────────────────────────── */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <Link2 size={16} />
+              {T('channel_tab')}
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {lang === 'ar'
+                ? 'زامن التوافر مع Booking.com وExpedia وAirbnb'
+                : 'Sync availability with Booking.com, Expedia, Airbnb & more'}
+            </p>
+          </div>
+          <button
+            onClick={() => { setShowChannelForm(true); setEditingChannel(null); setChannelForm({ name: '', webhook_secret: '', notes: '' }); }}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition"
+          >
+            <Plus size={13} /> {T('channel_add')}
+          </button>
+        </div>
+
+        {/* Add / Edit form */}
+        {showChannelForm && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 space-y-2">
+            <div className="text-xs font-bold text-blue-800 mb-1">
+              {editingChannel ? T('channel_edit') : T('channel_add')}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-500 font-semibold">{T('channel_name')} *</label>
+                <input
+                  type="text"
+                  placeholder={T('channel_name_ph')}
+                  value={channelForm.name}
+                  onChange={e => setChannelForm(f => ({ ...f, name: e.target.value }))}
+                  className="input mt-0.5 text-xs w-full"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-semibold">{T('channel_webhook_secret')}</label>
+                <input
+                  type="text"
+                  placeholder="optional HMAC secret"
+                  value={channelForm.webhook_secret}
+                  onChange={e => setChannelForm(f => ({ ...f, webhook_secret: e.target.value }))}
+                  className="input mt-0.5 text-xs w-full font-mono"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 font-semibold">{T('channel_notes')}</label>
+              <input
+                type="text"
+                value={channelForm.notes}
+                onChange={e => setChannelForm(f => ({ ...f, notes: e.target.value }))}
+                className="input mt-0.5 text-xs w-full"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={saveChannel}
+                disabled={channelSaving || !channelForm.name.trim()}
+                className="px-4 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition disabled:opacity-50"
+              >
+                {channelSaving ? '…' : T('channel_save')}
+              </button>
+              <button
+                onClick={() => { setShowChannelForm(false); setEditingChannel(null); }}
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition"
+              >
+                {T('channel_cancel')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Public URL warning */}
+        {!profile.publicUrl && (
+          <div className="mb-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-[11px] text-amber-700">
+            <span className="font-bold text-amber-500 mt-0.5">⚠</span>
+            <span>
+              {lang === 'ar'
+                ? 'لم يتم تعيين عنوان الخادم العام. روابط iCal وWebhook ستستخدم localhost وهو غير قابل للوصول من OTAs. أضف عنوان الخادم في الإعدادات العامة أعلاه.'
+                : 'Public Server URL is not set. iCal & webhook URLs will use localhost, which OTAs cannot reach. Add your server\'s public domain in General settings above, then save.'}
+            </span>
+          </div>
+        )}
+
+        {/* Channel list */}
+        {channels.length === 0 && !showChannelForm ? (
+          <p className="text-xs text-gray-400 text-center py-4">{T('channel_no_channels')}</p>
+        ) : (
+          <div className="space-y-3">
+            {channels.map(ch => {
+              const base = profile.publicUrl || window.location.origin;
+              const icalUrl = `${base}/api/channel/ical/${encodeURIComponent(ch.hotel_id)}/${ch.ical_token}.ics`;
+              const webhookUrl = `${base}/api/channel/webhook/${ch.id}`;
+              const secretVisible = showSecrets[ch.id];
+              return (
+                <div key={ch.id} className={`border rounded-xl p-3 ${ch.active ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-gray-800">{ch.name}</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${ch.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>
+                        {ch.active ? T('channel_active') : T('channel_inactive')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400">{T('channel_last_sync')}: {relativeTime(ch.last_sync_at)}</span>
+                      <button onClick={() => toggleChannelActive(ch)}
+                        className={`toggle ${ch.active ? 'bg-emerald-500' : 'bg-gray-200'} ml-2`}>
+                        <div className={`toggle-knob ${ch.active ? 'translate-x-5' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* iCal URL */}
+                  <div className="mb-2">
+                    <div className="text-[10px] font-semibold text-gray-500 mb-0.5">{T('channel_ical_url')}</div>
+                    <div className="flex items-center gap-1">
+                      <code className="flex-1 bg-gray-50 border border-gray-200 rounded px-2 py-1 text-[10px] font-mono text-gray-700 truncate">{icalUrl}</code>
+                      <button
+                        onClick={() => copyToClipboard(icalUrl, `ical-${ch.id}`)}
+                        className="flex-shrink-0 flex items-center gap-0.5 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-[10px] font-bold text-gray-600 transition"
+                      >
+                        {copiedId === `ical-${ch.id}` ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                        {copiedId === `ical-${ch.id}` ? T('channel_copied') : T('channel_copy')}
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-gray-400 mt-0.5">{T('channel_ical_hint')}</p>
+                  </div>
+
+                  {/* Webhook URL */}
+                  <div className="mb-2">
+                    <div className="text-[10px] font-semibold text-gray-500 mb-0.5">{T('channel_webhook_url')}</div>
+                    <div className="flex items-center gap-1">
+                      <code className="flex-1 bg-gray-50 border border-gray-200 rounded px-2 py-1 text-[10px] font-mono text-gray-700 truncate">{webhookUrl}</code>
+                      <button
+                        onClick={() => copyToClipboard(webhookUrl, `wh-${ch.id}`)}
+                        className="flex-shrink-0 flex items-center gap-0.5 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-[10px] font-bold text-gray-600 transition"
+                      >
+                        {copiedId === `wh-${ch.id}` ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                        {copiedId === `wh-${ch.id}` ? T('channel_copied') : T('channel_copy')}
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-gray-400 mt-0.5">{T('channel_webhook_hint')}</p>
+                  </div>
+
+                  {/* Webhook secret (if set) */}
+                  {ch.webhook_secret && (
+                    <div className="mb-2">
+                      <div className="text-[10px] font-semibold text-gray-500 mb-0.5">{T('channel_webhook_secret')}</div>
+                      <div className="flex items-center gap-1">
+                        <code className="flex-1 bg-gray-50 border border-gray-200 rounded px-2 py-1 text-[10px] font-mono text-gray-700">
+                          {secretVisible ? ch.webhook_secret : '••••••••••••••••'}
+                        </code>
+                        <button
+                          onClick={() => setShowSecrets(s => ({ ...s, [ch.id]: !s[ch.id] }))}
+                          className="flex-shrink-0 p-1 rounded hover:bg-gray-100 text-gray-400"
+                        >
+                          {secretVisible ? <EyeOff size={12} /> : <Eye size={12} />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Setup instructions collapsible */}
+                  {(() => {
+                    const nm = ch.name.toLowerCase();
+                    const hint = nm.includes('booking') ? T('channel_setup_bcom')
+                      : nm.includes('airbnb') ? T('channel_setup_airbnb')
+                      : nm.includes('expedia') ? T('channel_setup_expedia')
+                      : null;
+                    if (!hint) return null;
+                    return (
+                      <div className="mt-2 text-[10px] text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                        <span className="font-bold">{T('channel_setup_title')}: </span>{hint}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
+                    <button onClick={() => startEditChannel(ch)}
+                      className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-600 transition">
+                      {T('channel_edit')}
+                    </button>
+                    <button onClick={() => handleDeleteChannel(ch.id)}
+                      className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-xs font-bold text-red-500 transition">
+                      {T('channel_delete')}
+                    </button>
+                    {ch.notes && <span className="text-[10px] text-gray-400 self-center ml-1">{ch.notes}</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
