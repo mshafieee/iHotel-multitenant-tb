@@ -3974,7 +3974,7 @@ app.post('/api/channel/webhook/:channelId', express.json(), (req, res) => {
 // ── Channel CRUD — owner/admin only ──────────────────────────────────
 
 // GET /api/channel/connections — list all channels for the hotel
-app.get('/api/channel/connections', auth, (req, res) => {
+app.get('/api/channel/connections', authenticate, (req, res) => {
   const hotelId = req.user.hotelId;
   const channels = db.prepare(
     'SELECT * FROM channel_connections WHERE hotel_id=? ORDER BY created_at ASC'
@@ -3983,7 +3983,7 @@ app.get('/api/channel/connections', auth, (req, res) => {
 });
 
 // POST /api/channel/connections — create a new channel
-app.post('/api/channel/connections', auth, (req, res) => {
+app.post('/api/channel/connections', authenticate, (req, res) => {
   if (!['owner', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
   const hotelId = req.user.hotelId;
   const { name, type = 'ical', webhook_secret, api_key, notes } = req.body;
@@ -4000,7 +4000,7 @@ app.post('/api/channel/connections', auth, (req, res) => {
 });
 
 // PATCH /api/channel/connections/:id — update a channel
-app.patch('/api/channel/connections/:id', auth, (req, res) => {
+app.patch('/api/channel/connections/:id', authenticate, (req, res) => {
   if (!['owner', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
   const hotelId = req.user.hotelId;
   const id = parseInt(req.params.id);
@@ -4026,7 +4026,7 @@ app.patch('/api/channel/connections/:id', auth, (req, res) => {
 });
 
 // DELETE /api/channel/connections/:id
-app.delete('/api/channel/connections/:id', auth, (req, res) => {
+app.delete('/api/channel/connections/:id', authenticate, (req, res) => {
   if (!['owner', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
   const hotelId = req.user.hotelId;
   const id = parseInt(req.params.id);
