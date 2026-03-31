@@ -1,8 +1,8 @@
 /**
- * ╔═════════════════════════════════════════════════════════════╗
- * ║  iHotel SaaS Platform — Server v3.0 (Multi-Tenant + TB)    ║
- * ║  JWT Auth · SQLite · ThingsBoard · SSE · Helmet · Rate Lim ║
- * ╚═════════════════════════════════════════════════════════════╝
+ * ╔═════════════════════════════════════════════════════════════════╗
+ * ║  iHotel SaaS Platform — Server v4.0 (Multi-Tenant + Modular)  ║
+ * ║  JWT Auth · SQLite · IoT Adapter · SSE · Helmet · Rate Lim    ║
+ * ╚═════════════════════════════════════════════════════════════════╝
  */
 require('dotenv').config();
 const express   = require('express');
@@ -16,15 +16,17 @@ const path      = require('path');
 const WebSocket = require('ws');
 
 const { initDB }                  = require('./db');
-const { ThingsBoardClientPool }   = require('./thingsboard');
+const { createPool }              = require('./adapters');
+const { initServices, state, sse, control, room, scene, audit } = require('./services');
 const { setDB, authenticate, requireRole, generateAccessToken, generateRefreshToken, JWT_SECRET } = require('./auth');
 const nodemailer                  = require('nodemailer');
 const webpush                     = require('web-push');
 
 // ═══ INIT ═══
-const db     = initDB();
-setDB(db); // give authenticate middleware live DB access for session validation
-const tbPool = new ThingsBoardClientPool();
+const db          = initDB();
+setDB(db);
+const adapterPool = createPool(process.env.IOT_PLATFORM || 'thingsboard');
+initServices(db, adapterPool);
 
 // ── Web Push VAPID keys (generated once, stored in platform_config) ──────────
 (function initVapid() {
@@ -62,28 +64,23 @@ function getMailer() {
 
 // ═══ PLATFORM ROUTER ═══
 const platformModule = require('./platform');
-platformModule.init(db, tbPool);
+platformModule.init(db, adapterPool);
 
-// ═══ CONSTANTS ═══
-const PORT          = process.env.PORT || 3000;
-const ROOM_TYPES    = ['STANDARD', 'DELUXE', 'SUITE', 'VIP'];
+// ═══ CONSTANTS (from services) ═══
+const PORT = process.env.PORT || 3000;
+const { ROOM_TYPES, FLOOR_TYPE, TELEMETRY_KEYS, RELAY_KEYS, SHARED_CONTROL_KEYS, extractRoom, parseTelemetry } = room;
+const { sendControl, controlToTelemetry, controlToRelayAttributes, impliesActivity, startNotOccupiedTimer, restoreOccupied, vacateRoom, coerceTelemetry } = control;
+const { fetchAndBroadcast, processTelemetry, startPlatformSubscription } = room;
+const { sseConnect, sseBroadcast, sseBroadcastAlert, sseBroadcastRoles, sseBroadcastUser, sseBatchTelemetry, fireServiceAlert } = sse;
+const { getDeviceRoomMap, getLastOverviewRooms, getLastKnownTelemetry, getRoomPDState, getDoorOpenTimers, getSleepTimers, getRoomStateSnapshots, isOverviewStale, isFetchingOverview, setFetchingOverview, clearFetchingOverview } = state;
+const { addLog } = audit;
+const { checkEventScenes, executeScene } = scene;
+
 const ROOM_STATUS   = ['VACANT', 'OCCUPIED', 'SERVICE', 'MAINTENANCE', 'NOT_OCCUPIED'];
 const AC_MODES      = ['OFF', 'COOL', 'HEAT', 'FAN', 'AUTO'];
 const FAN_SPEEDS    = ['LOW', 'MED', 'HIGH', 'AUTO'];
 const DEVICE_STATUSES = ['normal', 'boot', 'fault'];
 const RACK_RATES    = { STANDARD: 600, DELUXE: 950, SUITE: 1500, VIP: 2500 };
-const FLOOR_TYPE    = { 1:1, 2:0, 3:0, 4:1, 5:2, 6:0, 7:1, 8:0, 9:2, 10:0, 11:1, 12:0, 13:2, 14:3, 15:3 };
-
-const TELEMETRY_KEYS = [
-  'roomStatus','pirMotionStatus','doorStatus','doorLockBattery','doorContactsBattery',
-  'co2','temperature','humidity','airQualityBattery','elecConsumption','waterConsumption',
-  'waterMeterBattery','line1','line2','line3','dimmer1','dimmer2','acTemperatureSet',
-  'acMode','fanSpeed','curtainsPosition','blindsPosition','dndService','murService',
-  'sosService','lastCleanedTime','lastTelemetryTime','firmwareVersion','gatewayVersion','deviceStatus',
-  'pdMode','doorUnlock'
-];
-const RELAY_KEYS = ['relay1','relay2','relay3','relay4','relay5','relay6','relay7','relay8','doorUnlock','defaultUnlockDuration'];
-const SHARED_CONTROL_KEYS = ['line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','roomStatus','dndService','murService','sosService','pdMode'];
 const WATCHABLE_KEYS = ['roomStatus','pirMotionStatus','doorStatus','line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','deviceStatus','pdMode'];
 
 // ═══ EXPRESS APP ═══
@@ -119,246 +116,22 @@ const server = http.createServer(app);
 // ═══ PLATFORM ROUTES ═══
 app.use('/api/platform', platformModule.router);
 
-// ═══ TB CLIENT HELPER ═══
-function getHotelTB(hotelId) {
-  const client = tbPool.getClient(hotelId, db);
-  if (!client) throw new Error('Smart room control is not configured for this hotel. Contact the platform admin.');
-  return client;
+// ═══ ADAPTER HELPER ═══
+function getHotelAdapter(hotelId) {
+  const adapter = adapterPool.getAdapter(hotelId, db);
+  if (!adapter) throw new Error('Smart room control is not configured for this hotel. Contact the platform admin.');
+  return adapter;
 }
 
-// ═══ PER-HOTEL IN-MEMORY STATE ═══
-// Each of these is a plain object keyed by hotelId.
-const _deviceRoomMaps     = {}; // { [hotelId]: { [roomNum]: deviceId } }
-const _lastOverviewRooms  = {}; // { [hotelId]: { [roomNum]: roomData } }
-const _lastKnownTelemetry = {}; // { [hotelId]: { [roomNum]: telemetryObj } }
-const _roomPDState        = {}; // { [hotelId]: { [roomNum]: bool } }
-const _doorOpenTimers     = {}; // { [hotelId]: { [roomNum]: timerHandle } }
-const _sleepTimers        = {}; // { [hotelId]: { [roomNum]: timerHandle } } — 2-hr AC adjust
-const _roomStateSnapshots = {}; // { [hotelId]: { [roomNum]: stateSnapshot } } — pre-NOT_OCCUPIED snapshot
-const _overviewFetchTs    = {}; // { [hotelId]: timestamp } — last full TB fetch time
-const _fetchingOverview   = new Set(); // hotelIds currently fetching TB (prevent concurrent fetches)
-const _tbWs               = {}; // { [hotelId]: WebSocket } — real-time TB telemetry subscriptions
+// (State, SSE, telemetry pipeline, change detection, control logic, scene engine
+//  are all now in server/services/ — imported above)
 
-const OVERVIEW_CACHE_TTL  = 30_000; // ms — re-fetch from TB if data is older than this
+// (processTelemetry, startTbSubscription, SSE broadcast, batching, audit log,
+//  telemetry helpers, change detection — all now in services/)
 
-function getDeviceRoomMap(hotelId)     { return (_deviceRoomMaps[hotelId]     ??= {}); }
-function getLastOverviewRooms(hotelId) { return (_lastOverviewRooms[hotelId]  ??= {}); }
-function getLastKnownTelemetry(hotelId){ return (_lastKnownTelemetry[hotelId] ??= {}); }
-function getRoomPDState(hotelId)       { return (_roomPDState[hotelId]        ??= {}); }
-function getDoorOpenTimers(hotelId)    { return (_doorOpenTimers[hotelId]     ??= {}); }
-function getSleepTimers(hotelId)       { return (_sleepTimers[hotelId]       ??= {}); }
-function getRoomStateSnapshots(hotelId){ return (_roomStateSnapshots[hotelId] ??= {}); }
+// (Real-time subscription — now in room.service.startPlatformSubscription)
 
-// ── Core telemetry pipeline ──────────────────────────────────────────────────
-// Single entry point for ALL incoming device telemetry — whether from the live
-// TB WebSocket subscription or the TB-native simulator.  This guarantees that
-// simulated data goes through exactly the same path as real hardware data:
-// change-detection → SSE batch → scene engine.
-function processTelemetry(hotelId, roomNum, deviceId, data) {
-  const lastOverview = getLastOverviewRooms(hotelId);
-  detectAndLogChanges(hotelId, roomNum, data);
-
-  // First time this room appears in live telemetry — seed baseline from DB so
-  // consumption delta is correct before the next full overview fetch runs.
-  if (!lastOverview[roomNum]) {
-    const dbRoom = db.prepare('SELECT elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, roomNum);
-    lastOverview[roomNum] = {
-      elecMeterBaseline:  dbRoom?.elec_meter_baseline  ?? 0,
-      waterMeterBaseline: dbRoom?.water_meter_baseline ?? 0,
-    };
-  }
-
-  // Capture previous state BEFORE applying updates (for scene fromValues matching)
-  const prevState = {};
-  if (lastOverview[roomNum]) {
-    for (const key of Object.keys(data)) prevState[key] = lastOverview[roomNum][key];
-
-    // NOT_OCCUPIED guard: while a restore snapshot exists the server owns
-    // roomStatus=4 — don't let raw device telemetry overwrite it.
-    let broadcastData = data;
-    if (getRoomStateSnapshots(hotelId)[roomNum] && 'roomStatus' in data && data.roomStatus !== 4) {
-      broadcastData = { ...data };
-      delete broadcastData.roomStatus;
-    }
-    Object.assign(lastOverview[roomNum], broadcastData);
-    sseBatchTelemetry(hotelId, roomNum, deviceId, broadcastData);
-  }
-  checkEventScenes(hotelId, roomNum, data, prevState);
-}
-
-// ── Real-time TB telemetry subscription ─────────────────────────────────────
-// Opens a persistent WebSocket to ThingsBoard that fires whenever an ESP32 /
-// gateway device publishes telemetry.  Results flow through processTelemetry().
-// Called once after the first fetchAndBroadcast for a hotel (or on reconnect).
-async function startTbSubscription(hotelId, deviceIdToRoom) {
-  if (!Object.keys(deviceIdToRoom).length) return;
-
-  // Close any stale subscription for this hotel
-  const existing = _tbWs[hotelId];
-  if (existing && existing.readyState <= WebSocket.OPEN) return; // already active
-  if (existing) { try { existing.terminate(); } catch {} }
-
-  try {
-    const tb = getHotelTB(hotelId);
-    const ws = await tb.openTelemetryWs(deviceIdToRoom, (roomNum, deviceId, data) => {
-      processTelemetry(hotelId, roomNum, deviceId, data);
-    });
-
-    ws.on('error', e => console.error(`[${hotelId}] TB sub WS error:`, e.message));
-    ws.on('close', () => {
-      delete _tbWs[hotelId];
-      // Reconnect after 15 s
-      setTimeout(() => {
-        if (_tbWs[hotelId]) return;
-        startTbSubscription(hotelId, deviceIdToRoom)
-          .catch(e => console.error(`[${hotelId}] TB sub reconnect failed:`, e.message));
-      }, 15000);
-    });
-
-    _tbWs[hotelId] = ws;
-    console.log(`✓ [${hotelId}] TB real-time subscription active (${Object.keys(deviceIdToRoom).length} devices)`);
-  } catch (e) {
-    console.error(`[${hotelId}] Failed to start TB subscription:`, e.message);
-  }
-}
-
-// ═══ SSE (hotel-scoped) ═══
-const sseClients = new Map(); // Map<res, {userId, role, hotelId}>
-
-// Deduplication cooldown for MUR/SOS alerts — prevents double-firing when
-// sendControl's optimistic alert and detectAndLogChanges both see the transition.
-const _serviceAlertCooldown = {}; // key: `${hotelId}:${type}:${room}` → lastFiredMs
-function fireServiceAlert(hotelId, type, room, message) {
-  const key = `${hotelId}:${type}:${room}`;
-  const now = Date.now();
-  if (_serviceAlertCooldown[key] && now - _serviceAlertCooldown[key] < 15000) return;
-  _serviceAlertCooldown[key] = now;
-  sseBroadcastAlert(hotelId, { type, room, message, ts: now });
-}
-
-function sseConnect(req, res) {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive'
-  });
-  res.write(':\n\n');
-  // Store username so sseBroadcastUser can target a specific staff member.
-  sseClients.set(res, { userId: req.user?.id, username: req.user?.username, role: req.user?.role, hotelId: req.user?.hotelId, room: req.user?.room || null });
-  req.on('close', () => sseClients.delete(res));
-}
-
-function sseBroadcast(hotelId, event, data) {
-  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const [c, meta] of sseClients) {
-    if (meta.hotelId !== hotelId) continue;
-    // Guests receive telemetry ONLY for their own room
-    if (meta.role === 'guest') {
-      if (event === 'telemetry' && data.room === meta.room) {
-        try { c.write(msg); } catch {}
-      } else if (event === 'batch-telemetry' && meta.room && data.rooms?.[meta.room]) {
-        const roomData = data.rooms[meta.room];
-        const guestMsg = `event: telemetry\ndata: ${JSON.stringify({ room: meta.room, deviceId: roomData.deviceId, data: roomData.data })}\n\n`;
-        try { c.write(guestMsg); } catch {}
-      }
-      continue; // all other events (snapshot, logs, alerts, lockout, etc.) are blocked
-    }
-    try { c.write(msg); } catch {}
-  }
-}
-
-function sseBroadcastAlert(hotelId, data) {
-  const msg = `event: alert\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const [c, meta] of sseClients) {
-    if (meta.hotelId !== hotelId) continue;
-    if (meta.role === 'owner') continue;
-    try { c.write(msg); } catch {}
-  }
-}
-
-function sseBroadcastRoles(hotelId, event, data, roles) {
-  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const [c, meta] of sseClients) {
-    if (meta.hotelId !== hotelId) continue;
-    if (!roles.includes(meta.role)) continue;
-    try { c.write(msg); } catch {}
-  }
-}
-
-// Send an SSE event to one specific staff member (identified by username).
-// Used for housekeeping assignment notifications so only the assigned
-// housekeeper sees the alert, not everyone on the floor.
-function sseBroadcastUser(hotelId, username, event, data) {
-  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const [c, meta] of sseClients) {
-    if (meta.hotelId !== hotelId) continue;
-    if (meta.username !== username) continue;
-    try { c.write(msg); } catch {}
-  }
-}
-
-// ═══ SSE BATCHING LAYER ═══
-// Accumulates telemetry and log updates, then flushes them as single SSE events
-// every BATCH_INTERVAL_MS. This prevents 300+ individual SSE events per simulator
-// tick from flooding the browser and causing hundreds of React re-renders.
-const SSE_BATCH_INTERVAL_MS = 500;
-const _sseTelemetryBatch = {}; // { [hotelId]: { [roomNum]: { deviceId, data } } }
-const _sseLogBatch       = {}; // { [hotelId]: [ entry, ... ] }
-const _sseBatchTimers    = {}; // { [hotelId]: timer }
-
-function sseBatchTelemetry(hotelId, roomNum, deviceId, data) {
-  if (!_sseTelemetryBatch[hotelId]) _sseTelemetryBatch[hotelId] = {};
-  const batch = _sseTelemetryBatch[hotelId];
-  if (!batch[roomNum]) {
-    batch[roomNum] = { deviceId, data: { ...data } };
-  } else {
-    // Merge — later updates for the same room override earlier ones
-    Object.assign(batch[roomNum].data, data);
-  }
-  scheduleBatchFlush(hotelId);
-}
-
-function sseBatchLog(hotelId, entry) {
-  if (!_sseLogBatch[hotelId]) _sseLogBatch[hotelId] = [];
-  _sseLogBatch[hotelId].push(entry);
-  scheduleBatchFlush(hotelId);
-}
-
-function scheduleBatchFlush(hotelId) {
-  if (_sseBatchTimers[hotelId]) return; // already scheduled
-  _sseBatchTimers[hotelId] = setTimeout(() => {
-    delete _sseBatchTimers[hotelId];
-    flushBatch(hotelId);
-  }, SSE_BATCH_INTERVAL_MS);
-}
-
-function flushBatch(hotelId) {
-  // Flush telemetry batch
-  const telBatch = _sseTelemetryBatch[hotelId];
-  if (telBatch && Object.keys(telBatch).length) {
-    delete _sseTelemetryBatch[hotelId];
-    sseBroadcast(hotelId, 'batch-telemetry', { rooms: telBatch });
-  }
-
-  // Flush log batch
-  const logBatch = _sseLogBatch[hotelId];
-  if (logBatch && logBatch.length) {
-    delete _sseLogBatch[hotelId];
-    sseBroadcast(hotelId, 'batch-log', { entries: logBatch });
-  }
-}
-
-// ═══ AUDIT LOG ═══
-function addLog(hotelId, category, message, details = {}) {
-  const ts    = Date.now();
-  const entry = { ts, cat: category, msg: message, ...details };
-  try {
-    db.prepare('INSERT INTO audit_log (hotel_id, ts, category, message, room, source, user, details) VALUES (?,?,?,?,?,?,?,?)')
-      .run(hotelId, ts, category, message, details.room || null, details.source || null, details.user || null, JSON.stringify(details));
-  } catch (e) { console.error('Log DB error:', e.message); }
-  // Batch log SSE events instead of sending individually
-  sseBatchLog(hotelId, entry);
-}
+// (SSE broadcast, batching, service alerts, audit log — all in services/)
 
 // ═══ AUTH ROUTES ═══
 app.post('/api/auth/login', authLimiter, (req, res) => {
@@ -461,509 +234,10 @@ app.get('/api/events', (req, res, next) => {
   authenticate(req, res, next);
 }, sseConnect);
 
-// ═══ TELEMETRY HELPERS ═══
-function parseTelemetry(raw) {
-  const r = {};
-  if (!raw) return r;
-  for (const [key, arr] of Object.entries(raw)) {
-    if (!Array.isArray(arr) || !arr.length) continue;
-    let val = arr[0].value !== undefined ? arr[0].value : arr[0];
-    if (val === 'true') val = true;
-    else if (val === 'false') val = false;
-    else if (!isNaN(val) && val !== '' && val !== null) val = parseFloat(val);
-    r[key] = val;
-  }
-  return r;
-}
+// (Telemetry helpers — now in room.service)
 
-function extractRoom(name) {
-  const m = name.match(/gateway-room-(.+)/);
-  return m ? m[1] : null;
-}
-
-// ═══ CHANGE DETECTION (per hotel) ═══
-function detectAndLogChanges(hotelId, roomNum, t) {
-  const lastTelemetry = getLastKnownTelemetry(hotelId);
-  const prev          = lastTelemetry[roomNum];
-  if (!prev) { lastTelemetry[roomNum] = { ...t }; return; }
-
-  // Guard: protect server-commanded NOT_OCCUPIED (4) from stale device telemetry.
-  // Covers two cases:
-  //  (a) Snapshot exists — NOT_OCCUPIED timer fired (returning guest path).
-  //  (b) No snapshot but server last set status to 4 — reservation created, first arrival.
-  // The ESP32 keeps reporting its own roomStatus (= 1 OCCUPIED) until it reads and
-  // applies the server's shared-attribute command.  Without this guard that stale value
-  // overwrites lastTelemetry[roomNum].roomStatus → curStatus resolves to 1 below →
-  // restoreOccupied / welcome scene never fires.
-  if ((getRoomStateSnapshots(hotelId)[roomNum] || prev.roomStatus === 4) && 'roomStatus' in t && t.roomStatus !== 4) {
-    t = { ...t };
-    delete t.roomStatus;
-  }
-
-  const pdState        = getRoomPDState(hotelId);
-  const deviceRoomMap  = getDeviceRoomMap(hotelId);
-
-  for (const key of WATCHABLE_KEYS) {
-    if (!(key in t) || prev[key] === t[key]) continue;
-    const to = t[key];
-    let msg, cat = 'telemetry';
-
-    if (key === 'roomStatus') {
-      // Discard restore snapshot when the room reaches a definitive state (not returning from NOT_OCCUPIED)
-      if (to !== 4) delete getRoomStateSnapshots(hotelId)[roomNum];
-      // not logged here — PMS/control/checkout routes log status changes directly
-
-    }
-    else if (key === 'doorStatus') {
-      if (to === true) { msg = 'Door OPENED'; cat = 'sensor'; }  // log opens only
-      const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
-      const roomOverview = getLastOverviewRooms(hotelId)[roomNum];
-      if (to === true) {
-        const isReserved = (curStatus === 0 || (roomOverview?.reservation && curStatus !== 1)) && curStatus !== 3;
-        if (isReserved) {
-          const devId = deviceRoomMap[roomNum];
-          if (devId) setImmediate(async () => {
-            await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {});
-            checkEventScenes(hotelId, roomNum, { roomStatus: 1 }, { roomStatus: 0 });
-          });
-        }
-        if (curStatus === 1) startNotOccupiedTimer(hotelId, roomNum);
-      } else {
-        if (t.pirMotionStatus || prev.pirMotionStatus) {
-          const timers = getDoorOpenTimers(hotelId);
-          clearTimeout(timers[roomNum]);
-          delete timers[roomNum];
-        }
-      }
-    }
-    else if (key === 'pirMotionStatus') {
-      // not logged
-      if (to === true) {
-        const timers = getDoorOpenTimers(hotelId);
-        clearTimeout(timers[roomNum]);
-        delete timers[roomNum];
-      }
-    }
-    else if (key === 'dndService') { /* not logged */ }
-    else if (key === 'murService') {
-      if (to) { msg = 'MUR — Housekeeping requested'; cat = 'service'; }
-      if (to) fireServiceAlert(hotelId, 'MUR', roomNum, `Room ${roomNum}: Housekeeping`);
-    } else if (key === 'sosService') {
-      if (to) { msg = 'SOS EMERGENCY'; cat = 'service'; }
-      if (to) fireServiceAlert(hotelId, 'SOS', roomNum, `EMERGENCY Room ${roomNum}`);
-    } else if (key === 'pdMode') {
-      pdState[roomNum] = !!to;
-    }
-
-    // Auto-restore OCCUPIED on ANY physical activity while room is NOT_OCCUPIED
-    const curStatus = t.roomStatus ?? prev.roomStatus ?? 0;
-    if (curStatus === 4) {
-      const isActivity =
-        (key === 'pirMotionStatus'  && to === true) ||
-        (key === 'doorStatus'       && to === true) ||
-        (key === 'doorUnlock'       && to === true) ||
-        (key === 'line1'            && to === true) ||
-        (key === 'line2'            && to === true) ||
-        (key === 'line3'            && to === true) ||
-        (key === 'acMode'           && to > 0)      ||
-        (key === 'curtainsPosition' && to > 0)      ||
-        (key === 'blindsPosition'   && to > 0);
-      if (isActivity) setImmediate(() => restoreOccupied(hotelId, roomNum));
-    }
-
-    // Auto-set OCCUPIED on physical activity in a RESERVED room (motion, lights, AC, curtains).
-    // Skip MAINTENANCE rooms (status 3) — physical activity there must never auto-flip to OCCUPIED.
-    const roomOverview2 = getLastOverviewRooms(hotelId)[roomNum];
-    if (curStatus !== 1 && curStatus !== 3 && roomOverview2?.reservation) {
-      const isGuestActivity =
-        (key === 'pirMotionStatus' && to === true) ||
-        (key === 'line1' && to === true) ||
-        (key === 'line2' && to === true) ||
-        (key === 'line3' && to === true) ||
-        (key === 'acMode' && to > 0)    ||
-        (key === 'curtainsPosition' && to > 0) ||
-        (key === 'blindsPosition'   && to > 0);
-      if (isGuestActivity) {
-        const devId = deviceRoomMap[roomNum];
-        if (devId) setImmediate(() => sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto').catch(() => {}));
-      }
-    }
-
-    if (msg) addLog(hotelId, cat, msg, { room: roomNum, source: 'gateway' });
-  }
-  lastTelemetry[roomNum] = { ...prev, ...t };
-}
-
-// ═══ CONTROL LOGIC ═══
-function controlToTelemetry(method, params) {
-  const data = {};
-  if (method === 'setLines') {
-    if ('line1' in params) data.line1 = !!params.line1;
-    if ('line2' in params) data.line2 = !!params.line2;
-    if ('line3' in params) data.line3 = !!params.line3;
-    if ('dimmer1' in params) data.dimmer1 = Math.max(0, Math.min(100, parseFloat(params.dimmer1)));
-    if ('dimmer2' in params) data.dimmer2 = Math.max(0, Math.min(100, parseFloat(params.dimmer2)));
-  } else if (method === 'setAC') {
-    if ('acMode' in params) data.acMode = parseInt(params.acMode);
-    if ('acTemperatureSet' in params) data.acTemperatureSet = parseFloat(params.acTemperatureSet);
-    if ('fanSpeed' in params) data.fanSpeed = parseInt(params.fanSpeed);
-  } else if (method === 'setDoorUnlock') {
-    data.doorUnlock = true;
-  } else if (method === 'setDoorLock') {
-    data.doorUnlock = false;
-  } else if (method === 'setCurtainsBlinds') {
-    if ('curtainsPosition' in params) data.curtainsPosition = Math.max(0, Math.min(100, parseFloat(params.curtainsPosition)));
-    if ('blindsPosition' in params) data.blindsPosition = Math.max(0, Math.min(100, parseFloat(params.blindsPosition)));
-  } else if (method === 'setService') {
-    if ('dndService' in params) data.dndService = !!params.dndService;
-    if ('murService' in params) data.murService = !!params.murService;
-    if ('sosService' in params) data.sosService = !!params.sosService;
-    // DND/MUR mutual exclusivity: activating one auto-cancels the other
-    if (data.dndService === true) data.murService = false;
-    else if (data.murService === true) data.dndService = false;
-  } else if (method === 'resetServices') {
-    (params.services || []).forEach(s => { data[s] = false; });
-  } else if (method === 'setPowerDown') {
-    data.line1 = false; data.line2 = false; data.line3 = false;
-    data.dimmer1 = 0; data.dimmer2 = 0; data.acMode = 0; data.fanSpeed = 0;
-    data.curtainsPosition = 0; data.blindsPosition = 0;
-    data.dndService = false; data.murService = false; data.sosService = false;
-  } else if (method === 'setRoomStatus') {
-    if ('roomStatus' in params) data.roomStatus = parseInt(params.roomStatus);
-    if (data.roomStatus === 0) data.lastCleanedTime = String(Date.now());
-  } else if (method === 'resetMeters') {
-    data.elecConsumption = 0; data.waterConsumption = 0;
-  } else if (method === 'setPDMode') {
-    data.pdMode = !!params.pdMode;
-    if (data.pdMode) {
-      data.line1 = false; data.line2 = false; data.line3 = false;
-      data.dimmer1 = 0; data.dimmer2 = 0; data.acMode = 0; data.fanSpeed = 0;
-      data.curtainsPosition = 0; data.blindsPosition = 0;
-    }
-  }
-  return data;
-}
-
-function controlToRelayAttributes(telemetry) {
-  const a = {};
-  if ('line1' in telemetry) a.relay1 = !!telemetry.line1;
-  if ('line2' in telemetry) a.relay2 = !!telemetry.line2;
-  if ('line3' in telemetry) a.relay3 = !!telemetry.line3;
-  if ('acMode' in telemetry) {
-    const m = telemetry.acMode;
-    if (m === 0) { a.relay4 = false; a.relay5 = false; a.relay6 = false; a.relay7 = false; }
-    else if (m === 1) a.relay4 = true;
-    else if (m === 2) a.relay4 = false;
-    else if (m === 3) a.relay4 = false;
-    else if (m === 4) a.relay4 = (telemetry.acTemperatureSet || 22) <= 25;
-  }
-  if ('fanSpeed' in telemetry) {
-    const f = telemetry.fanSpeed;
-    a.relay5 = f === 2; a.relay6 = f === 1; a.relay7 = f === 0;
-    if (f === 3) { a.relay5 = false; a.relay6 = true; a.relay7 = false; }
-  }
-  if ('doorUnlock' in telemetry) a.relay8 = !!telemetry.doorUnlock;
-  return a;
-}
-
-// ── NOT_OCCUPIED automation ─────────────────────────────────────────────────
-function startNotOccupiedTimer(hotelId, roomNum) {
-  const timers        = getDoorOpenTimers(hotelId);
-  const lastTelemetry = getLastKnownTelemetry(hotelId);
-  const deviceRoomMap = getDeviceRoomMap(hotelId);
-
-  clearTimeout(timers[roomNum]);
-  timers[roomNum] = setTimeout(async () => {
-    delete timers[roomNum];
-    const t = lastTelemetry[roomNum];
-    if (!t || t.roomStatus !== 1) return;
-    if (t.pirMotionStatus) return;
-    const devId = deviceRoomMap[roomNum];
-    if (!devId) return;
-    try {
-      // Snapshot current device state so we can restore it when the guest returns.
-      // Save BEFORE changing status so we capture the live room state.
-      const snapshots = getRoomStateSnapshots(hotelId);
-      snapshots[roomNum] = {
-        line1:            t.line1            ?? false,
-        line2:            t.line2            ?? false,
-        line3:            t.line3            ?? false,
-        dimmer1:          t.dimmer1          ?? 0,
-        dimmer2:          t.dimmer2          ?? 0,
-        acMode:           t.acMode           ?? 0,
-        acTemperatureSet: t.acTemperatureSet ?? 22,
-        fanSpeed:         t.fanSpeed         ?? 0,
-        curtainsPosition: t.curtainsPosition ?? 0,
-        blindsPosition:   t.blindsPosition   ?? 0,
-      };
-      // Only set status to NOT_OCCUPIED — the Departure Routine scene handles
-      // lights off, AC 26°C, curtains closed automatically when status leaves 1.
-      await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, 'auto');
-      sseBroadcastRoles(hotelId, 'checkout_alert', { type: 'NOT_OCCUPIED', room: roomNum, ts: Date.now() }, ['owner', 'admin', 'frontdesk']);
-    } catch (e) { console.error('NOT_OCCUPIED set failed:', e.message); }
-  }, 5 * 60 * 1000);
-}
-
-async function restoreOccupied(hotelId, roomNum) {
-  const timers        = getDoorOpenTimers(hotelId);
-  const lastTelemetry = getLastKnownTelemetry(hotelId);
-  const deviceRoomMap = getDeviceRoomMap(hotelId);
-
-  clearTimeout(timers[roomNum]);
-  delete timers[roomNum];
-  const devId     = deviceRoomMap[roomNum];
-  if (!devId) return;
-  const curStatus = lastTelemetry[roomNum]?.roomStatus;
-  if (curStatus !== 4) return;
-  try {
-    // Read and remove the snapshot BEFORE sendControl(setRoomStatus) deletes it.
-    // sendControl clears any snapshot whose roomStatus !== 4, so if we read after
-    // the call we always get undefined and the restore commands are never sent.
-    const snapshots = getRoomStateSnapshots(hotelId);
-    const snap      = snapshots[roomNum];
-    if (snap) delete snapshots[roomNum];
-
-    await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto');
-
-    if (snap) {
-      // Returning guest: restore room state from before the NOT_OCCUPIED transition
-      await sendControl(hotelId, devId, 'setLines',
-        { line1: snap.line1, line2: snap.line2, line3: snap.line3,
-          dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
-      await sendControl(hotelId, devId, 'setAC',
-        { acMode: snap.acMode, acTemperatureSet: snap.acTemperatureSet,
-          fanSpeed: snap.fanSpeed }, 'auto');
-      await sendControl(hotelId, devId, 'setCurtainsBlinds',
-        { curtainsPosition: snap.curtainsPosition,
-          blindsPosition: snap.blindsPosition }, 'auto');
-    } else {
-      // First-time arrival: no saved state — fire the welcome scene immediately
-      checkEventScenes(hotelId, roomNum, { roomStatus: 1 }, { roomStatus: 4 });
-    }
-
-  } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
-}
-
-// ── Vacate room: lights off, AC 26°C LOW fan, curtains/blinds closed ─────────
-// Called whenever a room transitions to VACANT (0) or NOT_OCCUPIED (4).
-async function vacateRoom(hotelId, devId, roomNum, targetStatus, username) {
-  await sendControl(hotelId, devId, 'setLines',          { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, username);
-  await sendControl(hotelId, devId, 'setAC',             { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, username);
-  await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, username);
-  await sendControl(hotelId, devId, 'setRoomStatus',     { roomStatus: targetStatus }, username);
-}
-
-function impliesActivity(method, params) {
-  if (method === 'setDoorUnlock') return true;
-  if (method === 'setService')    return true;
-  if (method === 'setLines')      return !!(params.line1 || params.line2 || params.line3 || (params.dimmer1 || 0) > 0 || (params.dimmer2 || 0) > 0);
-  if (method === 'setAC')         return (params.acMode || 0) > 0;
-  if (method === 'setCurtainsBlinds') return (params.curtainsPosition || 0) > 0 || (params.blindsPosition || 0) > 0;
-  return false;
-}
-
-async function sendControl(hotelId, deviceId, method, params, username = 'system') {
-  const telemetry = controlToTelemetry(method, params);
-  if (!Object.keys(telemetry).length) throw new Error('Unknown method: ' + method);
-
-  const relayAttrs  = controlToRelayAttributes(telemetry);
-  const sharedAttrs = { ...relayAttrs };
-  const FORWARD = ['line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','roomStatus','doorUnlock'];
-  for (const k of FORWARD) { if (k in telemetry) sharedAttrs[k] = telemetry[k]; }
-
-  const deviceRoomMap = getDeviceRoomMap(hotelId);
-  const lastTelemetry = getLastKnownTelemetry(hotelId);
-  const pdState       = getRoomPDState(hotelId);
-  const roomNum       = Object.keys(deviceRoomMap).find(k => deviceRoomMap[k] === deviceId) || '?';
-
-  // Check activity against PREVIOUS status before we overwrite the cache.
-  // Only trigger restore for explicit user/dashboard actions — NOT for system automation
-  // (scenes, departure routine, restoreOccupied's own restore commands).  If we allowed
-  // system commands here the Departure Routine's setAC(acMode=1) call would prematurely
-  // trigger restoreOccupied, consume the snapshot, and leave real-motion restore with
-  // nothing to restore from.
-  const isSystemCmd = username === 'auto' || username === 'system'
-    || username.startsWith('scene:') || username.startsWith('event:');
-  if (!isSystemCmd && impliesActivity(method, params) && lastTelemetry[roomNum]?.roomStatus === 4) {
-    setImmediate(() => restoreOccupied(hotelId, roomNum));
-  }
-
-  // ── Optimistic update: apply to local cache and push to UI immediately ──────
-  lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...telemetry };
-  if ('pdMode' in telemetry) pdState[roomNum] = !!telemetry.pdMode;
-  // Explicit status change to anything other than NOT_OCCUPIED clears the restore snapshot
-  if ('roomStatus' in telemetry && telemetry.roomStatus !== 4) {
-    delete getRoomStateSnapshots(hotelId)[roomNum];
-  }
-  // Also update lastOverview so guest polling (/api/guest/room/data) doesn't
-  // return stale state and cause UI flickering after a control command.
-  const lastOverviewCtl = getLastOverviewRooms(hotelId);
-  if (lastOverviewCtl[roomNum]) Object.assign(lastOverviewCtl[roomNum], telemetry);
-  if (telemetry.murService) fireServiceAlert(hotelId, 'MUR', roomNum, `Room ${roomNum}: Housekeeping`);
-  if (telemetry.sosService) fireServiceAlert(hotelId, 'SOS', roomNum, `EMERGENCY Room ${roomNum}`);
-  sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: { ...telemetry, ...sharedAttrs } });
-
-  // ── Persist to ThingsBoard in background — does not block the UI update ─────
-  const tb = getHotelTB(hotelId);
-  tb.saveTelemetry(deviceId, telemetry).catch(e => console.error('TB telemetry write failed:', e.message));
-  if (Object.keys(sharedAttrs).length) {
-    tb.saveAttributes(deviceId, sharedAttrs).catch(e => console.error('TB attr write failed:', e.message));
-  }
-
-  // ── When room becomes Not-Occupied: lights off, AC standby 26°C, curtains closed ─
-  // Do NOT set pdMode — that locks out all device controls and prevents the guest
-  // from being able to use the room when they arrive (door open won't wake it).
-  if (telemetry.roomStatus === 4) {
-    const BOOKED_POWER_SAVE = {
-      line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0,
-      acMode: 1, acTemperatureSet: 26, fanSpeed: 0
-    };
-    lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...BOOKED_POWER_SAVE };
-    if (lastOverviewCtl[roomNum]) Object.assign(lastOverviewCtl[roomNum], BOOKED_POWER_SAVE);
-    sseBatchTelemetry(hotelId, roomNum, deviceId, BOOKED_POWER_SAVE);
-    tb.saveTelemetry(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save telemetry write failed:', e.message));
-    tb.saveAttributes(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save attr write failed:', e.message));
-  }
-
-  // ── Command feedback: verify device updated after a short delay ─────────────
-  // Non-blocking: check after 2s that the shared attributes match what we sent.
-  const verifyKeys = Object.keys(sharedAttrs);
-  if (verifyKeys.length > 0) {
-    setTimeout(async () => {
-      try {
-        const attrs = await tb.getSharedAttributes(deviceId, verifyKeys);
-        const attrMap = {};
-        (attrs || []).forEach(a => { attrMap[a.key] = a.value; });
-        let allOk = true;
-        for (const k of verifyKeys) {
-          if (attrMap[k] !== undefined && String(attrMap[k]) !== String(sharedAttrs[k])) {
-            allOk = false;
-            break;
-          }
-        }
-        sseBroadcast(hotelId, 'command-ack', {
-          room: roomNum, deviceId, method, success: allOk,
-          message: allOk ? 'confirmed' : 'mismatch'
-        });
-      } catch (e) {
-        sseBroadcast(hotelId, 'command-ack', {
-          room: roomNum, deviceId, method, success: false,
-          message: `verify failed: ${e.message}`
-        });
-      }
-    }, 2000);
-  }
-
-  return { success: true, written: telemetry };
-}
-
-// ═══ SCENES / AUTOMATION ENGINE ═══
-
-// Execute all actions of a scene sequentially, respecting per-action delays.
-// roomOverride: for shared scenes, pass the target room number at runtime.
-async function executeScene(hotelId, scene, triggeredBy = 'auto', roomOverride = null) {
-  const targetRoom = roomOverride || scene.room_number;
-  const deviceRoomMap = getDeviceRoomMap(hotelId);
-  const devId = deviceRoomMap[targetRoom];
-  if (!devId) {
-    console.warn(`[scene] "${scene.name}": no device for room ${targetRoom}`);
-    return;
-  }
-  try {
-    db.prepare("UPDATE scenes SET last_run = datetime('now') WHERE id = ?").run(scene.id);
-
-    for (const action of scene.actions) {
-      if ((action.delay || 0) > 0) {
-        await new Promise(r => setTimeout(r, action.delay * 1000));
-      }
-      if (action.type === 'delay') continue; // standalone delay step
-      await sendControl(hotelId, devId, action.type, action.params || {}, `scene:${scene.name}`);
-    }
-  } catch (e) {
-    console.error(`[scene] "${scene.name}" exec error:`, e.message);
-  }
-}
-
-// Normalize a sensor value so booleans and numeric strings compare consistently.
-// true/"true" → 1, false/"false" → 0, numeric string → Number, else String.
-function normalizeSensorVal(v) {
-  if (v === true  || v === 'true'  || v === 'True')  return 1;
-  if (v === false || v === 'false' || v === 'False') return 0;
-  const n = Number(v);
-  return isNaN(n) ? String(v) : n;
-}
-
-// Check and fire any event-based scenes matching updated telemetry keys.
-// prevState: values BEFORE this update (for "from → to" state-transition matching).
-function checkEventScenes(hotelId, roomNum, updates, prevState = {}) {
-  try {
-    // Include both room-specific scenes AND shared scenes (is_shared=1, room_number=null)
-    const sceneRows = db.prepare(
-      "SELECT * FROM scenes WHERE hotel_id=? AND (room_number=? OR is_shared=1) AND enabled=1 AND trigger_type='event'"
-    ).all(hotelId, roomNum);
-
-    for (const sceneRow of sceneRows) {
-      try {
-        const cfg = JSON.parse(sceneRow.trigger_config);
-        const { event: eventKey, operator = 'eq', value: eventValue, fromValues } = cfg;
-        if (!eventKey || !(eventKey in updates)) continue;
-
-        const actual   = normalizeSensorVal(updates[eventKey]);
-        const expected = normalizeSensorVal(eventValue);
-        let matches = false;
-        if      (operator === 'eq')     matches = actual === expected;
-        else if (operator === 'neq')    matches = actual !== expected;
-        else if (operator === 'change') matches = true;
-
-        // If fromValues is set, also verify the previous state matches one of them.
-        if (matches && Array.isArray(fromValues) && fromValues.length > 0) {
-          if (eventKey in prevState) {
-            const prev = normalizeSensorVal(prevState[eventKey]);
-            matches = fromValues.some(fv => normalizeSensorVal(fv) === prev);
-          } else {
-            matches = false; // previous state unknown — skip to avoid false triggers
-          }
-        }
-
-        if (matches) {
-          const scene = { ...sceneRow, actions: JSON.parse(sceneRow.actions) };
-          // Shared scenes: execute for the room that triggered the event
-          const roomOverride = sceneRow.is_shared ? roomNum : null;
-          executeScene(hotelId, scene, `event:${eventKey}=${updates[eventKey]}`, roomOverride).catch(() => {});
-        }
-      } catch {}
-    }
-  } catch {}
-}
-
-// Time-based trigger: runs every minute, checks all enabled time scenes.
-setInterval(() => {
-  const now     = new Date();
-  const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  const DAY     = ['sun','mon','tue','wed','thu','fri','sat'][now.getDay()];
-
-  try {
-    const rows = db.prepare("SELECT * FROM scenes WHERE enabled=1 AND trigger_type='time'").all();
-    for (const row of rows) {
-      try {
-        const cfg = JSON.parse(row.trigger_config);
-        if (cfg.time !== timeStr) continue;
-        if (cfg.days && cfg.days.length && !cfg.days.includes(DAY)) continue;
-        const scene = { ...row, actions: JSON.parse(row.actions) };
-        if (row.is_shared) {
-          // Shared scenes: run for every room in the hotel
-          const deviceRoomMap = getDeviceRoomMap(row.hotel_id);
-          for (const roomNum of Object.keys(deviceRoomMap)) {
-            executeScene(row.hotel_id, scene, `time:${timeStr}`, roomNum).catch(() => {});
-          }
-        } else {
-          executeScene(row.hotel_id, scene, `time:${timeStr}`).catch(() => {});
-        }
-      } catch {}
-    }
-  } catch {}
-}, 60_000);
-
+// (Change detection, control logic, NOT_OCCUPIED automation, scene engine
+// — all extracted to services/ modules)
 // ═══ PROTECTED API ROUTES ═══
 
 // Room control (owner, admin)
@@ -985,123 +259,7 @@ app.post('/api/devices/:id/rpc', authenticate, requireRole('owner', 'admin'), as
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Background TB fetch — builds snapshot, stores in _lastOverviewRooms, broadcasts via SSE.
-// Never called while another fetch is in progress (_fetchingOverview set guards this).
-async function fetchAndBroadcast(hotelId) {
-  const deviceRoomMap = getDeviceRoomMap(hotelId);
-  const lastOverview  = getLastOverviewRooms(hotelId);
-
-  // Always stamp the fetch time so isStale won't retry on every poll
-  // even when TB has no devices or is unreachable.
-  _overviewFetchTs[hotelId] = Date.now();
-
-  const tb      = getHotelTB(hotelId);
-  const devices = await tb.getDevices();
-  if (!devices.length) return;
-
-  const deviceIds     = devices.map(d => d.id.id);
-  const allT          = await tb.getAllTelemetry(deviceIds, TELEMETRY_KEYS);
-  const allRelays     = {};
-  const ALL_ATTR_KEYS = [...RELAY_KEYS, ...SHARED_CONTROL_KEYS];
-  for (let i = 0; i < devices.length; i += 20) {
-    const batch = devices.slice(i, i + 20);
-    await Promise.all(batch.map(async d => {
-      try {
-        const attrs  = await tb.getSharedAttributes(d.id.id, ALL_ATTR_KEYS);
-        const parsed = {};
-        if (Array.isArray(attrs)) {
-          attrs.forEach(a => {
-            let v = a.value;
-            if (v === 'true') v = true;
-            else if (v === 'false') v = false;
-            else if (v !== null && v !== '' && !isNaN(v)) v = parseFloat(v);
-            parsed[a.key] = v;
-          });
-        }
-        allRelays[d.id.id] = parsed;
-      } catch { allRelays[d.id.id] = {}; }
-    }));
-  }
-
-  const today = new Date().toISOString().split('T')[0];
-  const activeResRows = db.prepare(
-    "SELECT * FROM reservations WHERE hotel_id=? AND active=1 AND check_in<=date('now') AND check_out>=date('now')"
-  ).all(hotelId);
-  const reservationMap = {};
-  activeResRows.forEach(ar => { reservationMap[ar.room] = ar; });
-
-  const hotelRoomRows = db.prepare('SELECT room_number, room_type, elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
-  const hotelRoomMap  = {};
-  hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r; });
-
-  const rooms = {};
-  devices.forEach(d => {
-    const rn = extractRoom(d.name);
-    if (!rn) return;
-    deviceRoomMap[rn] = d.id.id;
-    const floor  = parseInt(rn.length <= 3 ? rn[0] : rn.slice(0, -2));
-    const t      = parseTelemetry(allT[d.id.id]);
-    const relays = allRelays[d.id.id] || {};
-    const ar     = reservationMap[rn] || null;
-    detectAndLogChanges(hotelId, rn, t);
-
-    const hotelRoom = hotelRoomMap[rn];
-    const roomType  = hotelRoom?.room_type;
-    const typeId    = roomType ? ROOM_TYPES.indexOf(roomType) : (FLOOR_TYPE[floor] ?? 0);
-
-    rooms[rn] = {
-      room: rn, floor, type: ROOM_TYPES[typeId] || 'STANDARD', typeId, deviceId: d.id.id, deviceName: d.name,
-      online: Object.keys(t).length > 0,
-      temperature: t.temperature ?? null, humidity: t.humidity ?? null, co2: t.co2 ?? null,
-      pirMotionStatus: t.pirMotionStatus ?? false, doorStatus: t.doorStatus ?? false,
-      doorLockBattery: t.doorLockBattery ?? null, doorContactsBattery: t.doorContactsBattery ?? null,
-      airQualityBattery: t.airQualityBattery ?? null,
-      elecConsumption: t.elecConsumption ?? 0, waterConsumption: t.waterConsumption ?? 0,
-      elecMeterBaseline: hotelRoom?.elec_meter_baseline ?? 0, waterMeterBaseline: hotelRoom?.water_meter_baseline ?? 0,
-      waterMeterBattery: t.waterMeterBattery ?? null,
-      // Device telemetry is the source of truth; shared attributes are the fallback
-      // for keys the device hasn't reported yet (e.g. brand-new device, or keys not
-      // in the firmware's publishTelemetry).  relay1-8 are only ever in shared attrs.
-      line1: t.line1 ?? relays.line1 ?? false, line2: t.line2 ?? relays.line2 ?? false, line3: t.line3 ?? relays.line3 ?? false,
-      dimmer1: t.dimmer1 ?? relays.dimmer1 ?? 0, dimmer2: t.dimmer2 ?? relays.dimmer2 ?? 0,
-      acTemperatureSet: t.acTemperatureSet ?? relays.acTemperatureSet ?? 22, acMode: t.acMode ?? relays.acMode ?? 0, fanSpeed: t.fanSpeed ?? relays.fanSpeed ?? 3,
-      curtainsPosition: t.curtainsPosition ?? relays.curtainsPosition ?? 0, blindsPosition: t.blindsPosition ?? relays.blindsPosition ?? 0,
-      dndService: t.dndService ?? relays.dndService ?? false, murService: t.murService ?? relays.murService ?? false, sosService: t.sosService ?? relays.sosService ?? false,
-      // If a NOT_OCCUPIED restore snapshot exists the server owns roomStatus=4;
-      // don't let a fresh TB telemetry fetch (which always has the device's own
-      // value, typically 1=OCCUPIED) overwrite it and mislead the client.
-      roomStatus: getRoomStateSnapshots(hotelId)[rn] ? 4 : (t.roomStatus ?? relays.roomStatus ?? 0),
-      lastCleanedTime: t.lastCleanedTime ?? null, firmwareVersion: t.firmwareVersion ?? null,
-      gatewayVersion: t.gatewayVersion ?? null, deviceStatus: t.deviceStatus ?? 0,
-      pdMode: t.pdMode ?? relays.pdMode ?? false,
-      relay1: relays.relay1 ?? false, relay2: relays.relay2 ?? false,
-      relay3: relays.relay3 ?? false, relay4: relays.relay4 ?? false,
-      relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
-      relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
-      doorUnlock: t.doorUnlock ?? relays.doorUnlock ?? false,
-      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null
-    };
-  });
-
-  Object.assign(lastOverview, rooms);
-  sseBroadcast(hotelId, 'snapshot', { rooms, deviceCount: devices.length, timestamp: Date.now() });
-
-  const todayCheckouts = db.prepare('SELECT room, guest_name, check_out FROM reservations WHERE hotel_id=? AND check_out=? AND active=1').all(hotelId, today);
-  if (todayCheckouts.length) {
-    sseBroadcastRoles(hotelId, 'checkout_alert', { rooms: todayCheckouts, ts: Date.now() }, ['admin', 'frontdesk']);
-  }
-
-  // Start real-time TB subscription if not already active.
-  // deviceRoomMap was populated above: { roomNum → deviceId }.
-  // Invert it to { deviceId → roomNum } for the subscription.
-  if (!_tbWs[hotelId] || _tbWs[hotelId].readyState > WebSocket.OPEN) {
-    const deviceIdToRoom = Object.fromEntries(
-      Object.entries(deviceRoomMap).map(([rn, did]) => [did, rn])
-    );
-    startTbSubscription(hotelId, deviceIdToRoom)
-      .catch(e => console.error(`[${hotelId}] TB sub start error:`, e.message));
-  }
-}
+// (fetchAndBroadcast is now in room.service — imported at top)
 
 // Hotel overview — always responds instantly with cached snapshot.
 // ── GET /api/hotel/meter-stats ─────────────────────────────────────────────
@@ -1157,17 +315,17 @@ app.get('/api/hotel/meter-stats', authenticate, requireRole('owner', 'admin'), (
 app.get('/api/hotel/overview', authenticate, async (req, res) => {
   const hotelId      = req.user.hotelId;
   const lastOverview = getLastOverviewRooms(hotelId);
-  const isStale      = Date.now() - (_overviewFetchTs[hotelId] || 0) >= OVERVIEW_CACHE_TTL;
+  const isStale      = state.isOverviewStale(hotelId);
 
-  // Respond immediately — never block the HTTP connection waiting for TB
+  // Respond immediately — never block the HTTP connection waiting for IoT platform
   res.json({ rooms: lastOverview, deviceCount: Object.keys(lastOverview).length, cached: true });
 
   // Kick off background refresh if stale and not already in progress
-  if (!isStale || _fetchingOverview.has(hotelId)) return;
-  _fetchingOverview.add(hotelId);
+  if (!isStale || state.isFetchingOverview(hotelId)) return;
+  state.setFetchingOverview(hotelId);
   fetchAndBroadcast(hotelId)
     .catch(e => console.error(`[${hotelId}] Overview fetch error:`, e.message))
-    .finally(() => _fetchingOverview.delete(hotelId));
+    .finally(() => state.clearFetchingOverview(hotelId));
 });
 
 // Logs
@@ -1477,10 +635,10 @@ app.post('/api/rooms/:room/checkout', authenticate, requireRole('owner', 'admin'
     if (lo[room]) Object.assign(lo[room], CHECKOUT_RESET);
     if (devId) {
       sseBatchTelemetry(hotelId, room, devId, CHECKOUT_RESET);
-      const tb = getHotelTB(hotelId);
+      const adapter = getHotelAdapter(hotelId);
       try {
-        await tb.saveTelemetry(devId, CHECKOUT_RESET);
-        await tb.saveAttributes(devId, CHECKOUT_RESET);
+        await adapter.sendTelemetry(devId, CHECKOUT_RESET);
+        await adapter.sendAttributes(devId, CHECKOUT_RESET);
       } catch (e) { console.error(`Reset TB write at checkout room ${room}:`, e.message); }
     }
     // Fire checkOut event scenes after reset
@@ -2164,21 +1322,19 @@ app.get('/api/guest/room/data', authenticate, async (req, res) => {
   if (lastOverview[roomNum]) return res.json(lastOverview[roomNum]);
 
   try {
-    const tb          = getHotelTB(hotelId);
+    const adapter     = getHotelAdapter(hotelId);
     const deviceRoomMap = getDeviceRoomMap(hotelId);
     let devId = deviceRoomMap[roomNum];
     if (!devId) {
-      const devices = await tb.getDevices();
-      const dev     = devices.find(d => extractRoom(d.name) === roomNum);
-      if (!dev) return res.status(404).json({ error: 'Room device not found in ThingsBoard' });
-      devId = dev.id.id;
+      const devices = await adapter.listDevices();
+      const dev     = devices.find(d => d.roomNumber === roomNum || extractRoom(d.name) === roomNum);
+      if (!dev) return res.status(404).json({ error: 'Room device not found on IoT platform' });
+      devId = dev.id;
       deviceRoomMap[roomNum] = devId;
     }
-    const rawT      = await tb.getAllTelemetry([devId], TELEMETRY_KEYS);
+    const rawT      = await adapter.getAllDeviceStates([devId], TELEMETRY_KEYS);
     const t         = parseTelemetry(rawT[devId] || {});
-    const attrsArr  = await tb.getSharedAttributes(devId, RELAY_KEYS);
-    const relays    = {};
-    if (Array.isArray(attrsArr)) attrsArr.forEach(a => { relays[a.key] = a.value; });
+    const relays    = await adapter.getDeviceAttributes(devId, RELAY_KEYS);
 
     const hotelRoom = db.prepare('SELECT room_type FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, roomNum);
     const typeId    = hotelRoom ? ROOM_TYPES.indexOf(hotelRoom.room_type) : (FLOOR_TYPE[parseInt(roomNum.length <= 3 ? roomNum[0] : roomNum.slice(0, -2))] ?? 0);
@@ -2363,7 +1519,7 @@ app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (r
   (async () => {
     const lastTelemetry = getLastKnownTelemetry(hotelId);
     const lastOverview  = getLastOverviewRooms(hotelId);
-    const tb            = getHotelTB(hotelId);
+    const adapter       = getHotelAdapter(hotelId);
 
     // Step 1: update all in-memory state instantly + queue into ONE batch-telemetry SSE flush.
     // sseBatchTelemetry accumulates all rooms within the 500ms window and fires a single
@@ -2385,8 +1541,8 @@ app.post('/api/rooms/reset-all', authenticate, requireRole('owner', 'admin'), (r
         const devId = deviceRoomMap[room];
         if (!devId) return;
         try {
-          await tb.saveTelemetry(devId, RESET_STATE);
-          await tb.saveAttributes(devId, RESET_STATE);
+          await adapter.sendTelemetry(devId, RESET_STATE);
+          await adapter.sendAttributes(devId, RESET_STATE);
         } catch (e) { console.error(`Reset TB write room ${room}:`, e.message); }
       }));
     }
@@ -2449,23 +1605,10 @@ app.post('/api/rooms/:room/reset', authenticate, requireRole('owner', 'admin'), 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Telemetry coercion helper (shared by both simulator endpoints) ────────────
-function coerceTelemetry(telemetry) {
-  const out = {};
-  for (const [k, v] of Object.entries(telemetry)) {
-    if (v === '' || v === null || v === undefined) continue;
-    if (typeof v === 'boolean') out[k] = v;
-    else if (['roomStatus','acMode','fanSpeed','dimmer1','dimmer2','curtainsPosition','blindsPosition'].includes(k)) out[k] = parseInt(v);
-    else if (['temperature','humidity','co2','acTemperatureSet','elecConsumption','waterConsumption'].includes(k)) out[k] = parseFloat(v);
-    else if (['pirMotionStatus','doorStatus','line1','line2','line3','dndService','murService','sosService','pdMode'].includes(k)) out[k] = Boolean(v);
-    else out[k] = v;
-  }
-  return out;
-}
+// (coerceTelemetry imported from control.service at top)
 
 // ═══ SIMULATOR — DIRECT INJECT ═══
-// Bypasses ThingsBoard: updates in-memory state and broadcasts SSE immediately.
-// Use for virtual rooms or when TB is unavailable.
+// Bypasses IoT platform: updates in-memory state and broadcasts SSE immediately.
 app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), async (req, res) => {
   const hotelId = req.user.hotelId;
   const { room, telemetry } = req.body;
@@ -2502,8 +1645,8 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
   const realDevId = deviceRoomMap[room];
   if (realDevId) {
     try {
-      const tb = getHotelTB(hotelId);
-      await tb.saveTelemetry(realDevId, coerced);
+      const adapter = getHotelAdapter(hotelId);
+      await adapter.sendTelemetry(realDevId, coerced);
     } catch (_) { /* ignore TB errors in simulator */ }
   }
 
@@ -2532,11 +1675,11 @@ app.post('/api/simulator/tb-inject', authenticate, requireRole('owner', 'admin')
     // WebSocket subscription → processTelemetry() fires → SSE → browser.
     // This is identical to what a real room controller does.
     try {
-      const tb = getHotelTB(hotelId);
-      await tb.saveTelemetry(devId, coerced);
-      res.json({ success: true, mode: 'thingsboard', room, injected: coerced });
+      const adapter = getHotelAdapter(hotelId);
+      await adapter.sendTelemetry(devId, coerced);
+      res.json({ success: true, mode: 'platform', room, injected: coerced });
     } catch (e) {
-      res.status(502).json({ error: `ThingsBoard write failed: ${e.message}` });
+      res.status(502).json({ error: `IoT platform write failed: ${e.message}` });
     }
   } else {
     // Virtual room: no TB device, but run through the exact same processing
@@ -3783,8 +2926,8 @@ app.post('/api/scenes/:id/push', authenticate, requireRole('owner', 'admin'), as
   }));
 
   try {
-    const tb = getHotelTB(hotelId);
-    await tb.saveAttributes(devId, { ihotel_offline_scenes: JSON.stringify(payload) });
+    const adapter = getHotelAdapter(hotelId);
+    await adapter.sendAttributes(devId, { ihotel_offline_scenes: JSON.stringify(payload) });
     res.json({ success: true, scenes: payload.length });
   } catch (e) {
     console.error('[scene push]', e.message);
@@ -4053,14 +3196,16 @@ wss.on('connection', async (cws, req) => {
     const hotelId = decoded.hotelId;
     if (!hotelId) { cws.close(1008, 'Invalid token'); return; }
 
-    const tb    = getHotelTB(hotelId);
-    await tb.ensureAuth();
-    const tws = new WebSocket(`${tb.host.replace('http', 'ws')}/api/ws/plugins/telemetry?token=${tb.getWsToken()}`);
+    const adapter = getHotelAdapter(hotelId);
+    await adapter.authenticate();
+    const wsUrl = adapter.getWsUrl();
+    if (!wsUrl) { cws.close(1008, 'Platform does not support WebSocket proxy'); return; }
+    const tws = new WebSocket(wsUrl);
     tws.on('message', d => { if (cws.readyState === 1) cws.send(d.toString()); });
     cws.on('message', d => { if (tws.readyState === 1) tws.send(d.toString()); });
     tws.on('close', () => cws.close());
     cws.on('close', () => tws.close());
-    tws.on('error', e => { console.error('TB WS error:', e.message); cws.close(); });
+    tws.on('error', e => { console.error('Platform WS error:', e.message); cws.close(); });
     cws.on('error', () => tws.close());
   } catch (e) {
     console.error('WS setup error:', e.message);

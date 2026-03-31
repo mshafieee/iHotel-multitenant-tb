@@ -10,7 +10,7 @@
  *   GET    /api/platform/hotels/:id              Hotel detail
  *   PUT    /api/platform/hotels/:id              Update hotel / TB credentials
  *   DELETE /api/platform/hotels/:id              Deactivate hotel
- *   POST   /api/platform/hotels/:id/discover     Auto-discover rooms from ThingsBoard
+ *   POST   /api/platform/hotels/:id/discover     Auto-discover rooms from IoT platform
  *   POST   /api/platform/hotels/:id/rooms        Import rooms manually (JSON or CSV)
  *   GET    /api/platform/hotels/:id/rooms        List hotel rooms
  *   POST   /api/platform/hotels/:id/users        Create hotel user
@@ -48,16 +48,16 @@ const {
   authenticatePlatformAny, authenticateGroupUser, generateGroupUserToken
 } = require('./auth');
 const { seedHotelRates, seedHotelUpsellOffers, seedHotelUsers, seedRoomDefaultScenes } = require('./db');
-const { ThingsBoardClient, ThingsBoardClientPool } = require('./thingsboard');
+const { TBAdapter } = require('./adapters/tb-adapter');
 
 const router = express.Router();
 let _db   = null;
 let _pool = null;
 
 // Injected by index.js
-function init(db, tbPool) {
+function init(db, adapterPool) {
   _db   = db;
-  _pool = tbPool;
+  _pool = adapterPool;
 }
 
 // Rate limiter for platform login
@@ -259,19 +259,19 @@ router.post('/hotels/:id/logo', authenticatePlatformAdmin, uploadLogo.single('lo
   res.json({ success: true, logoUrl });
 });
 
-// ── ThingsBoard: auto-discover rooms ──────────────────────────────────────────
-// Connects to hotel's TB instance, fetches all gateway-room-* devices,
+// ── IoT Platform: auto-discover rooms ─────────────────────────────────────────
+// Connects to hotel's IoT platform, fetches all room devices,
 // and populates hotel_rooms with room_number + tb_device_id.
 router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) => {
   const hotel = _db.prepare('SELECT * FROM hotels WHERE id = ?').get(req.params.id);
   if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
   if (!hotel.tb_host || !hotel.tb_user || !hotel.tb_pass) {
-    return res.status(400).json({ error: 'ThingsBoard credentials not configured for this hotel' });
+    return res.status(400).json({ error: 'IoT platform credentials not configured for this hotel' });
   }
 
   try {
-    const client  = new ThingsBoardClient(hotel.tb_host, hotel.tb_user, hotel.tb_pass);
-    const devices = await client.getDevices(); // returns gateway-room-* devices
+    const adapter = new TBAdapter({ host: hotel.tb_host, username: hotel.tb_user, password: hotel.tb_pass });
+    const devices = await adapter.listDevices();
 
     const ins = _db.prepare(`INSERT OR REPLACE INTO hotel_rooms
       (hotel_id, room_number, floor, room_type, tb_device_id)
@@ -281,36 +281,30 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
     const newRooms = [];
     const runAll = _db.transaction(() => {
       for (const dev of devices) {
-        // Device name format: gateway-room-{room_number}
-        // e.g. gateway-room-101, gateway-room-201A
-        const match = dev.name.match(/^gateway-room-(.+)$/);
-        if (!match) continue;
+        const roomNumber = dev.roomNumber;
+        if (!roomNumber) continue;
 
-        const roomNumber = match[1];
         const floor = parseInt(roomNumber.substring(0, roomNumber.length - 2)) || 1;
 
-        // Only insert if not already existing with a device ID
         const existing = _db.prepare(
           'SELECT tb_device_id FROM hotel_rooms WHERE hotel_id = ? AND room_number = ?'
         ).get(hotel.id, roomNumber);
 
-        ins.run(hotel.id, roomNumber, floor, existing?.room_type || 'STANDARD', dev.id.id);
+        ins.run(hotel.id, roomNumber, floor, existing?.room_type || 'STANDARD', dev.id);
         if (!existing) newRooms.push(roomNumber);
         discovered++;
       }
     });
     runAll();
 
-    // Seed default scenes for brand-new rooms
     for (const roomNumber of newRooms) seedRoomDefaultScenes(_db, hotel.id, roomNumber);
 
-    // Refresh pool since we just validated credentials
     _pool?.invalidate(hotel.id);
 
     res.json({ success: true, discovered, total: devices.length });
   } catch (e) {
-    console.error('TB discover error:', e.message);
-    res.status(502).json({ error: `ThingsBoard connection failed: ${e.message}` });
+    console.error('IoT discover error:', e.message);
+    res.status(502).json({ error: `IoT platform connection failed: ${e.message}` });
   }
 });
 
