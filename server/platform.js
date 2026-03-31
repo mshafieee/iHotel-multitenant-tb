@@ -156,9 +156,10 @@ router.post('/hotels', authenticatePlatformAdmin, (req, res) => {
   const id = crypto.randomUUID();
 
   try {
-    _db.prepare(`INSERT INTO hotels (id, name, slug, contact_email, plan, tb_host, tb_user, tb_pass)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    _db.prepare(`INSERT INTO hotels (id, name, slug, contact_email, plan, tb_host, tb_user, tb_pass, iot_host, iot_user, iot_pass)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, name, slug, contactEmail || null, plan || 'starter',
+           tbHost || null, tbUser || null, tbPass || null,
            tbHost || null, tbUser || null, tbPass || null);
 
     seedHotelRates(_db, id);
@@ -181,11 +182,12 @@ router.get('/hotels', authenticatePlatformAdmin, (req, res) => {
     const roomCount = _db.prepare('SELECT COUNT(*) as c FROM hotel_rooms WHERE hotel_id = ?').get(h.id).c;
     const userCount = _db.prepare('SELECT COUNT(*) as c FROM hotel_users WHERE hotel_id = ? AND active = 1').get(h.id).c;
     const activeRes = _db.prepare('SELECT COUNT(*) as c FROM reservations WHERE hotel_id = ? AND active = 1').get(h.id).c;
-    const hasTB     = !!(h.tb_host && h.tb_user && h.tb_pass);
+    const hasTB     = !!(h.iot_host || h.tb_host) && !!(h.iot_user || h.tb_user) && !!(h.iot_pass || h.tb_pass);
     return {
       id: h.id, name: h.name, slug: h.slug, contactEmail: h.contact_email,
       plan: h.plan, active: !!h.active, createdAt: h.created_at,
-      tbConfigured: hasTB, tbHost: h.tb_host || null,
+      tbConfigured: hasTB, tbHost: h.iot_host || h.tb_host || null,
+      iotConfigured: hasTB, iotHost: h.iot_host || h.tb_host || null,
       logoUrl: h.logo_url || null,
       roomCount, userCount, activeReservations: activeRes
     };
@@ -204,9 +206,12 @@ router.get('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
   res.json({
     id: hotel.id, name: hotel.name, slug: hotel.slug, contactEmail: hotel.contact_email,
     plan: hotel.plan, active: !!hotel.active, createdAt: hotel.created_at,
-    tbHost: hotel.tb_host || null,
-    tbUser: hotel.tb_user || null,
-    tbConfigured: !!(hotel.tb_host && hotel.tb_user && hotel.tb_pass),
+    tbHost: hotel.iot_host || hotel.tb_host || null,
+    tbUser: hotel.iot_user || hotel.tb_user || null,
+    tbConfigured: !!((hotel.iot_host || hotel.tb_host) && (hotel.iot_user || hotel.tb_user) && (hotel.iot_pass || hotel.tb_pass)),
+    iotHost: hotel.iot_host || hotel.tb_host || null,
+    iotUser: hotel.iot_user || hotel.tb_user || null,
+    iotConfigured: !!((hotel.iot_host || hotel.tb_host) && (hotel.iot_user || hotel.tb_user) && (hotel.iot_pass || hotel.tb_pass)),
     logoUrl: hotel.logo_url || null,
     rooms, users, totalRevenue: revenue.total || 0
   });
@@ -224,14 +229,18 @@ router.put('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
     active        = COALESCE(?, active),
     tb_host       = COALESCE(?, tb_host),
     tb_user       = COALESCE(?, tb_user),
-    tb_pass       = COALESCE(?, tb_pass)
+    tb_pass       = COALESCE(?, tb_pass),
+    iot_host      = COALESCE(?, iot_host),
+    iot_user      = COALESCE(?, iot_user),
+    iot_pass      = COALESCE(?, iot_pass)
     WHERE id = ?`)
     .run(name ?? null, contactEmail ?? null, plan ?? null,
          active != null ? (active ? 1 : 0) : null,
          tbHost ?? null, tbUser ?? null, tbPass ?? null,
+         tbHost ?? null, tbUser ?? null, tbPass ?? null,
          hotel.id);
 
-  // Invalidate cached TB client if credentials changed
+  // Invalidate cached adapter if credentials changed
   if (tbHost || tbUser || tbPass) {
     _pool?.invalidate(hotel.id);
   }
@@ -265,17 +274,21 @@ router.post('/hotels/:id/logo', authenticatePlatformAdmin, uploadLogo.single('lo
 router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) => {
   const hotel = _db.prepare('SELECT * FROM hotels WHERE id = ?').get(req.params.id);
   if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
-  if (!hotel.tb_host || !hotel.tb_user || !hotel.tb_pass) {
+  if (!(hotel.iot_host || hotel.tb_host) || !(hotel.iot_user || hotel.tb_user) || !(hotel.iot_pass || hotel.tb_pass)) {
     return res.status(400).json({ error: 'IoT platform credentials not configured for this hotel' });
   }
 
   try {
-    const adapter = new TBAdapter({ host: hotel.tb_host, username: hotel.tb_user, password: hotel.tb_pass });
+    const adapter = new TBAdapter({
+      host: hotel.iot_host || hotel.tb_host,
+      username: hotel.iot_user || hotel.tb_user,
+      password: hotel.iot_pass || hotel.tb_pass
+    });
     const devices = await adapter.listDevices();
 
     const ins = _db.prepare(`INSERT OR REPLACE INTO hotel_rooms
-      (hotel_id, room_number, floor, room_type, tb_device_id)
-      VALUES (?, ?, ?, ?, ?)`);
+      (hotel_id, room_number, floor, room_type, tb_device_id, device_id)
+      VALUES (?, ?, ?, ?, ?, ?)`);
 
     let discovered = 0;
     const newRooms = [];
@@ -290,7 +303,7 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
           'SELECT tb_device_id FROM hotel_rooms WHERE hotel_id = ? AND room_number = ?'
         ).get(hotel.id, roomNumber);
 
-        ins.run(hotel.id, roomNumber, floor, existing?.room_type || 'STANDARD', dev.id);
+        ins.run(hotel.id, roomNumber, floor, existing?.room_type || 'STANDARD', dev.id, dev.id);
         if (!existing) newRooms.push(roomNumber);
         discovered++;
       }

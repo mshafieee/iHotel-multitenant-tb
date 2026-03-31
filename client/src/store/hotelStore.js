@@ -286,7 +286,7 @@ const useHotelStore = create((set, get) => ({
       applyLocal(room, method, params);
       set({ rooms: { ...rooms } });
     }
-    // The server /api/devices/:id/rpc expects the ThingsBoard device UUID
+    // The server /api/devices/:id/rpc expects the device UUID
     const tbDeviceId = room?.deviceId || roomId;
     try {
       await api(`/api/devices/${tbDeviceId}/rpc`, {

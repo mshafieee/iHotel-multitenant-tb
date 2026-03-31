@@ -418,7 +418,7 @@ export default function HotelInfoPanel() {
           {lang === 'ar' ? 'أنواع الغرف' : 'Room Types'}
         </h3>
         {roomTypes.length === 0 && (
-          <p className="text-xs text-gray-400">{lang === 'ar' ? 'لا توجد أنواع غرف بعد' : 'No room types found. Rooms will appear after connecting to ThingsBoard.'}</p>
+          <p className="text-xs text-gray-400">{lang === 'ar' ? 'لا توجد أنواع غرف بعد' : 'No room types found. Rooms will appear after connecting to the IoT platform.'}</p>
         )}
         <div className="space-y-4">
           {roomTypes.map(type => {

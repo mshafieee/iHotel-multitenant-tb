@@ -611,6 +611,27 @@ function initDB() {
     markMigration('030_checked_out_at');
   }
 
+  // ── Migration 031: Rename tb_* columns to iot_* for platform-agnostic naming ──
+  if (!hasMigration('031_rename_tb_to_iot')) {
+    const hotelCols = db.pragma('table_info(hotels)').map(c => c.name);
+    const roomCols  = db.pragma('table_info(hotel_rooms)').map(c => c.name);
+    // Add iot_ columns if they don't exist yet
+    if (!hotelCols.includes('iot_host')) {
+      db.exec('ALTER TABLE hotels ADD COLUMN iot_host TEXT');
+      db.exec('ALTER TABLE hotels ADD COLUMN iot_user TEXT');
+      db.exec('ALTER TABLE hotels ADD COLUMN iot_pass TEXT');
+      // Copy existing TB credentials to new columns
+      db.exec('UPDATE hotels SET iot_host = tb_host, iot_user = tb_user, iot_pass = tb_pass');
+    }
+    if (!roomCols.includes('device_id')) {
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN device_id TEXT');
+      db.exec('UPDATE hotel_rooms SET device_id = tb_device_id');
+    }
+    // Keep old columns for backward compatibility — they'll be read by AdapterPool fallback
+    console.log('✓ Migration 031: iot_host/iot_user/iot_pass + device_id columns added (tb_* kept as fallback)');
+    markMigration('031_rename_tb_to_iot');
+  }
+
   if (!hasMigration('029_thirdparty_channel')) {
     const ilCols  = db.pragma('table_info(income_log)').map(c => c.name);
     const resCols = db.pragma('table_info(reservations)').map(c => c.name);

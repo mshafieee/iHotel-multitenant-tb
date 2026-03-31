@@ -95,7 +95,7 @@ export default function SimulatorPanel() {
   const [roomInput, setRoomInput] = useState('101');
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState(null); // { ok, msg }
-  const [tbMode, setTbMode] = useState(false); // false = Direct, true = ThingsBoard native
+  const [tbMode, setTbMode] = useState(false); // false = Direct, true = IoT Platform native
   const [log, setLog] = useState([]);
 
   // ── Sensor state ──────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export default function SimulatorPanel() {
         method: 'POST',
         body: JSON.stringify({ room: roomNum, telemetry }),
       });
-      const modeLabel = res.mode === 'thingsboard' ? 'via ThingsBoard' : res.mode === 'virtual-pipeline' ? 'via pipeline (virtual)' : 'direct';
+      const modeLabel = res.mode === 'platform' ? 'via IoT Platform' : res.mode === 'virtual-pipeline' ? 'via pipeline (virtual)' : 'direct';
       setFeedback({ ok: true, msg: `Injected ${Object.keys(telemetry).length} key(s) into Room ${roomNum} — ${modeLabel}` });
       addLog(true, roomNum, Object.keys(telemetry));
     } catch (e) {
@@ -242,13 +242,13 @@ export default function SimulatorPanel() {
             </button>
             <button onClick={() => setTbMode(true)}
               className={`px-3 py-1 rounded-md text-[10px] font-bold transition ${tbMode ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-              ThingsBoard
+              IoT Platform
             </button>
           </div>
         </div>
         {tbMode && (
           <div className="mb-3 text-[10px] text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2">
-            <strong>ThingsBoard mode:</strong> telemetry is published to TB as a real device would.
+            <strong>IoT Platform mode:</strong> telemetry is published to TB as a real device would.
             Data flows back via WebSocket → scene engine → SSE → UI. Requires a real mapped device.
             Virtual rooms fall back to the direct pipeline automatically.
           </div>

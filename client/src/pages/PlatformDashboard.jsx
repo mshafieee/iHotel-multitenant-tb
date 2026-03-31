@@ -196,12 +196,12 @@ function CreateHotelModal({ onClose, onCreate }) {
           </div>
 
           <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">ThingsBoard Credentials <span className="text-gray-400 normal-case font-normal">(optional — can set later)</span></p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">IoT Platform Credentials <span className="text-gray-400 normal-case font-normal">(optional — can set later)</span></p>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-gray-400 mb-1">TB Host URL</label>
                 <input className="input text-sm font-mono" value={form.tbHost}
-                  onChange={e => update('tbHost', e.target.value)} placeholder="http://thingsboard.example.com:8080" />
+                  onChange={e => update('tbHost', e.target.value)} placeholder="http://iot-platform.example.com:8080" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -339,7 +339,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
     setDiscoverMsg('');
     try {
       const res = await discoverRooms(hotelId);
-      setDiscoverMsg(`Discovered ${res.discovered} rooms from ThingsBoard (${res.total} devices found).`);
+      setDiscoverMsg(`Discovered ${res.discovered} rooms from IoT platform (${res.total} devices found).`);
       const h = await fetchHotelDetail(hotelId);
       setHotel(h);
     } catch (e) {
@@ -434,10 +434,10 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
               </div>
             </div>
 
-            {/* ThingsBoard credentials */}
+            {/* IoT platform credentials */}
             <div className="bg-blue-50 rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-blue-400 uppercase">ThingsBoard Connection</p>
+                <p className="text-xs font-semibold text-blue-400 uppercase">IoT Platform Connection</p>
                 <button onClick={() => setEditTB(v => !v)} className="text-xs text-blue-500 hover:text-blue-700 underline">
                   {editTB ? 'Cancel' : 'Edit'}
                 </button>
@@ -446,7 +446,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
                 <form onSubmit={handleSaveTB} className="space-y-2 mt-2">
                   <input className="input text-sm font-mono" value={tbForm.tbHost}
                     onChange={e => setTBForm(f => ({ ...f, tbHost: e.target.value }))}
-                    placeholder="http://thingsboard.example.com:8080" />
+                    placeholder="http://iot-platform.example.com:8080" />
                   <div className="grid grid-cols-2 gap-2">
                     <input className="input text-sm" value={tbForm.tbUser}
                       onChange={e => setTBForm(f => ({ ...f, tbUser: e.target.value }))}
@@ -497,8 +497,8 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
             {/* Discover rooms from TB */}
             {hotel.tbConfigured && (
               <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Auto-Discover Rooms from ThingsBoard</p>
-                <p className="text-xs text-gray-400 mb-3">Scan ThingsBoard for gateway-room-* devices and map them to rooms automatically.</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Auto-Discover Rooms from IoT Platform</p>
+                <p className="text-xs text-gray-400 mb-3">Scan the IoT platform for room devices and map them automatically.</p>
                 {discoverMsg && (
                   <p className={`text-xs mb-2 ${discoverMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>{discoverMsg}</p>
                 )}
@@ -541,14 +541,14 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
                     <span className="text-gray-400">Floor {r.floor}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium">{r.room_type}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.tb_device_id ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {r.tb_device_id ? 'TB linked' : 'No TB device'}
+                      {r.tb_device_id ? 'Linked' : 'No device'}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-400 text-sm">
-                No rooms configured. Import CSV or use Discover from ThingsBoard.
+                No rooms configured. Import CSV or use Discover from IoT platform.
               </div>
             )}
           </div>
@@ -1259,7 +1259,7 @@ function SuperAdminDashboard() {
                     <td className="px-4 py-3 text-right text-gray-600">{hotel.userCount}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.tbConfigured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {hotel.tbConfigured ? 'Connected' : 'No TB'}
+                        {hotel.tbConfigured ? 'Connected' : 'No IoT'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">

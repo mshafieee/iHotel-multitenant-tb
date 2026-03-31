@@ -393,7 +393,7 @@ export default function PlatformLogin() {
             {[
               'Onboard and configure hotel tenants',
               'Manage staff accounts and roles',
-              'Connect ThingsBoard IoT instances',
+              'Connect IoT platform instances',
               'View cross-hotel metrics and revenue',
             ].map(item => (
               <div key={item} className="flex items-center gap-2 text-xs text-gray-500">
