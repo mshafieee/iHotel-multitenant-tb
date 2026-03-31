@@ -230,8 +230,8 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
   sseBroadcast(hotelId, 'telemetry', { room: roomNum, deviceId, data: { ...telemetry, ...sharedAttrs } });
 
   // ── Persist to IoT platform (background, non-blocking) ─────────────────────
+  // Only push shared attributes — the device owns its own telemetry timeline.
   const adapter = getAdapter(hotelId);
-  adapter.sendTelemetry(deviceId, telemetry).catch(e => console.error('Platform telemetry write failed:', e.message));
   if (Object.keys(sharedAttrs).length) {
     adapter.sendAttributes(deviceId, sharedAttrs).catch(e => console.error('Platform attr write failed:', e.message));
   }
@@ -245,7 +245,6 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
     lastTelemetry[roomNum] = { ...(lastTelemetry[roomNum] || {}), ...BOOKED_POWER_SAVE };
     if (lastOverview[roomNum]) Object.assign(lastOverview[roomNum], BOOKED_POWER_SAVE);
     sseBatchTelemetry(hotelId, roomNum, deviceId, BOOKED_POWER_SAVE);
-    adapter.sendTelemetry(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save telemetry write failed:', e.message));
     adapter.sendAttributes(deviceId, BOOKED_POWER_SAVE).catch(e => console.error('Power-save attr write failed:', e.message));
   }
 

@@ -1,0 +1,11 @@
+iHotel Gateway Simulator v2 — Stability Report
+==============================================================
+Generated : 2026-03-31T17:46:53.954Z
+Duration  : 79.2s
+
+ThingsBoard Simulation
+  Ticks         : 6
+  Sends (ok/err): 6 / 0
+  Success rate  : 100.0%
+  Avg latency   : 115ms  (p95=134ms)
+

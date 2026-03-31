@@ -1,0 +1,8 @@
+{"type": "session_start", "simulator_version": 2, "rooms": 1, "interval_s": 15.0, "tb_host": "http://localhost:8080", "api_url": "http://localhost:3000", "ts": "2026-03-31T17:45:34.732Z"}
+{"type": "tick", "tick": 1, "ok": 1, "err": 0, "avg_ms": 107, "wall_s": 0.11, "occ": 1, "not_occ": 0, "sos": 0, "mur": 0, "dnd": 1, "pd": 0, "faults": 0, "ts": "2026-03-31T17:45:34.951Z"}
+{"type": "tick", "tick": 2, "ok": 1, "err": 0, "avg_ms": 134, "wall_s": 0.15, "occ": 1, "not_occ": 0, "sos": 0, "mur": 0, "dnd": 1, "pd": 0, "faults": 0, "ts": "2026-03-31T17:45:50.003Z"}
+{"type": "tick", "tick": 3, "ok": 1, "err": 0, "avg_ms": 122, "wall_s": 0.13, "occ": 1, "not_occ": 0, "sos": 0, "mur": 0, "dnd": 1, "pd": 0, "faults": 0, "ts": "2026-03-31T17:46:04.998Z"}
+{"type": "tick", "tick": 4, "ok": 1, "err": 0, "avg_ms": 116, "wall_s": 0.12, "occ": 1, "not_occ": 0, "sos": 0, "mur": 0, "dnd": 1, "pd": 0, "faults": 0, "ts": "2026-03-31T17:46:19.990Z"}
+{"type": "tick", "tick": 5, "ok": 1, "err": 0, "avg_ms": 93, "wall_s": 0.1, "occ": 1, "not_occ": 0, "sos": 0, "mur": 0, "dnd": 1, "pd": 0, "faults": 0, "ts": "2026-03-31T17:46:34.972Z"}
+{"type": "tick", "tick": 6, "ok": 1, "err": 0, "avg_ms": 122, "wall_s": 0.12, "occ": 1, "not_occ": 0, "sos": 0, "mur": 0, "dnd": 1, "pd": 0, "faults": 0, "ts": "2026-03-31T17:46:50.006Z"}
+{"type": "summary", "duration_s": 79.2, "ticks": 6, "total_tb_sends": 6, "tb_ok": 6, "tb_err": 0, "tb_success_pct": 100.0, "avg_latency_ms": 115, "p95_latency_ms": 134, "tests_total": 0, "tests_passed": 0, "tests_failed": 0, "test_success_pct": "n/a", "ts": "2026-03-31T17:46:53.953Z"}

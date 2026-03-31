@@ -70,7 +70,7 @@ platformModule.init(db, adapterPool);
 const PORT = process.env.PORT || 3000;
 const { ROOM_TYPES, FLOOR_TYPE, TELEMETRY_KEYS, RELAY_KEYS, SHARED_CONTROL_KEYS, extractRoom, parseTelemetry } = room;
 const { sendControl, controlToTelemetry, controlToRelayAttributes, impliesActivity, startNotOccupiedTimer, restoreOccupied, vacateRoom, coerceTelemetry } = control;
-const { fetchAndBroadcast, processTelemetry, startPlatformSubscription } = room;
+const { fetchAndBroadcast, processTelemetry, startPlatformSubscription, detectAndLogChanges } = room;
 const { sseConnect, sseBroadcast, sseBroadcastAlert, sseBroadcastRoles, sseBroadcastUser, sseBatchTelemetry, fireServiceAlert } = sse;
 const { getDeviceRoomMap, getLastOverviewRooms, getLastKnownTelemetry, getRoomPDState, getDoorOpenTimers, getSleepTimers, getRoomStateSnapshots, isOverviewStale, isFetchingOverview, setFetchingOverview, clearFetchingOverview } = state;
 const { addLog } = audit;
