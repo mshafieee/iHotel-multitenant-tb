@@ -39,6 +39,7 @@ const useAuthStore = create((set, get) => {
           body: JSON.stringify({ hotelSlug, username, password })
         });
         setTokens(data.accessToken, data.refreshToken);
+        // deviceConfig: auto-detected device topology (lamps/dimmers/ac/curtains/blinds counts)
         set({ user: data.user, isAuthenticated: true, error: null });
         return true;
       } catch (e) {

@@ -235,6 +235,12 @@ class TBAdapter extends PlatformAdapter {
 
   getWsToken() { return this.token; }
 
+  // ── Device config (used for dynamic UI rendering) ───────────────────────────
+  // TB doesn't expose per-room device topology, so we return standard defaults.
+  async getDeviceConfig() {
+    return { lamps: 3, dimmers: 2, ac: 1, curtains: 1, blinds: 1 };
+  }
+
   getWsUrl() {
     return this.host.replace(/^https?/, m => m === 'https' ? 'wss' : 'ws') +
            `/api/ws/plugins/telemetry?token=${this.token}`;

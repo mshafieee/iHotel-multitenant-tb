@@ -343,6 +343,17 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
 
     for (const roomNumber of newRooms) seedRoomDefaultScenes(_db, hotel.id, roomNumber);
 
+    // Auto-detect device configuration from the first room and persist it
+    if (devices.length && adapter.getDeviceConfig) {
+      try {
+        const cfg = await adapter.getDeviceConfig(devices[0].id);
+        _db.prepare('UPDATE hotels SET device_config = ? WHERE id = ?')
+          .run(JSON.stringify(cfg), hotel.id);
+      } catch (e) {
+        console.warn('[discover] Could not fetch device config:', e.message);
+      }
+    }
+
     _pool?.invalidate(hotel.id);
 
     res.json({ success: true, discovered, total: devices.length });

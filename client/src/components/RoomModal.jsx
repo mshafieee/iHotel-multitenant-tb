@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole, CalendarPlus, CheckCircle, BedDouble } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
+import useAuthStore from '../store/authStore';
 import { api } from '../utils/api';
 import useLangStore from '../store/langStore';
 import { t } from '../i18n';
@@ -72,11 +73,14 @@ function SmartBulb({ on, dimmer, label, onClick, onDimmerChange }) {
 const DEBOUNCED_METHODS = new Set(['setLines', 'setAC', 'setCurtainsBlinds', 'setService']);
 const DEBOUNCE_MS = 500;
 
+const DEFAULT_DEVICE_CFG = { lamps: 3, dimmers: 2, ac: 1, curtains: 1, blinds: 1 };
+
 export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, onReserveRoom }) {
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
   const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied'), T('status_reserved')];
   const rooms = useHotelStore(s => s.rooms);
+  const cfg = useAuthStore(s => s.user?.deviceConfig) || DEFAULT_DEVICE_CFG;
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut]         = useState(false);
@@ -174,8 +178,9 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
       } else if (method === 'setPDMode') {
         updated.pdMode = !!params.pdMode;
         if (updated.pdMode) {
-          updated.line1 = false; updated.line2 = false; updated.line3 = false;
-          updated.dimmer1 = 0; updated.dimmer2 = 0; updated.acMode = 0; updated.fanSpeed = 0;
+          for (let i = 1; i <= cfg.lamps; i++) updated[`line${i}`] = false;
+          for (let i = 1; i <= cfg.dimmers; i++) updated[`dimmer${i}`] = 0;
+          updated.acMode = 0; updated.fanSpeed = 0;
           updated.curtainsPosition = 0; updated.blindsPosition = 0;
         }
       } else if (method === 'setDoorUnlock') {
@@ -438,46 +443,52 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     </Section>
   );
 
-  const lightsSection = (can || isGuest) && !r.pdMode && (
+  const lampLabel = (i) => {
+    const staticLabels = [T('rm_line1'), T('rm_line2'), T('rm_line3')];
+    return i < staticLabels.length ? staticLabels[i] : (lang === 'ar' ? `إضاءة ${i + 1}` : `Light ${i + 1}`);
+  };
+  const lampKeys   = Array.from({ length: cfg.lamps },   (_, i) => `line${i + 1}`);
+  const dimmerKeys = Array.from({ length: cfg.dimmers },  (_, i) => `dimmer${i + 1}`);
+
+  const lightsSection = (can || isGuest) && !r.pdMode && (cfg.lamps > 0 || cfg.dimmers > 0) && (
     <Section title={T('rm_lights')}>
       {isGuest ? (
         // ── Guest: Smart bulb cards ───────────────────────────────────────
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              ['line1', T('rm_line1')],
-              ['line2', T('rm_line2')],
-              ['line3', T('rm_line3')],
-            ].map(([k, label]) => (
-              <SmartBulb
-                key={k}
-                on={!!r[k]}
-                label={label}
-                onClick={() => send('setLines', { [k]: !r[k] })}
-              />
-            ))}
-          </div>
-          {/* Dimmers */}
-          <div className="space-y-2 pt-1">
-            {['dimmer1', 'dimmer2'].map((k, i) => (
-              <div key={k} className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${r[k] > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'}`}>
-                  {i + 1}
+          {cfg.lamps > 0 && (
+            <div className={`grid gap-2 ${cfg.lamps <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {lampKeys.map((k, i) => (
+                <SmartBulb
+                  key={k}
+                  on={!!r[k]}
+                  label={lampLabel(i)}
+                  onClick={() => send('setLines', { [k]: !r[k] })}
+                />
+              ))}
+            </div>
+          )}
+          {cfg.dimmers > 0 && (
+            <div className="space-y-2 pt-1">
+              {dimmerKeys.map((k, i) => (
+                <div key={k} className="flex items-center gap-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${r[k] > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {i + 1}
+                  </div>
+                  <input type="range" min="0" max="100" value={r[k] || 0}
+                    onChange={e => send('setLines', { [k]: +e.target.value })}
+                    className="flex-1 accent-amber-400 h-1.5" />
+                  <span className={`text-xs font-mono w-8 text-right ${r[k] > 0 ? 'text-amber-500' : 'text-gray-300'}`}>{r[k] || 0}%</span>
                 </div>
-                <input type="range" min="0" max="100" value={r[k] || 0}
-                  onChange={e => send('setLines', { [k]: +e.target.value })}
-                  className="flex-1 accent-amber-400 h-1.5" />
-                <span className={`text-xs font-mono w-8 text-right ${r[k] > 0 ? 'text-amber-500' : 'text-gray-300'}`}>{r[k] || 0}%</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         // ── Staff: simple toggles ─────────────────────────────────────────
         <>
-          {[['line1', T('rm_line1')], ['line2', T('rm_line2')], ['line3', T('rm_line3')]].map(([k, l]) => (
+          {lampKeys.map((k, i) => (
             <div key={k} className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-gray-600">{l}</span>
+              <span className="text-xs text-gray-600">{lampLabel(i)}</span>
               <div className="flex items-center gap-2">
                 <button onClick={() => send('setLines', { [k]: !r[k] })}
                   className={`toggle ${r[k] ? 'bg-emerald-500' : 'bg-gray-200'}`}>
@@ -489,7 +500,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
               </div>
             </div>
           ))}
-          {['dimmer1', 'dimmer2'].map((k, i) => (
+          {dimmerKeys.map((k, i) => (
             <div key={k} className="flex items-center justify-between py-1.5">
               <span className="text-xs text-gray-600">{lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`}</span>
               <div className="flex items-center gap-2 flex-1 ml-4">
@@ -505,7 +516,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     </Section>
   );
 
-  const acSection = (can || isGuest) && !r.pdMode && (
+  const acSection = (can || isGuest) && !r.pdMode && cfg.ac > 0 && (
     <Section title={T('rm_ac')}>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -545,9 +556,14 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     </Section>
   );
 
-  const curtainsSection = (can || isGuest) && !r.pdMode && (
+  const curtainControls = [
+    cfg.curtains > 0 && ['curtainsPosition', T('rm_curtains_pos')],
+    cfg.blinds   > 0 && ['blindsPosition',   T('rm_blinds_pos')],
+  ].filter(Boolean);
+
+  const curtainsSection = (can || isGuest) && !r.pdMode && curtainControls.length > 0 && (
     <Section title={T('rm_curtains')}>
-      {[['curtainsPosition', T('rm_curtains_pos')], ['blindsPosition', T('rm_blinds_pos')]].map(([k, l]) => (
+      {curtainControls.map(([k, l]) => (
         <div key={k} className="flex items-center justify-between py-1.5">
           <span className="text-xs text-gray-600">{l}</span>
           <div className="flex items-center gap-2 flex-1 ml-4">

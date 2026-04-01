@@ -348,6 +348,24 @@ class GreentechAdapter extends PlatformAdapter {
   getWsToken() { return null; }
   getWsUrl()   { return null; }
 
+  // ── Device config (used for dynamic UI rendering) ───────────────────────────
+  // Fetches device groups for the first available room to determine topology.
+  async getDeviceConfig(firstRoomId) {
+    try {
+      await this.authenticate();
+      const groups = await this._getDeviceGroups(firstRoomId);
+      return {
+        lamps:    (groups.d   || []).length,
+        dimmers:  (groups.tgd || []).length,
+        ac:       (groups.wk  || []).length > 0 ? 1 : 0,
+        curtains: (groups.cl  || []).length > 0 ? 1 : 0,
+        blinds:   (groups.cl  || []).length > 1 ? 1 : 0,
+      };
+    } catch {
+      return { lamps: 2, dimmers: 1, ac: 1, curtains: 1, blinds: 0 };
+    }
+  }
+
   // ── Debug (used by /discover/debug endpoint) ─────────────────────────────────
 
   async debugDiscovery() {

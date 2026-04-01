@@ -621,6 +621,16 @@ function initDB() {
     markMigration('033_platform_type');
   }
 
+  // ── Migration 034: Add device_config to hotels ───────────────────────────────
+  if (!hasMigration('034_device_config')) {
+    const cols = db.pragma('table_info(hotels)').map(c => c.name);
+    if (!cols.includes('device_config')) {
+      db.exec("ALTER TABLE hotels ADD COLUMN device_config TEXT DEFAULT NULL");
+      console.log('✓ Migration 034: added device_config to hotels');
+    }
+    markMigration('034_device_config');
+  }
+
   // ── Migration 031: Rename tb_* columns to iot_* for platform-agnostic naming ──
   if (!hasMigration('031_rename_tb_to_iot')) {
     const hotelCols = db.pragma('table_info(hotels)').map(c => c.name);

@@ -161,9 +161,10 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   db.prepare("UPDATE hotel_users SET last_login = datetime('now') WHERE id = ?").run(user.id);
 
   addLog(hotel.id, 'auth', 'Login successful', { user: username });
+  const deviceConfig = hotel.device_config ? JSON.parse(hotel.device_config) : null;
   res.json({
     accessToken, refreshToken,
-    user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id, hotelSlug: hotel.slug, hotelName: hotel.name, logoUrl: hotel.logo_url || null }
+    user: { id: user.id, username: user.username, role: user.role, fullName: user.full_name, hotelId: hotel.id, hotelSlug: hotel.slug, hotelName: hotel.name, logoUrl: hotel.logo_url || null, deviceConfig }
   });
 });
 
@@ -222,8 +223,9 @@ app.post('/api/auth/logout', authenticate, (req, res) => {
 app.get('/api/auth/me', authenticate, (req, res) => {
   const user  = db.prepare('SELECT id, username, role, full_name, last_login FROM hotel_users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const hotel = db.prepare('SELECT slug, name, logo_url FROM hotels WHERE id = ?').get(req.user.hotelId);
-  res.json({ id: user.id, username: user.username, role: user.role, fullName: user.full_name, lastLogin: user.last_login, hotelId: req.user.hotelId, hotelSlug: hotel?.slug || '', hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null });
+  const hotel = db.prepare('SELECT slug, name, logo_url, device_config FROM hotels WHERE id = ?').get(req.user.hotelId);
+  const deviceConfig = hotel?.device_config ? JSON.parse(hotel.device_config) : null;
+  res.json({ id: user.id, username: user.username, role: user.role, fullName: user.full_name, lastLogin: user.last_login, hotelId: req.user.hotelId, hotelSlug: hotel?.slug || '', hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null, deviceConfig });
 });
 
 // ═══ SSE (authenticated via query token or header) ═══
