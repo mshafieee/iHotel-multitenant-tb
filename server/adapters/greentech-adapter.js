@@ -222,18 +222,23 @@ class GreentechAdapter extends PlatformAdapter {
   _translateToGreentechCommands(telemetry, groups) {
     const cmds = [];
 
-    // Lamps (line1/2/3 → d[0]/d[1]/d[2])
-    ['line1', 'line2', 'line3'].forEach((key, i) => {
-      if (key in telemetry && groups.d?.[i]) {
-        cmds.push({ Id: groups.d[i].id, turn: telemetry[key] ? 'ON' : 'OFF' });
+    // Lamps (line1..lineN → d[0]..d[N-1])
+    // Support any number of lamps dynamically
+    const lampKeys = Object.keys(telemetry).filter(k => /^line\d+$/.test(k));
+    lampKeys.forEach(key => {
+      const i = parseInt(key.replace('line', '')) - 1;
+      if (groups.d?.[i]) {
+        cmds.push({ id: groups.d[i].id, turn: telemetry[key] ? 'ON' : 'OFF' });
       }
     });
 
-    // Dimmers (dimmer1/2 → tgd[0]/tgd[1])
-    ['dimmer1', 'dimmer2'].forEach((key, i) => {
-      if (key in telemetry && groups.tgd?.[i]) {
+    // Dimmers (dimmer1..dimmerN → tgd[0]..tgd[N-1])
+    const dimmerKeys = Object.keys(telemetry).filter(k => /^dimmer\d+$/.test(k));
+    dimmerKeys.forEach(key => {
+      const i = parseInt(key.replace('dimmer', '')) - 1;
+      if (groups.tgd?.[i]) {
         const val = Number(telemetry[key]);
-        cmds.push({ Id: groups.tgd[i].id, turn: val > 0 ? 'ON' : 'OFF', brightness: val });
+        cmds.push({ id: groups.tgd[i].id, turn: val > 0 ? 'ON' : 'OFF', brightness: val });
       }
     });
 
@@ -241,7 +246,7 @@ class GreentechAdapter extends PlatformAdapter {
     const acDev  = groups.wk?.[0];
     const acKeys = ['acMode', 'acTemperatureSet', 'fanSpeed'];
     if (acDev && acKeys.some(k => k in telemetry)) {
-      const cmd = { Id: acDev.id };
+      const cmd = { id: acDev.id };
       if ('acMode' in telemetry) {
         const mode = Number(telemetry.acMode);
         if (mode === 0) {
@@ -263,10 +268,10 @@ class GreentechAdapter extends PlatformAdapter {
 
     // Curtains (curtainsPosition → cl[0], blindsPosition → cl[1])
     if ('curtainsPosition' in telemetry && groups.cl?.[0]) {
-      cmds.push({ Id: groups.cl[0].id, certain: Number(telemetry.curtainsPosition) > 0 ? 'open' : 'close' });
+      cmds.push({ id: groups.cl[0].id, certain: Number(telemetry.curtainsPosition) > 0 ? 'open' : 'close' });
     }
     if ('blindsPosition' in telemetry && groups.cl?.[1]) {
-      cmds.push({ Id: groups.cl[1].id, certain: Number(telemetry.blindsPosition) > 0 ? 'open' : 'close' });
+      cmds.push({ id: groups.cl[1].id, certain: Number(telemetry.blindsPosition) > 0 ? 'open' : 'close' });
     }
 
     // Service flags (fw devices matched by deviceName keyword)
@@ -275,7 +280,7 @@ class GreentechAdapter extends PlatformAdapter {
         const dev = (groups.fw || []).find(d =>
           keywords.some(kw => (d.deviceName || '').toLowerCase().includes(kw))
         );
-        if (dev) cmds.push({ Id: dev.id, turn: telemetry[iHotelKey] ? 'ON' : 'OFF' });
+        if (dev) cmds.push({ id: dev.id, turn: telemetry[iHotelKey] ? 'ON' : 'OFF' });
       }
     }
 
@@ -428,20 +433,14 @@ class GreentechAdapter extends PlatformAdapter {
       tb.deviceStatus = wrap(String(roomRow.hoststatus) === '1' ? 1 : 0);
     }
 
-    // ── Lamps (d[]) → line1 / line2 / line3 ───────────────────────────────
+    // ── Lamps (d[]) → line1 / line2 / ... (dynamic count) ────────────────
     (groups.d || []).forEach((dev, i) => {
-      const key = `line${i + 1}`;
-      if (key === 'line1' || key === 'line2' || key === 'line3') {
-        tb[key] = wrap(dev.turn === 'ON');
-      }
+      tb[`line${i + 1}`] = wrap(dev.turn === 'ON');
     });
 
-    // ── Dimming lamps (tgd[]) → dimmer1 / dimmer2 ─────────────────────────
+    // ── Dimming lamps (tgd[]) → dimmer1 / dimmer2 / ... (dynamic) ────────
     (groups.tgd || []).forEach((dev, i) => {
-      const key = `dimmer${i + 1}`;
-      if (key === 'dimmer1' || key === 'dimmer2') {
-        tb[key] = wrap(dev.turn === 'ON' ? (dev.brightness ?? 100) : 0);
-      }
+      tb[`dimmer${i + 1}`] = wrap(dev.turn === 'ON' ? (dev.brightness ?? 100) : 0);
     });
 
     // ── AC (wk[0]) → acMode / acTemperatureSet / fanSpeed / temperature ───
