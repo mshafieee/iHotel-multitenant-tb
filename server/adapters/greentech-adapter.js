@@ -65,6 +65,10 @@ class GreentechAdapter extends PlatformAdapter {
     this._roomListCache = null;
     this._roomListCacheExp = 0;
     this._lastPollState = new Map();    // hostId → flat state for change detection
+
+    // Set by subscribe() so post-command re-polls can push updates
+    this._onUpdate        = null;
+    this._deviceIdToRoom  = null;
   }
 
   // ── Authentication ──────────────────────────────────────────────────────────
@@ -217,6 +221,30 @@ class GreentechAdapter extends PlatformAdapter {
           console.error(`[Greentech] Control failed (room ${hostId}):`, e.message);
         })
     ));
+
+    // Re-fetch confirmed state 2 s after command and push via SSE
+    this._schedulePostCommandPoll(hostId);
+  }
+
+  _schedulePostCommandPoll(hostId, delayMs = 2000) {
+    setTimeout(async () => {
+      if (!this._onUpdate) return;
+      try {
+        this._deviceCache.delete(hostId);          // force fresh fetch
+        await this._fetchRoomList(true);
+        const roomRow = this._findRoomRow(hostId) || {};
+        const groups  = await this._getDeviceGroups(hostId);
+        const flat    = this._flattenTBFormat(this._buildTBFormat(roomRow, groups));
+        const roomNum = this._deviceIdToRoom?.[hostId];
+        if (roomNum) {
+          // Update poll baseline so next poll doesn't re-broadcast the same data
+          this._lastPollState.set(hostId, { ...(this._lastPollState.get(hostId) || {}), ...flat });
+          this._onUpdate(roomNum, hostId, flat);
+        }
+      } catch (e) {
+        console.error(`[Greentech] Post-command re-poll failed (room ${hostId}):`, e.message);
+      }
+    }, delayMs);
   }
 
   _translateToGreentechCommands(telemetry, groups) {
@@ -293,13 +321,18 @@ class GreentechAdapter extends PlatformAdapter {
     if (!Object.keys(deviceIdToRoom).length) return null;
     await this.authenticate();
 
+    // Store for post-command re-polls
+    this._onUpdate       = onUpdate;
+    this._deviceIdToRoom = deviceIdToRoom;
+
     let _active = true;
-    const POLL_INTERVAL = 30000; // 30 s
+    const POLL_INTERVAL = 10000; // 10 s — fast enough to feel responsive on a polling-only platform
 
     const poll = async () => {
       if (!_active) return;
       try {
         await this.authenticate();
+        this._deviceCache.clear(); // Always fetch fresh device state every cycle
         await this._fetchRoomList(true);
 
         const hostIds = Object.keys(deviceIdToRoom);
@@ -332,7 +365,11 @@ class GreentechAdapter extends PlatformAdapter {
     return {
       _polling: true,
       _active:  () => _active,
-      close:    () => { _active = false; },
+      close:    () => {
+        _active = false;
+        this._onUpdate       = null;
+        this._deviceIdToRoom = null;
+      },
     };
   }
 
