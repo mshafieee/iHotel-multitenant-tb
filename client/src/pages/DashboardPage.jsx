@@ -260,19 +260,23 @@ export default function DashboardPage() {
       )}
 
       {/* Tabs */}
-      <div className="bg-white border-b border-gray-100 shadow-sm">
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm">
         <div className="max-w-[1600px] mx-auto overflow-x-auto scrollbar-none">
-          <div className="flex gap-0 px-2 min-w-max">
+          <div className="flex items-center gap-1 px-3 py-2 min-w-max">
             {TABS.map(tb => (
               <button key={tb.id} onClick={() => setTab(tb.id)}
-                className={`relative flex items-center gap-1 px-3 sm:px-4 py-3 text-[11px] sm:text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-                  tab === tb.id ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-400 hover:text-gray-600'
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold transition-all duration-200 whitespace-nowrap ${
+                  tab === tb.id
+                    ? 'bg-brand-500 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
                 }`}>
-                <tb.icon size={13} />
+                <tb.icon size={13} strokeWidth={tab === tb.id ? 2.5 : 1.8} />
                 {tb.label}
                 {tb.badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-400 text-white text-[8px] flex items-center justify-center font-bold">
-                    {tb.badge}
+                  <span className={`inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold ${
+                    tab === tb.id ? 'bg-white/30 text-white' : 'bg-amber-400 text-white'
+                  }`}>
+                    {tb.badge > 9 ? '9+' : tb.badge}
                   </span>
                 )}
               </button>
