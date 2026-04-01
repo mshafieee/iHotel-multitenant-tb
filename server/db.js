@@ -611,6 +611,16 @@ function initDB() {
     markMigration('030_checked_out_at');
   }
 
+  // ── Migration 033: Add platform_type to hotels ───────────────────────────────
+  if (!hasMigration('033_platform_type')) {
+    const cols = db.pragma('table_info(hotels)').map(c => c.name);
+    if (!cols.includes('platform_type')) {
+      db.exec("ALTER TABLE hotels ADD COLUMN platform_type TEXT DEFAULT 'thingsboard'");
+      console.log("✓ Migration 033: added platform_type to hotels (default: 'thingsboard')");
+    }
+    markMigration('033_platform_type');
+  }
+
   // ── Migration 031: Rename tb_* columns to iot_* for platform-agnostic naming ──
   if (!hasMigration('031_rename_tb_to_iot')) {
     const hotelCols = db.pragma('table_info(hotels)').map(c => c.name);

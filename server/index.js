@@ -25,7 +25,7 @@ const webpush                     = require('web-push');
 // ═══ INIT ═══
 const db          = initDB();
 setDB(db);
-const adapterPool = createPool(process.env.IOT_PLATFORM || 'thingsboard');
+const adapterPool = createPool() // platform type is per-hotel (hotels.platform_type);
 initServices(db, adapterPool);
 
 // ── Web Push VAPID keys (generated once, stored in platform_config) ──────────

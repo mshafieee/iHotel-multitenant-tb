@@ -171,15 +171,18 @@ class PlatformAdapter {
 
 class AdapterPool {
   /**
-   * @param {Function} AdapterClass  The concrete adapter constructor (e.g. TBAdapter)
+   * @param {object} adapterRegistry  Map of platform type → adapter class.
+   *   e.g. { thingsboard: TBAdapter, greentech: GreentechAdapter }
+   *   Each hotel row's platform_type column selects which class to instantiate.
    */
-  constructor(AdapterClass) {
-    this._AdapterClass = AdapterClass;
+  constructor(adapterRegistry) {
+    this._registry = adapterRegistry;
     this._pool = new Map(); // Map<hotelId, PlatformAdapter>
   }
 
   /**
    * Get (or create) an adapter for a hotel.
+   * Reads platform_type from the hotels table to select the right adapter class.
    * @param {string} hotelId
    * @param {object} db  better-sqlite3 database instance
    * @returns {PlatformAdapter|null}
@@ -188,32 +191,28 @@ class AdapterPool {
     if (this._pool.has(hotelId)) return this._pool.get(hotelId);
 
     const hotel = db.prepare(
-      'SELECT iot_host, iot_user, iot_pass FROM hotels WHERE id = ? AND active = 1'
+      'SELECT iot_host, iot_user, iot_pass, tb_host, tb_user, tb_pass, platform_type FROM hotels WHERE id = ? AND active = 1'
     ).get(hotelId);
 
-    // Fallback: check legacy column names (pre-migration)
-    if (!hotel) {
-      const legacy = db.prepare(
-        'SELECT tb_host AS iot_host, tb_user AS iot_user, tb_pass AS iot_pass FROM hotels WHERE id = ? AND active = 1'
-      ).get(hotelId);
-      if (!legacy || !legacy.iot_host || !legacy.iot_user || !legacy.iot_pass) return null;
-      const adapter = new this._AdapterClass({
-        host: legacy.iot_host, username: legacy.iot_user, password: legacy.iot_pass
-      });
-      this._pool.set(hotelId, adapter);
-      return adapter;
+    if (!hotel) return null;
+
+    const host = hotel.iot_host || hotel.tb_host;
+    const user = hotel.iot_user || hotel.tb_user;
+    const pass = hotel.iot_pass || hotel.tb_pass;
+    if (!host || !user || !pass) return null;
+
+    const platformType = hotel.platform_type || 'thingsboard';
+    const AdapterClass = this._registry[platformType];
+    if (!AdapterClass) {
+      throw new Error(`Unknown platform_type "${platformType}" for hotel ${hotelId}. Available: ${Object.keys(this._registry).join(', ')}`);
     }
 
-    if (!hotel.iot_host || !hotel.iot_user || !hotel.iot_pass) return null;
-
-    const adapter = new this._AdapterClass({
-      host: hotel.iot_host, username: hotel.iot_user, password: hotel.iot_pass
-    });
+    const adapter = new AdapterClass({ host, username: user, password: pass });
     this._pool.set(hotelId, adapter);
     return adapter;
   }
 
-  /** Invalidate a hotel's cached adapter (call after credentials update). */
+  /** Invalidate a hotel's cached adapter (call after credentials or platform_type update). */
   invalidate(hotelId) {
     this._pool.delete(hotelId);
   }
@@ -221,9 +220,13 @@ class AdapterPool {
   /** Check whether a hotel has IoT platform credentials configured. */
   hasCredentials(hotelId, db) {
     const hotel = db.prepare(
-      'SELECT tb_host, tb_user, tb_pass FROM hotels WHERE id = ? AND active = 1'
+      'SELECT iot_host, iot_user, iot_pass, tb_host, tb_user, tb_pass FROM hotels WHERE id = ? AND active = 1'
     ).get(hotelId);
-    return !!(hotel && hotel.tb_host && hotel.tb_user && hotel.tb_pass);
+    if (!hotel) return false;
+    const host = hotel.iot_host || hotel.tb_host;
+    const user = hotel.iot_user || hotel.tb_user;
+    const pass = hotel.iot_pass || hotel.tb_pass;
+    return !!(host && user && pass);
   }
 }
 

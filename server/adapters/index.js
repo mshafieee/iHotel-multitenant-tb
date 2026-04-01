@@ -9,27 +9,24 @@
  *   const pool = createPool('thingsboard');  // or 'greentech', 'aws'
  *   const adapter = pool.getAdapter(hotelId, db);
  */
-const { AdapterPool } = require('./platform-adapter');
-const { TBAdapter }   = require('./tb-adapter');
+const { AdapterPool }       = require('./platform-adapter');
+const { TBAdapter }         = require('./tb-adapter');
+const { GreentechAdapter }  = require('./greentech-adapter');
 
-// Registry of available adapters
+// Registry of all supported IoT platforms.
+// The hotels.platform_type column selects which class to use per hotel.
 const ADAPTERS = {
   thingsboard: TBAdapter,
-  // greentech: GreentechAdapter,  // future
-  // aws:       AWSAdapter,        // future
+  greentech:   GreentechAdapter,
 };
 
 /**
- * Create an AdapterPool for the specified platform type.
- * @param {string} platformType  Key from ADAPTERS registry (default: 'thingsboard')
+ * Create a multi-platform AdapterPool.
+ * Each hotel's platform_type DB column determines which adapter class is used.
  * @returns {AdapterPool}
  */
-function createPool(platformType = 'thingsboard') {
-  const AdapterClass = ADAPTERS[platformType];
-  if (!AdapterClass) {
-    throw new Error(`Unknown IoT platform: "${platformType}". Available: ${Object.keys(ADAPTERS).join(', ')}`);
-  }
-  return new AdapterPool(AdapterClass);
+function createPool() {
+  return new AdapterPool(ADAPTERS);
 }
 
-module.exports = { createPool, ADAPTERS, AdapterPool, TBAdapter };
+module.exports = { createPool, ADAPTERS, AdapterPool, TBAdapter, GreentechAdapter };

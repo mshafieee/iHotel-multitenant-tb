@@ -146,21 +146,28 @@ router.put('/auth/password', authenticatePlatformAny, (req, res) => {
 
 // ── Hotel management ───────────────────────────────────────────────────────────
 router.post('/hotels', authenticatePlatformAdmin, (req, res) => {
-  const { name, slug, contactEmail, plan, tbHost, tbUser, tbPass } = req.body;
+  const { name, slug, contactEmail, plan, tbHost, tbUser, tbPass, platformType } = req.body;
   if (!name || !slug) return res.status(400).json({ error: 'name and slug are required' });
 
   if (!/^[a-z0-9-]+$/.test(slug)) {
     return res.status(400).json({ error: 'Slug must be lowercase letters, digits, and hyphens only' });
   }
 
+  const VALID_PLATFORMS = ['thingsboard', 'greentech'];
+  const resolvedPlatform = platformType || 'thingsboard';
+  if (!VALID_PLATFORMS.includes(resolvedPlatform)) {
+    return res.status(400).json({ error: `Invalid platformType. Must be one of: ${VALID_PLATFORMS.join(', ')}` });
+  }
+
   const id = crypto.randomUUID();
 
   try {
-    _db.prepare(`INSERT INTO hotels (id, name, slug, contact_email, plan, tb_host, tb_user, tb_pass, iot_host, iot_user, iot_pass)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    _db.prepare(`INSERT INTO hotels (id, name, slug, contact_email, plan, tb_host, tb_user, tb_pass, iot_host, iot_user, iot_pass, platform_type)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, name, slug, contactEmail || null, plan || 'starter',
            tbHost || null, tbUser || null, tbPass || null,
-           tbHost || null, tbUser || null, tbPass || null);
+           tbHost || null, tbUser || null, tbPass || null,
+           resolvedPlatform);
 
     seedHotelRates(_db, id);
     seedHotelUpsellOffers(_db, id);
@@ -186,6 +193,7 @@ router.get('/hotels', authenticatePlatformAdmin, (req, res) => {
     return {
       id: h.id, name: h.name, slug: h.slug, contactEmail: h.contact_email,
       plan: h.plan, active: !!h.active, createdAt: h.created_at,
+      platformType: h.platform_type || 'thingsboard',
       tbConfigured: hasTB, tbHost: h.iot_host || h.tb_host || null,
       iotConfigured: hasTB, iotHost: h.iot_host || h.tb_host || null,
       logoUrl: h.logo_url || null,
@@ -206,6 +214,7 @@ router.get('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
   res.json({
     id: hotel.id, name: hotel.name, slug: hotel.slug, contactEmail: hotel.contact_email,
     plan: hotel.plan, active: !!hotel.active, createdAt: hotel.created_at,
+    platformType: hotel.platform_type || 'thingsboard',
     tbHost: hotel.iot_host || hotel.tb_host || null,
     tbUser: hotel.iot_user || hotel.tb_user || null,
     tbConfigured: !!((hotel.iot_host || hotel.tb_host) && (hotel.iot_user || hotel.tb_user) && (hotel.iot_pass || hotel.tb_pass)),
@@ -218,9 +227,14 @@ router.get('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
 });
 
 router.put('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
-  const { name, contactEmail, plan, active, tbHost, tbUser, tbPass } = req.body;
+  const { name, contactEmail, plan, active, tbHost, tbUser, tbPass, platformType } = req.body;
   const hotel = _db.prepare('SELECT id FROM hotels WHERE id = ?').get(req.params.id);
   if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+
+  const VALID_PLATFORMS = ['thingsboard', 'greentech'];
+  if (platformType && !VALID_PLATFORMS.includes(platformType)) {
+    return res.status(400).json({ error: `Invalid platformType. Must be one of: ${VALID_PLATFORMS.join(', ')}` });
+  }
 
   _db.prepare(`UPDATE hotels SET
     name          = COALESCE(?, name),
@@ -232,16 +246,18 @@ router.put('/hotels/:id', authenticatePlatformAdmin, (req, res) => {
     tb_pass       = COALESCE(?, tb_pass),
     iot_host      = COALESCE(?, iot_host),
     iot_user      = COALESCE(?, iot_user),
-    iot_pass      = COALESCE(?, iot_pass)
+    iot_pass      = COALESCE(?, iot_pass),
+    platform_type = COALESCE(?, platform_type)
     WHERE id = ?`)
     .run(name ?? null, contactEmail ?? null, plan ?? null,
          active != null ? (active ? 1 : 0) : null,
          tbHost ?? null, tbUser ?? null, tbPass ?? null,
          tbHost ?? null, tbUser ?? null, tbPass ?? null,
+         platformType ?? null,
          hotel.id);
 
-  // Invalidate cached adapter if credentials changed
-  if (tbHost || tbUser || tbPass) {
+  // Invalidate cached adapter if credentials or platform type changed
+  if (tbHost || tbUser || tbPass || platformType) {
     _pool?.invalidate(hotel.id);
   }
 
