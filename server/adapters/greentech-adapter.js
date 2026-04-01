@@ -83,12 +83,26 @@ class GreentechAdapter extends PlatformAdapter {
 
   // ── Hotel / room list helpers ────────────────────────────────────────────────
 
+  /**
+   * Resolve the Greentech internal hotel ID.
+   * The API docs sample shows hotelId: null in the dept response — the real ID
+   * may be in a different field (id, deptId, companyId, hotelId).
+   * We try all common field names and log the raw response for debugging.
+   */
   async _ensureHotelId() {
     if (this._greentechHotelId) return this._greentechHotelId;
     const r = await axios.get(`${this.host}/system/dept/open/list`,
       { headers: this._headers(), timeout: 15000 });
-    const depts = Array.isArray(r.data) ? r.data : (r.data?.data || []);
-    this._greentechHotelId = depts[0]?.hotelId ?? null;
+    const raw   = r.data;
+    const depts = Array.isArray(raw) ? raw : (raw?.data || []);
+    console.log('[Greentech] dept/open/list raw:', JSON.stringify(raw).slice(0, 500));
+
+    const dept = depts[0] || {};
+    // Try every field that could be the hotel ID — API docs show hotelId: null
+    // so the real ID may be under id, deptId, hotelId, or companyId
+    const id = dept.hotelId || dept.id || dept.deptId || dept.companyId || null;
+    this._greentechHotelId = id ? String(id) : null;
+    console.log(`[Greentech] resolved hotelId: ${this._greentechHotelId} (from dept keys: ${Object.keys(dept).join(', ')})`);
     return this._greentechHotelId;
   }
 
@@ -99,11 +113,67 @@ class GreentechAdapter extends PlatformAdapter {
     }
     await this.authenticate();
     const hotelId = await this._ensureHotelId();
-    const r = await axios.get(`${this.host}/mqtt/room/list2`,
-      { headers: this._headers(), params: { hotelId }, timeout: 15000 });
-    this._roomListCache    = r.data?.rows || [];
+
+    // Strategy 1: call without any param — token may already scope the data
+    const r1 = await axios.get(`${this.host}/mqtt/room/list2`,
+      { headers: this._headers(), timeout: 15000 }).catch(() => null);
+    const rows1 = r1?.data?.rows || r1?.data?.data || [];
+    console.log(`[Greentech] room/list2 (no param): ${rows1.length} rows, raw keys: ${Object.keys(r1?.data || {}).join(', ')}`);
+
+    if (rows1.length > 0) {
+      this._roomListCache    = rows1;
+      this._roomListCacheExp = Date.now() + TTL;
+      return this._roomListCache;
+    }
+
+    // Strategy 2: call with hotelId param (if we resolved one)
+    if (hotelId) {
+      const r2 = await axios.get(`${this.host}/mqtt/room/list2`,
+        { headers: this._headers(), params: { hotelId }, timeout: 15000 }).catch(() => null);
+      const rows2 = r2?.data?.rows || r2?.data?.data || [];
+      console.log(`[Greentech] room/list2 (hotelId=${hotelId}): ${rows2.length} rows`);
+      this._roomListCache    = rows2;
+      this._roomListCacheExp = Date.now() + TTL;
+      return this._roomListCache;
+    }
+
+    this._roomListCache    = [];
     this._roomListCacheExp = Date.now() + TTL;
-    return this._roomListCache;
+    return [];
+  }
+
+  /**
+   * Expose raw Greentech API responses — used by the /discover/debug endpoint
+   * so the platform admin can see exactly what the API returns.
+   */
+  async debugDiscovery() {
+    await this.authenticate();
+    const results = {};
+
+    try {
+      const r = await axios.get(`${this.host}/system/dept/open/list`,
+        { headers: this._headers(), timeout: 15000 });
+      results.deptList = r.data;
+    } catch (e) { results.deptListError = e.message; }
+
+    try {
+      const r = await axios.get(`${this.host}/mqtt/room/list2`,
+        { headers: this._headers(), timeout: 15000 });
+      results.roomListNoParam = r.data;
+    } catch (e) { results.roomListNoParamError = e.message; }
+
+    const hotelId = await this._ensureHotelId();
+    results.resolvedHotelId = hotelId;
+
+    if (hotelId) {
+      try {
+        const r = await axios.get(`${this.host}/mqtt/room/list2`,
+          { headers: this._headers(), params: { hotelId }, timeout: 15000 });
+        results.roomListWithHotelId = r.data;
+      } catch (e) { results.roomListWithHotelIdError = e.message; }
+    }
+
+    return results;
   }
 
   _findRoomRow(hostId) {

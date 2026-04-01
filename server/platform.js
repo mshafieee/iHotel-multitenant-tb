@@ -284,6 +284,23 @@ router.post('/hotels/:id/logo', authenticatePlatformAdmin, uploadLogo.single('lo
   res.json({ success: true, logoUrl });
 });
 
+// ── IoT Platform: debug raw API responses (superadmin only) ──────────────────
+router.get('/hotels/:id/discover/debug', authenticatePlatformAdmin, async (req, res) => {
+  const hotel = _db.prepare('SELECT * FROM hotels WHERE id = ?').get(req.params.id);
+  if (!hotel) return res.status(404).json({ error: 'Hotel not found' });
+  try {
+    const adapter = _pool.getAdapter(hotel.id, _db);
+    if (!adapter) return res.status(400).json({ error: 'IoT credentials not configured' });
+    if (typeof adapter.debugDiscovery !== 'function') {
+      return res.status(400).json({ error: 'debugDiscovery not available for this platform type' });
+    }
+    const debug = await adapter.debugDiscovery();
+    res.json(debug);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ── IoT Platform: auto-discover rooms ─────────────────────────────────────────
 // Connects to hotel's IoT platform, fetches all room devices,
 // and populates hotel_rooms with room_number + tb_device_id.
