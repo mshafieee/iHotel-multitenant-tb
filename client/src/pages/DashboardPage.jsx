@@ -326,6 +326,7 @@ export default function DashboardPage() {
       {/* Room Modal */}
       {selectedRoom && (
         <RoomModal roomId={selectedRoom} onClose={() => setSelectedRoom(null)} role={role}
+          deviceConfig={user?.deviceConfig}
           onReserveRoom={(roomNum) => {
             setPmsAutoFillRoom(roomNum);
             setTab('pms');

@@ -30,6 +30,7 @@ export default function GuestPortal() {
   const [room, setRoom] = useState(null);
   const [hotelName, setHotelName] = useState('');
   const [logoUrl, setLogoUrl] = useState(null);
+  const [deviceConfig, setDeviceConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lockout, setLockout] = useState(false);
   const [error, setError] = useState('');
@@ -47,6 +48,7 @@ export default function GuestPortal() {
         setRoom(g.room);
         if (g.hotelName) setHotelName(g.hotelName);
         if (g.logoUrl) setLogoUrl(g.logoUrl);
+        if (g.deviceConfig) setDeviceConfig(g.deviceConfig);
 
         const roomData = await api('/api/guest/room/data');
         if (!mounted) return;
@@ -135,6 +137,7 @@ export default function GuestPortal() {
         <RoomModal
           roomId={room}
           logoUrl={logoUrl}
+          deviceConfig={deviceConfig}
           onClose={() => {
             clearTokens();
             localStorage.removeItem('guestRoom');

@@ -75,12 +75,14 @@ const DEBOUNCE_MS = 500;
 
 const DEFAULT_DEVICE_CFG = { lamps: 3, dimmers: 2, ac: 1, curtains: 1, blinds: 1 };
 
-export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, onReserveRoom }) {
+export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, onReserveRoom, deviceConfig: deviceConfigProp }) {
   const lang = useLangStore(s => s.lang);
   const T = (key) => t(key, lang);
   const STATUS_LABELS = [T('status_vacant'), T('status_occupied'), T('status_service'), T('status_maintenance'), T('status_not_occupied'), T('status_reserved')];
   const rooms = useHotelStore(s => s.rooms);
-  const cfg = useAuthStore(s => s.user?.deviceConfig) || DEFAULT_DEVICE_CFG;
+  // Prop takes priority (guest portal passes it); fall back to auth store (staff dashboard)
+  const authDeviceCfg = useAuthStore(s => s.user?.deviceConfig);
+  const cfg = deviceConfigProp || authDeviceCfg || DEFAULT_DEVICE_CFG;
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut]         = useState(false);

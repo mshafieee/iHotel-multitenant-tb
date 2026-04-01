@@ -1298,8 +1298,9 @@ app.get('/api/guest/room', authenticate, (req, res) => {
     });
   }
   const lastOverview = getLastOverviewRooms(hotelId);
-  const hotel = db.prepare('SELECT name, logo_url FROM hotels WHERE id=?').get(hotelId);
-  res.json({ room: r.room, telemetry: lastOverview[r.room] || {}, hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null });
+  const hotel = db.prepare('SELECT name, logo_url, device_config FROM hotels WHERE id=?').get(hotelId);
+  const deviceConfig = hotel?.device_config ? JSON.parse(hotel.device_config) : null;
+  res.json({ room: r.room, telemetry: lastOverview[r.room] || {}, hotelName: hotel?.name || '', logoUrl: hotel?.logo_url || null, deviceConfig });
 });
 
 app.get('/api/guest/room/data', authenticate, async (req, res) => {
