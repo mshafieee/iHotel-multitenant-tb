@@ -432,6 +432,14 @@ class GreentechAdapter extends PlatformAdapter {
     if (roomRow.hoststatus !== undefined) {
       tb.deviceStatus = wrap(String(roomRow.hoststatus) === '1' ? 1 : 0);
     }
+    if (roomRow.powerStatus !== undefined) {
+      // "开" = main power/card power on
+      tb.pdMode = wrap(roomRow.powerStatus !== '开'); // powerdown when card removed
+    }
+    if (roomRow.airStatus !== undefined) {
+      // "开" = AC unit is running (actual running state, separate from setpoint)
+      tb.acRunning = wrap(roomRow.airStatus === '开');
+    }
 
     // ── Lamps (d[]) → line1 / line2 / ... (dynamic count) ────────────────
     (groups.d || []).forEach((dev, i) => {
