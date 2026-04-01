@@ -2,6 +2,200 @@
 
 ---
 
+## Session: 2026-04-01 — Multi-IoT Platform Integration + Dynamic Device UI + Reliability Improvements
+
+### Summary
+
+Seven features delivered on branch `ihotel-greentech-api`. The headline feature is a universal IoT adapter layer enabling iHotel to support multiple physical GRMS/IoT platforms — currently ThingsBoard CE/Cloud and Greentech GRMS — selected per hotel at creation time with no code changes needed.
+
+---
+
+### 1. IoT Adapter Layer (Platform-Agnostic Architecture)
+
+**New files**: `server/adapters/platform-adapter.js`, `server/adapters/tb-adapter.js`, `server/adapters/greentech-adapter.js`, `server/adapters/index.js`
+
+`PlatformAdapter` base class defines the standard interface:
+- `authenticate()` / `isAuthenticated()`
+- `listDevices()` → `[{ id, name, roomNumber }]`
+- `getDeviceState(id, keys)` → flat telemetry object
+- `getAllDeviceStates(ids, keys)` → `{ id: rawState }`
+- `getDeviceAttributes(id, keys)` → flat attributes object
+- `sendTelemetry(id, payload)` / `sendAttributes(id, payload)`
+- `subscribe(deviceIdToRoom, onUpdate)` → handle with `.close()`
+- `verifyCommand(id, expected)` → boolean
+- `getCapabilities()` → `{ realtime, sensors, meters, commandVerify, offlineScenes, relayAttributes, doorLock }`
+- `getDeviceConfig(firstRoomId)` → `{ lamps, dimmers, ac, curtains, blinds, lampNames[], dimmerNames[] }`
+- `getWsToken()` / `getWsUrl()`
+
+**TBAdapter** — wraps ThingsBoard CE/Cloud REST + WebSocket:
+- JWT auth with 58-min token cache
+- Paginated device list (100/page), filters `gateway-room-*` naming
+- Real-time via WebSocket subscription (batched in 100-cmd chunks)
+- Command verification via SHARED_SCOPE attribute read at +2s
+- Static `getDeviceConfig()` returns standard 3-lamp/2-dimmer defaults
+
+**GreentechAdapter** — wraps Greentech GRMS REST:
+- Token auth via `POST /loginByRemote`
+- GET-with-body pattern (`axios data:` field) for `/mqtt/room/list2` and `/mqtt/room/device/list2`
+- Device groups: `d[]` = lamps, `tgd[]` = dimmers, `wk[]` = AC, `cl[]` = curtains, `cj[]` = sensors (empty), `fw[]` = service flags
+- Chinese field values translated on read and write (e.g. `"制冷"` ↔ `acMode: 2`)
+- Control via `PUT /mqtt/room/device` with `id` (lowercase), `turn`, `modern`, `temperature`, `fatSpeed`, `certain`, `brightness`
+- Poll-based subscription (no WebSocket available) — 10s interval
+- `getDeviceConfig(firstRoomId)` fetches real device groups to return actual lamp/dimmer counts and names
+
+**Adapter pool** (`server/adapters/index.js`):
+- `createPool()` — lazy-instantiates one adapter per hotel based on `hotels.platform_type`
+- `getAdapter(hotelId)` — used throughout services
+
+**DB migration 033** (`server/db.js`): `platform_type TEXT DEFAULT 'thingsboard'` on `hotels` table
+**DB migration 034**: `device_config TEXT DEFAULT NULL` on `hotels` table
+
+---
+
+### 2. Dynamic Device UI
+
+**Problem**: RoomModal had hardcoded 3 light circuits and 2 dimmers, regardless of what the actual hotel hardware had.
+
+**Solution**: `device_config` JSON stored per hotel in the database, populated automatically on "Discover Rooms". The UI renders exactly what the hardware has.
+
+**`server/platform.js`** — after discovering rooms, calls `adapter.getDeviceConfig(devices[0].id)` and saves result to `hotels.device_config`.
+
+**`server/index.js`**:
+- Login endpoint: reads and returns `device_config` in user object
+- `/api/auth/me`: same
+- `/api/guest/room`: includes `device_config` for guest portal
+- `PUT /api/hotel/device-names` (owner/admin): updates `lampNames[]` and `dimmerNames[]` in `device_config` without overwriting counts
+
+**`client/src/components/RoomModal.jsx`**:
+- Accepts `deviceConfig` prop (guest portal) OR reads from `authStore` (dashboard)
+- `lampKeys = Array.from({ length: cfg.lamps }, (_, i) => \`line${i + 1}\`)`
+- `dimmerKeys = Array.from({ length: cfg.dimmers }, (_, i) => \`dimmer${i + 1}\`)`
+- `lampLabel(i)` uses `cfg.lampNames[i]` with fallback to i18n static labels
+- `dimmerLabel(i)` uses `cfg.dimmerNames[i]` with fallback
+- AC section conditional on `cfg.ac > 0`; curtains/blinds conditional on `cfg.curtains/blinds > 0`
+- Guest view grid: `grid-cols-2` if ≤2 lamps, else `grid-cols-3`
+
+**`client/src/pages/GuestPortal.jsx`**: stores `deviceConfig` from `/api/guest/room` response and passes as prop to `RoomModal`.
+
+**`client/src/pages/DashboardPage.jsx`**: passes `user?.deviceConfig` as prop to `RoomModal`.
+
+---
+
+### 3. TB Hotels — Default device_config Seeding
+
+ThingsBoard hotels that haven't run "Discover Rooms" now get a default `device_config` automatically on first login or `/api/auth/me` call:
+```json
+{ "lamps": 3, "dimmers": 2, "ac": 1, "curtains": 1, "blinds": 1,
+  "lampNames": ["Line 1 (Main)", "Line 2 (Bedside)", "Line 3 (Bath)"],
+  "dimmerNames": ["Dimmer 1", "Dimmer 2"] }
+```
+This ensures the Room Device Names editor in Hotel Info is available immediately without requiring a superadmin sync.
+
+---
+
+### 4. Owner-Customizable Room Device Names
+
+**`client/src/components/HotelInfoPanel.jsx`** — new "Room Device Names" section:
+- Editable text input per lamp circuit and per dimmer
+- Save calls `PUT /api/hotel/device-names`
+- Authstore updated optimistically on save
+- Works for both ThingsBoard and Greentech hotels
+
+---
+
+### 5. Greentech Control Reliability Fixes
+
+**`server/adapters/greentech-adapter.js`**:
+
+**Bug 1 — Wrong field name**: Control API required lowercase `id`, not `Id`. Uppercase returned `{"code":500,"msg":null}`.
+
+**Bug 2 — Only 3 lamps mapped**: `_buildTBFormat()` had hardcoded `line1`/`line2`/`line3` cap. Removed — now maps all `d[]` entries dynamically via index.
+
+**Bug 3 — Lamp/dimmer keys not matched in `_translateToGreentechCommands()`**: Changed from exact key checks to regex `/^line\d+$/` and `/^dimmer\d+$/` — supports any count.
+
+**Additional mappings added**:
+- `powerStatus` → `pdMode` (card power / power-down mode)
+- `airStatus` → `acRunning` (AC unit actively running, separate from setpoint)
+
+---
+
+### 6. Stale Lighting Status Fix (Poll Reliability)
+
+**Root Cause 1**: `_deviceCache` in `GreentechAdapter` cached device group state (lamp `turn`, AC `modern`, etc.) forever. The 10s poller called `getAllDeviceStates()` → returned cached data → compared against same data → detected no changes → nothing broadcast.
+
+**Root Cause 2**: After sending a control command, the stale cache persisted, so the next poll still returned old state.
+
+**Fixes in `server/adapters/greentech-adapter.js`**:
+
+1. `this._deviceCache.clear()` at the top of every poll cycle — forces fresh device state from API each round.
+
+2. Poll interval: `30000` → `10000` ms (10s). 6 rooms × 1 API call each = 6 requests/cycle — manageable.
+
+3. Post-command re-poll: after `_sendControl()` completes, `_schedulePostCommandPoll(hostId, 2000)` fires 2s later:
+   - Deletes that room's device cache entry
+   - Re-fetches room list and device groups
+   - Calls `onUpdate(roomNum, hostId, flat)` → triggers SSE broadcast with confirmed state
+   - Updates `_lastPollState` baseline so next regular poll doesn't re-broadcast the same data
+
+4. `subscribe()` stores `onUpdate` and `deviceIdToRoom` as instance properties so `_schedulePostCommandPoll` has access. Cleaned up on `close()`.
+
+**Result**: Lamp/AC state reflects real device state within ≤10s at rest, and within ~2s after a command.
+
+---
+
+### 7. Modern Dashboard Tab Bar
+
+**`client/src/pages/DashboardPage.jsx`** — tab navigation redesigned:
+
+| | Before | After |
+|---|---|---|
+| Style | Flat `border-b-2` underline | Filled pill (`rounded-xl`) |
+| Active state | Brand-colored text + underline | Solid brand-color background + shadow |
+| Inactive state | Gray text, no hover feedback | Ghost with `hover:bg-gray-100` highlight |
+| Badges | Absolute-positioned blob `-top-0.5 -right-0.5` | Inline pill inside button label |
+| Icon weight | Fixed `strokeWidth` | `2.5` on active, `1.8` on inactive |
+| Bar behavior | Static, scrolls away | `sticky top-0 z-30` + `backdrop-blur-md bg-white/80` |
+
+---
+
+### Architecture Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Adapter pattern with base class | Core services (`control.service`, `room.service`) are IoT-platform-agnostic; adding a new platform requires only a new adapter file |
+| Per-hotel `platform_type` in DB | Single server can mix ThingsBoard and Greentech hotels simultaneously |
+| GET-with-body for Greentech | Greentech API requires JSON body on GET endpoints; `axios data:` field sends it correctly |
+| Chinese string mapping tables | Greentech returns/accepts Chinese characters for device states; translation tables at adapter top prevent Chinese values ever leaking to iHotel's internal API or UI |
+| `device_config` in hotels table | Single JSON blob; updated by "Discover Rooms" (real counts) or owner (custom names); avoids a separate device topology table |
+| Post-command 2s re-poll | Greentech has no WebSocket push; the 2s delay gives the RCU time to apply the command before the confirmation read |
+| Clear `_deviceCache` per poll | Simpler than TTL-based expiry; guarantees every poll cycle fetches fresh device state; acceptable API load at 10s interval |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/adapters/platform-adapter.js` | New — base adapter interface |
+| `server/adapters/tb-adapter.js` | New — ThingsBoard REST + WebSocket adapter |
+| `server/adapters/greentech-adapter.js` | New — Greentech GRMS adapter with full control, poll, config |
+| `server/adapters/index.js` | New — adapter pool (lazy per-hotel instantiation) |
+| `server/services/room.service.js` | New — room lifecycle, fetchAndBroadcast, processTelemetry |
+| `server/services/control.service.js` | New — sendControl, optimistic SSE, command verify |
+| `server/services/sse.service.js` | New — SSE connection management, broadcast helpers |
+| `server/services/state.service.js` | New — in-memory state (deviceRoomMap, lastKnownTelemetry, etc.) |
+| `server/services/audit.service.js` | New — addLog helper |
+| `server/services/scene-engine.js` | New — scene trigger evaluation |
+| `server/db.js` | Migrations 033 (platform_type) + 034 (device_config) |
+| `server/platform.js` | getDeviceConfig call on discover; Greentech hotel creation support |
+| `server/index.js` | device_config in login+me+guest; PUT /api/hotel/device-names; TB seeding on login |
+| `client/src/components/RoomModal.jsx` | Dynamic lamps/dimmers/AC/curtains from deviceConfig prop |
+| `client/src/components/HotelInfoPanel.jsx` | Room Device Names editor section |
+| `client/src/pages/GuestPortal.jsx` | Store + pass deviceConfig to RoomModal |
+| `client/src/pages/DashboardPage.jsx` | Pass deviceConfig prop; modern pill tab bar |
+
+---
+
 ## Session: 2026-03-29 — Upsell Engine + Channel Manager
 
 ### Summary
