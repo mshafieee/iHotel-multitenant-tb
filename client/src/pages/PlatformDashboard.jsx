@@ -201,13 +201,13 @@ function CreateHotelModal({ onClose, onCreate }) {
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Platform Type</label>
                 <select className="input text-sm" value={form.platformType} onChange={e => update('platformType', e.target.value)}>
-                  <option value="thingsboard">ThingsBoard</option>
+                  <option value="thingsboard">S-IoT Platform</option>
                   <option value="greentech">Greentech GRMS</option>
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">
-                  {form.platformType === 'greentech' ? 'Greentech Host URL' : 'ThingsBoard Host URL'}
+                  {form.platformType === 'greentech' ? 'Greentech Host URL' : 'S-IoT Platform Host URL'}
                 </label>
                 <input className="input text-sm font-mono" value={form.tbHost}
                   onChange={e => update('tbHost', e.target.value)}
@@ -459,7 +459,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
                     <label className="block text-[10px] text-blue-300 uppercase tracking-wide mb-1">Platform Type</label>
                     <select className="input text-sm" value={tbForm.platformType}
                       onChange={e => setTBForm(f => ({ ...f, platformType: e.target.value }))}>
-                      <option value="thingsboard">ThingsBoard</option>
+                      <option value="thingsboard">S-IoT Platform</option>
                       <option value="greentech">Greentech GRMS</option>
                     </select>
                   </div>
@@ -480,7 +480,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.platformType === 'greentech' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {hotel.platformType === 'greentech' ? 'Greentech GRMS' : 'ThingsBoard'}
+                      {hotel.platformType === 'greentech' ? 'Greentech GRMS' : 'S-IoT Platform'}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.iotConfigured ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                       {hotel.iotConfigured ? 'Configured' : 'Not configured'}
@@ -516,12 +516,12 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
               </div>
             </div>
 
-            {/* Discover rooms from TB */}
+            {/* Discover rooms from IoT platform */}
             {hotel.iotConfigured && (
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Auto-Discover Rooms from IoT Platform</p>
                 <p className="text-xs text-gray-400 mb-3">
-                  Sign into {hotel.platformType === 'greentech' ? 'Greentech GRMS' : 'ThingsBoard'}, scan for all room devices, and map them automatically.
+                  Sign into {hotel.platformType === 'greentech' ? 'Greentech GRMS' : 'S-IoT Platform'}, scan for all room devices, and map them automatically.
                 </p>
                 {discoverMsg && (
                   <p className={`text-xs mb-2 ${discoverMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>{discoverMsg}</p>
@@ -1206,7 +1206,7 @@ function SuperAdminDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <MetricCard icon={Building2} label="Hotels"      value={metrics?.totalHotels ?? '—'}      color="text-brand-600" />
           <MetricCard icon={BedDouble} label="Rooms"       value={metrics?.totalRooms ?? '—'}        color="text-blue-500" />
-          <MetricCard icon={Activity}  label="TB Linked"   value={metrics?.configuredRooms ?? '—'}   color="text-green-500" />
+          <MetricCard icon={Activity}  label="IoT Linked"  value={metrics?.configuredRooms ?? '—'}   color="text-green-500" />
           <MetricCard icon={Users}     label="Staff"       value={metrics?.totalUsers ?? '—'}        color="text-purple-500" />
           <MetricCard icon={BedDouble} label="Active Res." value={metrics?.activeReservations ?? '—'} color="text-amber-500" />
           <MetricCard icon={DollarSign} label="Revenue"    value={fmt(metrics?.totalRevenue)}        color="text-emerald-600" />
@@ -1257,7 +1257,7 @@ function SuperAdminDashboard() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Plan</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Rooms</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Staff</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">TB</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">IoT</th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Status</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -1284,7 +1284,7 @@ function SuperAdminDashboard() {
                     <td className="px-4 py-3 text-center">
                       {hotel.iotConfigured ? (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.platformType === 'greentech' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
-                          {hotel.platformType === 'greentech' ? 'Greentech' : 'ThingsBoard'}
+                          {hotel.platformType === 'greentech' ? 'Greentech' : 'S-IoT Platform'}
                         </span>
                       ) : (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">No IoT</span>
