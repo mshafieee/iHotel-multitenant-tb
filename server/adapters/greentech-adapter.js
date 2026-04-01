@@ -360,14 +360,16 @@ class GreentechAdapter extends PlatformAdapter {
       await this.authenticate();
       const groups = await this._getDeviceGroups(firstRoomId);
       return {
-        lamps:    (groups.d   || []).length,
-        dimmers:  (groups.tgd || []).length,
-        ac:       (groups.wk  || []).length > 0 ? 1 : 0,
-        curtains: (groups.cl  || []).length > 0 ? 1 : 0,
-        blinds:   (groups.cl  || []).length > 1 ? 1 : 0,
+        lamps:      (groups.d   || []).length,
+        dimmers:    (groups.tgd || []).length,
+        ac:         (groups.wk  || []).length > 0 ? 1 : 0,
+        curtains:   (groups.cl  || []).length > 0 ? 1 : 0,
+        blinds:     (groups.cl  || []).length > 1 ? 1 : 0,
+        lampNames:  (groups.d   || []).map(d => d.deviceName || ''),
+        dimmerNames:(groups.tgd || []).map(d => d.deviceName || ''),
       };
     } catch {
-      return { lamps: 2, dimmers: 1, ac: 1, curtains: 1, blinds: 0 };
+      return { lamps: 2, dimmers: 1, ac: 1, curtains: 1, blinds: 0, lampNames: [], dimmerNames: [] };
     }
   }
 

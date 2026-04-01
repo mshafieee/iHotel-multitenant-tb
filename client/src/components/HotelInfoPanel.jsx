@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../utils/api';
 import useLangStore from '../store/langStore';
 import useHotelStore from '../store/hotelStore';
+import useAuthStore from '../store/authStore';
 import { t } from '../i18n';
 import { Save, Upload, Trash2, Plus, Globe, ExternalLink, Link2, Copy, Check, Eye, EyeOff } from 'lucide-react';
 
@@ -58,6 +59,20 @@ export default function HotelInfoPanel() {
   const [copiedId, setCopiedId] = useState(null);      // which field was just copied
   const [showSecrets, setShowSecrets] = useState({});  // { [channelId]: bool }
 
+  // Device name customisation
+  const authUser = useAuthStore(s => s.user);
+  const [lampNames, setLampNames]     = useState([]);
+  const [dimmerNames, setDimmerNames] = useState([]);
+  const [namesSaving, setNamesSaving] = useState(false);
+  const [namesSaved, setNamesSaved]   = useState(false);
+
+  useEffect(() => {
+    const cfg = authUser?.deviceConfig;
+    if (!cfg) return;
+    setLampNames(Array.from({ length: cfg.lamps || 0 }, (_, i) => cfg.lampNames?.[i] || ''));
+    setDimmerNames(Array.from({ length: cfg.dimmers || 0 }, (_, i) => cfg.dimmerNames?.[i] || ''));
+  }, [authUser?.deviceConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { load(); loadCatalog(); loadStats(); fetchChannels(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
@@ -97,6 +112,23 @@ export default function HotelInfoPanel() {
       setTimeout(() => setSaved(false), 2000);
     } catch (e) { alert('Save failed: ' + e.message); }
     finally { setSaving(false); }
+  }
+
+  async function saveDeviceNames() {
+    setNamesSaving(true);
+    try {
+      const result = await api('/api/hotel/device-names', {
+        method: 'PUT',
+        body: JSON.stringify({ lampNames, dimmerNames }),
+      });
+      // Update auth store so RoomModal picks up new names immediately
+      useAuthStore.setState(s => ({
+        user: s.user ? { ...s.user, deviceConfig: result.deviceConfig } : s.user
+      }));
+      setNamesSaved(true);
+      setTimeout(() => setNamesSaved(false), 2000);
+    } catch (e) { alert('Save failed: ' + e.message); }
+    finally { setNamesSaving(false); }
   }
 
   async function saveRoomTypeInfo(type, info) {
@@ -896,6 +928,89 @@ export default function HotelInfoPanel() {
           </div>
         )}
       </div>
+
+      {/* ── Room Device Names ─────────────────────────────────────────────── */}
+      {authUser?.deviceConfig && (lampNames.length > 0 || dimmerNames.length > 0) && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-gray-700">
+              💡 {lang === 'ar' ? 'أسماء أجهزة الغرفة' : 'Room Device Names'}
+            </h3>
+            <button
+              onClick={saveDeviceNames}
+              disabled={namesSaving}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                namesSaved
+                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                  : 'bg-brand-500 text-white hover:bg-brand-600'
+              }`}
+            >
+              {namesSaved ? <><Check size={12} /> {lang === 'ar' ? 'تم الحفظ' : 'Saved'}</> : <><Save size={12} /> {lang === 'ar' ? 'حفظ' : 'Save'}</>}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-3">
+            {lang === 'ar'
+              ? 'خصّص اسم كل مصباح ومعدِّل كما يظهر للضيف وللموظفين في واجهة التحكم.'
+              : 'Customise the label shown for each light and dimmer in the room control UI (staff and guest views).'}
+          </p>
+
+          {lampNames.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                {lang === 'ar' ? 'المصابيح' : 'Lights'}
+              </div>
+              <div className="space-y-2">
+                {lampNames.map((name, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="w-16 text-[11px] text-gray-400 shrink-0">
+                      {lang === 'ar' ? `ضوء ${i + 1}` : `Light ${i + 1}`}
+                    </span>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => {
+                        const next = [...lampNames];
+                        next[i] = e.target.value;
+                        setLampNames(next);
+                      }}
+                      placeholder={lang === 'ar' ? `إضاءة ${i + 1}` : `Light ${i + 1}`}
+                      className="flex-1 input-field text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dimmerNames.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                {lang === 'ar' ? 'معدِّلات الإضاءة' : 'Dimmers'}
+              </div>
+              <div className="space-y-2">
+                {dimmerNames.map((name, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="w-16 text-[11px] text-gray-400 shrink-0">
+                      {lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`}
+                    </span>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={e => {
+                        const next = [...dimmerNames];
+                        next[i] = e.target.value;
+                        setDimmerNames(next);
+                      }}
+                      placeholder={lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`}
+                      className="flex-1 input-field text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

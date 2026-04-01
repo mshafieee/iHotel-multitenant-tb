@@ -263,6 +263,22 @@ app.post('/api/devices/:id/rpc', authenticate, requireRole('owner', 'admin'), as
 
 // (fetchAndBroadcast is now in room.service — imported at top)
 
+// ── PUT /api/hotel/device-names ────────────────────────────────────────────
+// Lets owner/admin rename individual lamps and dimmers in the room UI.
+app.put('/api/hotel/device-names', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId = req.user.hotelId;
+  const { lampNames, dimmerNames } = req.body;
+  if (!Array.isArray(lampNames) && !Array.isArray(dimmerNames)) {
+    return res.status(400).json({ error: 'lampNames or dimmerNames array required' });
+  }
+  const hotelRow = db.prepare('SELECT device_config FROM hotels WHERE id = ?').get(hotelId);
+  const current  = hotelRow?.device_config ? JSON.parse(hotelRow.device_config) : {};
+  if (Array.isArray(lampNames))   current.lampNames   = lampNames.map(n => String(n || '').trim());
+  if (Array.isArray(dimmerNames)) current.dimmerNames = dimmerNames.map(n => String(n || '').trim());
+  db.prepare('UPDATE hotels SET device_config = ? WHERE id = ?').run(JSON.stringify(current), hotelId);
+  res.json({ deviceConfig: current });
+});
+
 // Hotel overview — always responds instantly with cached snapshot.
 // ── GET /api/hotel/meter-stats ─────────────────────────────────────────────
 // Returns per-room consumption since last reset and current-month hotel totals.

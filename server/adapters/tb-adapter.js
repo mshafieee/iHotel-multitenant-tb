@@ -238,7 +238,11 @@ class TBAdapter extends PlatformAdapter {
   // ── Device config (used for dynamic UI rendering) ───────────────────────────
   // TB doesn't expose per-room device topology, so we return standard defaults.
   async getDeviceConfig() {
-    return { lamps: 3, dimmers: 2, ac: 1, curtains: 1, blinds: 1 };
+    return {
+      lamps: 3, dimmers: 2, ac: 1, curtains: 1, blinds: 1,
+      lampNames:   ['Line 1 (Main)', 'Line 2 (Bedside)', 'Line 3 (Bath)'],
+      dimmerNames: ['Dimmer 1', 'Dimmer 2'],
+    };
   }
 
   getWsUrl() {

@@ -446,9 +446,11 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   );
 
   const lampLabel = (i) => {
+    if (cfg.lampNames?.[i]) return cfg.lampNames[i];
     const staticLabels = [T('rm_line1'), T('rm_line2'), T('rm_line3')];
     return i < staticLabels.length ? staticLabels[i] : (lang === 'ar' ? `إضاءة ${i + 1}` : `Light ${i + 1}`);
   };
+  const dimmerLabel = (i) => cfg.dimmerNames?.[i] || (lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`);
   const lampKeys   = Array.from({ length: cfg.lamps },   (_, i) => `line${i + 1}`);
   const dimmerKeys = Array.from({ length: cfg.dimmers },  (_, i) => `dimmer${i + 1}`);
 
@@ -473,7 +475,8 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
             <div className="space-y-2 pt-1">
               {dimmerKeys.map((k, i) => (
                 <div key={k} className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${r[k] > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${r[k] > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'}`}
+                    title={dimmerLabel(i)}>
                     {i + 1}
                   </div>
                   <input type="range" min="0" max="100" value={r[k] || 0}
@@ -504,7 +507,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
           ))}
           {dimmerKeys.map((k, i) => (
             <div key={k} className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-gray-600">{lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`}</span>
+              <span className="text-xs text-gray-600">{dimmerLabel(i)}</span>
               <div className="flex items-center gap-2 flex-1 ml-4">
                 <input type="range" min="0" max="100" value={r[k] || 0}
                   onChange={e => send('setLines', { [k]: +e.target.value })}
