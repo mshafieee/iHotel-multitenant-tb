@@ -48,7 +48,7 @@ const {
   authenticatePlatformAny, authenticateGroupUser, generateGroupUserToken
 } = require('./auth');
 const { seedHotelRates, seedHotelUpsellOffers, seedHotelUsers, seedRoomDefaultScenes } = require('./db');
-const { TBAdapter } = require('./adapters/tb-adapter');
+// Adapter is resolved per-hotel via _pool (set by init()) — no direct import needed
 
 const router = express.Router();
 let _db   = null;
@@ -295,11 +295,9 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
   }
 
   try {
-    const adapter = new TBAdapter({
-      host: hotel.iot_host || hotel.tb_host,
-      username: hotel.iot_user || hotel.tb_user,
-      password: hotel.iot_pass || hotel.tb_pass
-    });
+    // Use the pool so the correct adapter class is selected per hotel's platform_type
+    const adapter = _pool.getAdapter(hotel.id, _db);
+    if (!adapter) return res.status(400).json({ error: 'IoT platform credentials not configured for this hotel' });
     const devices = await adapter.listDevices();
 
     const ins = _db.prepare(`INSERT OR REPLACE INTO hotel_rooms
