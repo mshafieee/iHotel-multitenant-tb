@@ -77,10 +77,10 @@ const usePlatformStore = create((set, get) => ({
     }
   },
 
-  createHotel: async ({ name, slug, contactEmail, plan, tbHost, tbUser, tbPass }) => {
+  createHotel: async ({ name, slug, contactEmail, plan, tbHost, tbUser, tbPass, platformType }) => {
     const result = await platformApi('/api/platform/hotels', {
       method: 'POST',
-      body: JSON.stringify({ name, slug, contactEmail, plan, tbHost, tbUser, tbPass })
+      body: JSON.stringify({ name, slug, contactEmail, plan, tbHost, tbUser, tbPass, platformType })
     });
     await get().fetchHotels();
     return result; // includes defaultUserPassword

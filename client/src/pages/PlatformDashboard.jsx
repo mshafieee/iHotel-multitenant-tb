@@ -112,7 +112,7 @@ function ChangePasswordModal({ title, requireCurrent, onSave, onClose }) {
 
 // ── Create Hotel Modal ───────────────────────────────────────────────────────
 function CreateHotelModal({ onClose, onCreate }) {
-  const [form, setForm] = useState({ name: '', slug: '', contactEmail: '', plan: 'starter', tbHost: '', tbUser: '', tbPass: '' });
+  const [form, setForm] = useState({ name: '', slug: '', contactEmail: '', plan: 'starter', platformType: 'thingsboard', tbHost: '', tbUser: '', tbPass: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -196,21 +196,32 @@ function CreateHotelModal({ onClose, onCreate }) {
           </div>
 
           <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">IoT Platform Credentials <span className="text-gray-400 normal-case font-normal">(optional — can set later)</span></p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">IoT Platform <span className="text-gray-400 normal-case font-normal">(optional — can set later)</span></p>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">TB Host URL</label>
+                <label className="block text-xs text-gray-400 mb-1">Platform Type</label>
+                <select className="input text-sm" value={form.platformType} onChange={e => update('platformType', e.target.value)}>
+                  <option value="thingsboard">ThingsBoard</option>
+                  <option value="greentech">Greentech GRMS</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  {form.platformType === 'greentech' ? 'Greentech Host URL' : 'ThingsBoard Host URL'}
+                </label>
                 <input className="input text-sm font-mono" value={form.tbHost}
-                  onChange={e => update('tbHost', e.target.value)} placeholder="http://iot-platform.example.com:8080" />
+                  onChange={e => update('tbHost', e.target.value)}
+                  placeholder={form.platformType === 'greentech' ? 'https://grms.example.com:4430' : 'http://tb.example.com:8080'} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">TB Username</label>
+                  <label className="block text-xs text-gray-400 mb-1">Username</label>
                   <input className="input text-sm" value={form.tbUser}
-                    onChange={e => update('tbUser', e.target.value)} placeholder="admin@hotel.com" />
+                    onChange={e => update('tbUser', e.target.value)}
+                    placeholder={form.platformType === 'greentech' ? 'admin' : 'admin@hotel.com'} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">TB Password</label>
+                  <label className="block text-xs text-gray-400 mb-1">Password</label>
                   <input className="input text-sm" type="password" value={form.tbPass}
                     onChange={e => update('tbPass', e.target.value)} placeholder="••••••••" />
                 </div>
@@ -301,7 +312,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'frontdesk', fullName: '' });
   const [userMsg, setUserMsg] = useState('');
   const [editTB, setEditTB] = useState(false);
-  const [tbForm, setTBForm] = useState({ tbHost: '', tbUser: '', tbPass: '' });
+  const [tbForm, setTBForm] = useState({ platformType: 'thingsboard', tbHost: '', tbUser: '', tbPass: '' });
   const [changePwdUser, setChangePwdUser] = useState(null); // { id, username }
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoMsg, setLogoMsg] = useState('');
@@ -311,7 +322,7 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
     const [h, u] = await Promise.all([fetchHotelDetail(hotelId), fetchUsers(hotelId)]);
     setHotel(h);
     setUsers(u);
-    setTBForm({ tbHost: h?.tbHost || '', tbUser: h?.tbUser || '', tbPass: '' });
+    setTBForm({ platformType: h?.platformType || 'thingsboard', tbHost: h?.tbHost || '', tbUser: h?.tbUser || '', tbPass: '' });
     setLoading(false);
   }, [hotelId]);
 
@@ -444,33 +455,44 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
               </div>
               {editTB ? (
                 <form onSubmit={handleSaveTB} className="space-y-2 mt-2">
+                  <div>
+                    <label className="block text-[10px] text-blue-300 uppercase tracking-wide mb-1">Platform Type</label>
+                    <select className="input text-sm" value={tbForm.platformType}
+                      onChange={e => setTBForm(f => ({ ...f, platformType: e.target.value }))}>
+                      <option value="thingsboard">ThingsBoard</option>
+                      <option value="greentech">Greentech GRMS</option>
+                    </select>
+                  </div>
                   <input className="input text-sm font-mono" value={tbForm.tbHost}
                     onChange={e => setTBForm(f => ({ ...f, tbHost: e.target.value }))}
-                    placeholder="http://iot-platform.example.com:8080" />
+                    placeholder={tbForm.platformType === 'greentech' ? 'https://grms.example.com:4430' : 'http://tb.example.com:8080'} />
                   <div className="grid grid-cols-2 gap-2">
                     <input className="input text-sm" value={tbForm.tbUser}
                       onChange={e => setTBForm(f => ({ ...f, tbUser: e.target.value }))}
-                      placeholder="admin@hotel.com" />
+                      placeholder={tbForm.platformType === 'greentech' ? 'admin' : 'admin@hotel.com'} />
                     <input className="input text-sm" type="password" value={tbForm.tbPass}
                       onChange={e => setTBForm(f => ({ ...f, tbPass: e.target.value }))}
                       placeholder="New password (leave blank to keep)" />
                   </div>
-                  <button type="submit" className="btn btn-primary text-sm w-full">Save TB Credentials</button>
+                  <button type="submit" className="btn btn-primary text-sm w-full">Save IoT Credentials</button>
                 </form>
               ) : (
                 <div className="space-y-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.platformType === 'greentech' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {hotel.platformType === 'greentech' ? 'Greentech GRMS' : 'ThingsBoard'}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.iotConfigured ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {hotel.iotConfigured ? 'Configured' : 'Not configured'}
+                    </span>
+                  </div>
                   <div>
                     <p className="text-[10px] text-blue-300 uppercase tracking-wide">Host</p>
-                    <p className="font-mono text-sm text-blue-800 break-all">{hotel.tbHost || '—'}</p>
+                    <p className="font-mono text-sm text-blue-800 break-all">{hotel.iotHost || hotel.tbHost || '—'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-blue-300 uppercase tracking-wide">Username</p>
-                    <p className="font-mono text-sm text-blue-800">{hotel.tbUser || '—'}</p>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.tbConfigured ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {hotel.tbConfigured ? 'Configured' : 'Not configured'}
-                    </span>
+                    <p className="font-mono text-sm text-blue-800">{hotel.iotUser || hotel.tbUser || '—'}</p>
                   </div>
                 </div>
               )}
@@ -495,17 +517,19 @@ function HotelDetail({ hotelId, onClose, onImportRooms }) {
             </div>
 
             {/* Discover rooms from TB */}
-            {hotel.tbConfigured && (
+            {hotel.iotConfigured && (
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Auto-Discover Rooms from IoT Platform</p>
-                <p className="text-xs text-gray-400 mb-3">Scan the IoT platform for room devices and map them automatically.</p>
+                <p className="text-xs text-gray-400 mb-3">
+                  Sign into {hotel.platformType === 'greentech' ? 'Greentech GRMS' : 'ThingsBoard'}, scan for all room devices, and map them automatically.
+                </p>
                 {discoverMsg && (
                   <p className={`text-xs mb-2 ${discoverMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>{discoverMsg}</p>
                 )}
                 <button onClick={handleDiscover} disabled={discovering}
                   className="btn btn-primary text-sm flex items-center gap-2">
                   <Wifi size={14} />
-                  {discovering ? 'Discovering...' : 'Discover Rooms from TB'}
+                  {discovering ? 'Discovering...' : `Discover Rooms`}
                 </button>
               </div>
             )}
@@ -1258,9 +1282,13 @@ function SuperAdminDashboard() {
                     <td className="px-4 py-3 text-right text-gray-600">{hotel.roomCount}</td>
                     <td className="px-4 py-3 text-right text-gray-600">{hotel.userCount}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.tbConfigured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {hotel.tbConfigured ? 'Connected' : 'No IoT'}
-                      </span>
+                      {hotel.iotConfigured ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.platformType === 'greentech' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                          {hotel.platformType === 'greentech' ? 'Greentech' : 'ThingsBoard'}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">No IoT</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hotel.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
