@@ -571,3 +571,277 @@ describe('POST /api/guest/login', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DEVICE NAMES (new — migration 034 / platform integration)
+// ═════════════════════════════════════════════════════════════════════════════
+describe('PUT /api/hotel/device-names', () => {
+  test('requires auth → 401', async () => {
+    expect((await request(app).put('/api/hotel/device-names')
+      .send({ lampNames: ['A', 'B', 'C'] })).status).toBe(401);
+  });
+
+  test('frontdesk is blocked → 403', async () => {
+    const res = await request(app).put('/api/hotel/device-names')
+      .set(auth(frontdeskToken()))
+      .send({ lampNames: ['A', 'B', 'C'] });
+    expect(res.status).toBe(403);
+  });
+
+  test('owner can update lampNames → 200 with deviceConfig', async () => {
+    const res = await request(app).put('/api/hotel/device-names')
+      .set(auth(ownerToken()))
+      .send({ lampNames: ['Main Light', 'Bedside', 'Bath'] });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('deviceConfig');
+    expect(res.body.deviceConfig.lampNames).toEqual(['Main Light', 'Bedside', 'Bath']);
+  });
+
+  test('admin can update dimmerNames → 200', async () => {
+    const res = await request(app).put('/api/hotel/device-names')
+      .set(auth(adminToken()))
+      .send({ dimmerNames: ['Reading', 'Ambient'] });
+    expect(res.status).toBe(200);
+    expect(res.body.deviceConfig.dimmerNames).toEqual(['Reading', 'Ambient']);
+  });
+
+  test('missing both arrays → 400', async () => {
+    const res = await request(app).put('/api/hotel/device-names')
+      .set(auth(ownerToken()))
+      .send({ irrelevantField: 'x' });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// UPSELL
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Upsell API', () => {
+  test('GET /api/upsell/catalog requires auth → 401', async () => {
+    expect((await request(app).get('/api/upsell/catalog')).status).toBe(401);
+  });
+
+  test('GET /api/upsell/catalog returns array for owner', async () => {
+    const res = await request(app).get('/api/upsell/catalog').set(auth(ownerToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('GET /api/upsell/pending requires auth → 401', async () => {
+    expect((await request(app).get('/api/upsell/pending')).status).toBe(401);
+  });
+
+  test('GET /api/upsell/pending returns array for frontdesk', async () => {
+    const res = await request(app).get('/api/upsell/pending').set(auth(frontdeskToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('GET /api/upsell/stats requires auth → 401', async () => {
+    expect((await request(app).get('/api/upsell/stats')).status).toBe(401);
+  });
+
+  test('GET /api/upsell/stats returns array for owner', async () => {
+    const res = await request(app).get('/api/upsell/stats').set(auth(ownerToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('GET /api/upsell/stats blocked for frontdesk → 403', async () => {
+    expect((await request(app).get('/api/upsell/stats').set(auth(frontdeskToken()))).status).toBe(403);
+  });
+
+  test('POST /api/upsell/catalog creates offer (owner)', async () => {
+    const res = await request(app).post('/api/upsell/catalog')
+      .set(auth(ownerToken()))
+      .send({ name: 'Breakfast', nameAr: 'فطور', category: 'FOOD', price: 50, unit: 'one-time' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id');
+  });
+
+  test('POST /api/upsell/catalog blocked for frontdesk → 403', async () => {
+    const res = await request(app).post('/api/upsell/catalog')
+      .set(auth(frontdeskToken()))
+      .send({ name: 'Spa', category: 'SPA', price: 100, unit: 'one-time' });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHANNEL MANAGER
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Channel Manager API', () => {
+  test('GET /api/channel/connections requires auth → 401', async () => {
+    expect((await request(app).get('/api/channel/connections')).status).toBe(401);
+  });
+
+  test('GET /api/channel/connections returns array for owner', async () => {
+    const res = await request(app).get('/api/channel/connections').set(auth(ownerToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('POST /api/channel/connections creates channel (owner)', async () => {
+    const res = await request(app).post('/api/channel/connections')
+      .set(auth(ownerToken()))
+      .send({ name: 'Booking.com', type: 'ical', webhookSecret: 'secret123' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body).toHaveProperty('ical_token');
+  });
+
+  test('POST /api/channel/connections blocked for frontdesk → 403', async () => {
+    const res = await request(app).post('/api/channel/connections')
+      .set(auth(frontdeskToken()))
+      .send({ name: 'Airbnb', type: 'ical' });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HOTEL PROFILE
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Hotel Profile API', () => {
+  test('GET /api/hotel/profile requires auth → 401', async () => {
+    expect((await request(app).get('/api/hotel/profile')).status).toBe(401);
+  });
+
+  test('GET /api/hotel/profile returns profile object for owner', async () => {
+    const res = await request(app).get('/api/hotel/profile').set(auth(ownerToken()));
+    expect(res.status).toBe(200);
+    expect(typeof res.body).toBe('object');
+  });
+
+  test('PUT /api/hotel/profile requires auth → 401', async () => {
+    expect((await request(app).put('/api/hotel/profile').send({ description: 'test' })).status).toBe(401);
+  });
+
+  test('PUT /api/hotel/profile updates profile (owner) → 200', async () => {
+    const res = await request(app).put('/api/hotel/profile')
+      .set(auth(ownerToken()))
+      .send({ description: 'A fine hotel', checkInTime: '14:00', checkOutTime: '12:00' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SCENES
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Scenes API', () => {
+  test('GET /api/scenes requires auth → 401', async () => {
+    expect((await request(app).get('/api/scenes')).status).toBe(401);
+  });
+
+  test('GET /api/scenes returns array for owner', async () => {
+    const res = await request(app).get('/api/scenes').set(auth(ownerToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('GET /api/scenes blocked for frontdesk → 403', async () => {
+    expect((await request(app).get('/api/scenes').set(auth(frontdeskToken()))).status).toBe(403);
+  });
+
+  test('POST /api/scenes creates a scene (owner)', async () => {
+    const res = await request(app).post('/api/scenes')
+      .set(auth(ownerToken()))
+      .send({
+        name: 'Night Mode', room: '101', triggerType: 'time',
+        triggerValue: '23:00', actions: [{ key: 'line1', value: false }],
+      });
+    expect([200, 201]).toContain(res.status);
+    expect(res.body).toHaveProperty('id');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HOUSEKEEPING
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Housekeeping API', () => {
+  test('GET /api/housekeeping/queue requires auth → 401', async () => {
+    expect((await request(app).get('/api/housekeeping/queue')).status).toBe(401);
+  });
+
+  test('GET /api/housekeeping/queue returns array for admin', async () => {
+    const res = await request(app).get('/api/housekeeping/queue').set(auth(adminToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('GET /api/housekeeping/assignments requires auth → 401', async () => {
+    expect((await request(app).get('/api/housekeeping/assignments')).status).toBe(401);
+  });
+
+  test('GET /api/housekeeping/assignments returns array for frontdesk', async () => {
+    const res = await request(app).get('/api/housekeeping/assignments').set(auth(frontdeskToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MAINTENANCE
+// ═════════════════════════════════════════════════════════════════════════════
+describe('Maintenance API', () => {
+  test('GET /api/maintenance/tickets requires auth → 401', async () => {
+    expect((await request(app).get('/api/maintenance/tickets')).status).toBe(401);
+  });
+
+  test('GET /api/maintenance/tickets returns array for admin', async () => {
+    const res = await request(app).get('/api/maintenance/tickets').set(auth(adminToken()));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('POST /api/maintenance/tickets creates ticket (any authenticated staff)', async () => {
+    const res = await request(app).post('/api/maintenance/tickets')
+      .set(auth(frontdeskToken()))
+      .send({ room_number: '101', category: 'AC', priority: 'medium', description: 'AC not cooling' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id');
+  });
+
+  test('POST /api/maintenance/tickets requires auth → 401', async () => {
+    const res = await request(app).post('/api/maintenance/tickets')
+      .send({ room_number: '101', category: 'AC', priority: 'medium', description: 'test' });
+    expect(res.status).toBe(401);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TOKEN REFRESH
+// ═════════════════════════════════════════════════════════════════════════════
+describe('POST /api/auth/refresh', () => {
+  test('missing token → 400 or 401', async () => {
+    const res = await request(app).post('/api/auth/refresh').send({});
+    expect([400, 401]).toContain(res.status);
+  });
+
+  test('invalid refresh token → 401', async () => {
+    const res = await request(app).post('/api/auth/refresh')
+      .send({ refreshToken: 'bad.token.value' });
+    expect(res.status).toBe(401);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PUBLIC HOTEL INFO
+// ═════════════════════════════════════════════════════════════════════════════
+describe('GET /api/public/hotel', () => {
+  test('returns hotel name for valid slug', async () => {
+    const res = await request(app).get(`/api/public/hotel?slug=${TEST_HOTEL_SLUG}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('name');
+  });
+
+  test('returns 404 for unknown slug', async () => {
+    const res = await request(app).get('/api/public/hotel?slug=doesnotexist');
+    expect(res.status).toBe(404);
+  });
+
+  test('requires slug parameter → 400', async () => {
+    const res = await request(app).get('/api/public/hotel');
+    expect(res.status).toBe(400);
+  });
+});

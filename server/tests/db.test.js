@@ -270,3 +270,170 @@ describe('shifts schema', () => {
     expect(col.dflt_value).toContain('open');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — hotels IoT / multi-platform columns (migrations 033–034)', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  function columnNames(table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  }
+
+  test('hotels has platform_type column (migration 033)', () => {
+    expect(columnNames('hotels')).toContain('platform_type');
+  });
+
+  test('hotels has device_config column (migration 034)', () => {
+    expect(columnNames('hotels')).toContain('device_config');
+  });
+
+  test('platform_type defaults to "thingsboard"', () => {
+    const col = db.prepare("PRAGMA table_info(hotels)").all().find(c => c.name === 'platform_type');
+    expect(col.dflt_value).toBe("'thingsboard'");
+  });
+
+  test('device_config defaults to NULL', () => {
+    const col = db.prepare("PRAGMA table_info(hotels)").all().find(c => c.name === 'device_config');
+    expect(col.dflt_value).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — upsell_offers table', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  test('upsell_offers table exists', () => {
+    const exists = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='upsell_offers'").get();
+    expect(exists).toBe(true);
+  });
+
+  function columnNames(table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  }
+
+  ['id', 'hotel_id', 'name', 'price', 'category', 'active'].forEach(col => {
+    test(`upsell_offers has column: ${col}`, () => {
+      expect(columnNames('upsell_offers')).toContain(col);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — reservation_extras table', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  test('reservation_extras table exists', () => {
+    const exists = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='reservation_extras'").get();
+    expect(exists).toBe(true);
+  });
+
+  function columnNames(table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  }
+
+  ['id', 'reservation_id', 'offer_id', 'quantity', 'status'].forEach(col => {
+    test(`reservation_extras has column: ${col}`, () => {
+      expect(columnNames('reservation_extras')).toContain(col);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — channel_connections table', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  test('channel_connections table exists', () => {
+    const exists = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='channel_connections'").get();
+    expect(exists).toBe(true);
+  });
+
+  function columnNames(table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  }
+
+  ['id', 'hotel_id', 'name', 'type', 'ical_token', 'active'].forEach(col => {
+    test(`channel_connections has column: ${col}`, () => {
+      expect(columnNames('channel_connections')).toContain(col);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — housekeeping_assignments table', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  test('housekeeping_assignments table exists', () => {
+    const exists = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='housekeeping_assignments'").get();
+    expect(exists).toBe(true);
+  });
+
+  function columnNames(table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  }
+
+  ['id', 'hotel_id', 'room', 'status'].forEach(col => {
+    test(`housekeeping_assignments has column: ${col}`, () => {
+      expect(columnNames('housekeeping_assignments')).toContain(col);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — maintenance_tickets table', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  test('maintenance_tickets table exists', () => {
+    const exists = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='maintenance_tickets'").get();
+    expect(exists).toBe(true);
+  });
+
+  function columnNames(table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+  }
+
+  ['id', 'hotel_id', 'room_number', 'category', 'priority', 'description', 'status'].forEach(col => {
+    test(`maintenance_tickets has column: ${col}`, () => {
+      expect(columnNames('maintenance_tickets')).toContain(col);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('initDB — migrations table (new entries 033–034)', () => {
+  let db;
+  beforeAll(() => { db = initDB(); });
+
+  function getMigrationIds() {
+    return db.prepare('SELECT id FROM migrations').all().map(r => r.id);
+  }
+
+  test('migration 033_platform_type is recorded', () => {
+    expect(getMigrationIds()).toContain('033_platform_type');
+  });
+
+  test('migration 034_device_config is recorded', () => {
+    expect(getMigrationIds()).toContain('034_device_config');
+  });
+
+  test('migration 025_upsell_offers is recorded', () => {
+    expect(getMigrationIds()).toContain('025_upsell_offers');
+  });
+
+  test('migration 031_channel_connections is recorded', () => {
+    expect(getMigrationIds()).toContain('031_channel_connections');
+  });
+
+  test('migration 020_housekeeping_assignments is recorded', () => {
+    expect(getMigrationIds()).toContain('020_housekeeping_assignments');
+  });
+
+  test('migration 024_maintenance_tickets is recorded', () => {
+    expect(getMigrationIds()).toContain('024_maintenance_tickets');
+  });
+});
