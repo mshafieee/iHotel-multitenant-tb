@@ -8,7 +8,7 @@
 
 ## 1. About iHotel
 
-iHotel is a multi-tenant cloud-based Smart Hotel Management Platform. It connects to physical Room Control Units (RCUs) through a universal IoT adapter layer, currently supporting Greentech GRMS and ThingsBoard CE/Cloud. A single iHotel server simultaneously manages multiple hotels, each with their own staff dashboard, guest portal, and automation engine — all communicating with physical hardware in real time.
+iHotel is a multi-tenant cloud-based Smart Hotel Management Platform. It connects to physical Room Control Units (RCUs) through a universal IoT adapter layer. A single iHotel server simultaneously manages multiple hotels, each with their own staff dashboard, guest portal, and automation engine — all communicating with physical hardware in real time.
 
 ---
 
