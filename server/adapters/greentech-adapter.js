@@ -540,20 +540,6 @@ class GreentechAdapter extends PlatformAdapter {
     const tb   = {};
     const wrap = v => [{ value: v }];
 
-    // ── Debug: raw RCU values per room ────────────────────────────────────
-    console.log(`[Greentech][room ${roomRow.roomNum ?? roomRow.hostId ?? '?'}] RAW:`, {
-      checkStatus: roomRow.checkStatus,
-      lockStatus:  roomRow.lockStatus,
-      outStatus:   roomRow.outStatus,
-      powerStatus: roomRow.powerStatus,
-      airStatus:   roomRow.airStatus,
-      hoststatus:  roomRow.hoststatus,
-      lamps:       (groups.d   || []).map(d => ({ name: d.deviceName, turn: d.turn })),
-      dimmers:     (groups.tgd || []).map(d => ({ name: d.deviceName, turn: d.turn, brightness: d.brightness })),
-      ac:          (groups.wk  || []).map(d => ({ name: d.deviceName, turn: d.turn, mode: d.modern, temp: d.temperature, curTemp: d.curTemp, fan: d.fatSpeed })),
-      fw:          (groups.fw  || []).map(d => ({ name: d.deviceName, id: d.id, turn: d.turn })),
-    });
-
     // ── Room-level status fields (Chinese values from live API) ────────────
     // rcuOccupied intentionally disabled — Greentech checkStatus is unreliable.
     // Will be re-enabled once the RCU side is stabilised.

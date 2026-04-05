@@ -1709,14 +1709,7 @@ app.post('/api/simulator/inject', authenticate, requireRole('owner', 'admin'), a
   // Broadcast SSE immediately (works even without ThingsBoard)
   sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: coerced });
 
-  // Auto-close door after 5 seconds when simulator opens it
-  if (coerced.doorStatus === true) {
-    setTimeout(() => {
-      const snap = getLastOverviewRooms(hotelId);
-      if (snap[room]) snap[room].doorStatus = false;
-      sseBroadcast(hotelId, 'telemetry', { room, deviceId: devId, data: { doorStatus: false } });
-    }, 5000);
-  }
+  // Door contact state persists until explicitly closed via simulator — no auto-reset
 
   // Also push to ThingsBoard if a real device is mapped (best-effort, non-blocking)
   const realDevId = deviceRoomMap[room];
@@ -1766,14 +1759,7 @@ app.post('/api/simulator/tb-inject', authenticate, requireRole('owner', 'admin')
     if (!lastOverview[room]) lastOverview[room] = { room, floor: Math.floor(Number(room) / 100), online: true };
     processTelemetry(hotelId, room, virtualDevId, coerced);
 
-    // Auto-close door after 5 s for virtual rooms
-    if (coerced.doorStatus === true) {
-      setTimeout(() => {
-        const snap = getLastOverviewRooms(hotelId);
-        if (snap[room]) snap[room].doorStatus = false;
-        processTelemetry(hotelId, room, virtualDevId, { doorStatus: false });
-      }, 5000);
-    }
+    // Door contact state persists until explicitly closed via simulator — no auto-reset
     res.json({ success: true, mode: 'virtual-pipeline', room, injected: coerced });
   }
 });
