@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
 import RoomModal from '../components/RoomModal';
-import { api, clearTokens } from '../utils/api';
+import { api, clearTokens, createSSE } from '../utils/api';
 import useHotelStore from '../store/hotelStore';
 import useLangStore from '../store/langStore';
 
@@ -69,25 +69,45 @@ export default function GuestPortal() {
     return () => { mounted = false; };
   }, []);
 
-  // Step 2 — 5s polling for room telemetry (avoids JWT in URL that EventSource requires)
+  // Step 2 — SSE for real-time room telemetry (same as admin/staff dashboard)
   useEffect(() => {
     if (!room) return;
-    let mounted = true;
+    const es = createSSE();
+    if (!es) return;
 
-    const poll = () => {
-      if (!mounted) return;
-      api('/api/guest/room/data')
-        .then(roomData => {
-          if (!mounted || !roomData?.room) return;
-          useHotelStore.setState(s => ({
-            rooms: { ...s.rooms, [roomData.room]: roomData }
-          }));
-        })
-        .catch(e => { if (mounted && e.message === 'session_expired') setLockout(true); });
+    const applyTelemetry = (roomNum, data) => {
+      useHotelStore.setState(s => ({
+        rooms: { ...s.rooms, [roomNum]: { ...s.rooms[roomNum], ...data } }
+      }));
     };
 
-    const timer = setInterval(poll, 5000);
-    return () => { mounted = false; clearInterval(timer); };
+    es.addEventListener('telemetry', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.room === room) applyTelemetry(d.room, d.data);
+      } catch {}
+    });
+
+    // Server sends guest batch-telemetry as a plain 'telemetry' event already filtered to their room
+    es.addEventListener('batch-telemetry', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.room === room) applyTelemetry(d.room, d.data);
+      } catch {}
+    });
+
+    es.addEventListener('snapshot', (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.rooms?.[room]) applyTelemetry(room, d.rooms[room]);
+      } catch {}
+    });
+
+    es.onerror = () => {
+      // SSE reconnects automatically — nothing to do
+    };
+
+    return () => es.close();
   }, [room]);
 
   if (loading) return (

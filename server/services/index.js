@@ -29,8 +29,8 @@ function initServices(db, adapterPool) {
   // 3. Room (needs db + adapterPool + controlService)
   roomService.init(db, adapterPool, controlService);
 
-  // 4. Scene engine (needs db + controlService)
-  sceneEngine.init(db, controlService);
+  // 4. Scene engine (needs db + controlService + adapterPool for platform scene activation)
+  sceneEngine.init(db, controlService, adapterPool);
 
   // 5. Wire circular deps: control and room both need checkEventScenes
   controlService.setSceneEngine(sceneEngine.checkEventScenes);

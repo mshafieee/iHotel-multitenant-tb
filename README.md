@@ -51,7 +51,7 @@ iHotel is not tied to any single IoT backend. Each hotel is created with a chose
 | Platform | Connection | Notes |
 |----------|------------|-------|
 | **ThingsBoard CE / Cloud** | REST + WebSocket real-time | ESP32 room gateways via MQTT; WebSocket subscription delivers sub-second telemetry |
-| **Greentech GRMS** | REST polling (10s interval) | RCU hardware; no WebSocket — adapter polls all rooms every 10s and re-polls 2s after any command |
+| **Greentech GRMS** | REST polling (5s interval) | RCU hardware; no WebSocket — adapter polls all rooms every 5s; full state broadcast on first cycle; per-room device topology stored on discover |
 
 ### Adapter Pattern
 

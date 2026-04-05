@@ -12,10 +12,12 @@ const state = require('./state.service');
 
 let _db = null;
 let _controlService = null;
+let _adapterPool = null;
 
-function init(db, controlService) {
+function init(db, controlService, adapterPool = null) {
   _db = db;
   _controlService = controlService;
+  _adapterPool = adapterPool;
 }
 
 // ── Scene execution ───────────────────────────────────────────────────────────
@@ -36,6 +38,19 @@ async function executeScene(hotelId, scene, triggeredBy = 'auto', roomOverride =
         await new Promise(r => setTimeout(r, action.delay * 1000));
       }
       if (action.type === 'delay') continue;
+
+      // Platform scene activation — bypass sendControl and call the adapter directly.
+      // This triggers a native scene preset on the IoT platform (e.g. Greentech cj devices).
+      if (action.type === 'activatePlatformScene') {
+        if (_adapterPool && action.params?.platformSceneId) {
+          const adapter = _adapterPool.getAdapter(hotelId, _db);
+          if (adapter?.activatePlatformScene) {
+            await adapter.activatePlatformScene(devId, action.params.platformSceneId);
+          }
+        }
+        continue;
+      }
+
       await _controlService.sendControl(hotelId, devId, action.type, action.params || {}, `scene:${scene.name}`);
     }
   } catch (e) {

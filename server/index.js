@@ -81,7 +81,13 @@ const AC_MODES      = ['OFF', 'COOL', 'HEAT', 'FAN', 'AUTO'];
 const FAN_SPEEDS    = ['LOW', 'MED', 'HIGH', 'AUTO'];
 const DEVICE_STATUSES = ['normal', 'boot', 'fault'];
 const RACK_RATES    = { STANDARD: 600, DELUXE: 950, SUITE: 1500, VIP: 2500 };
-const WATCHABLE_KEYS = ['roomStatus','pirMotionStatus','doorStatus','line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','deviceStatus','pdMode'];
+const WATCHABLE_KEYS = [
+  'roomStatus','pirMotionStatus','doorStatus',
+  'line1','line2','line3','line4','line5','line6','line7','line8',
+  'dimmer1','dimmer2','dimmer3','dimmer4',
+  'acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition',
+  'dndService','murService','sosService','deviceStatus','pdMode'
+];
 
 // ═══ EXPRESS APP ═══
 const app = express();
@@ -270,7 +276,9 @@ app.post('/api/devices/:id/rpc', authenticate, requireRole('owner', 'admin'), as
       return res.json({ success: true });
     }
 
-    res.json(await sendControl(hotelId, req.params.id, method, params || {}, req.user.username));
+    res.json({ ok: true });
+    sendControl(hotelId, req.params.id, method, params || {}, req.user.username)
+      .catch(e => console.error(`[admin rpc] ${method} failed:`, e.message));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -290,6 +298,37 @@ app.put('/api/hotel/device-names', authenticate, requireRole('owner', 'admin'), 
   if (Array.isArray(dimmerNames)) current.dimmerNames = dimmerNames.map(n => String(n || '').trim());
   db.prepare('UPDATE hotels SET device_config = ? WHERE id = ?').run(JSON.stringify(current), hotelId);
   res.json({ deviceConfig: current });
+});
+
+// ── PUT /api/rooms/:roomNumber/device-names ────────────────────────────────
+// Rename individual lamps / dimmers for a specific room.
+// Writes to hotel_rooms.device_names (per-room override); does NOT touch hotels.device_config.
+// After saving, pushes the updated deviceNames via SSE so open RoomModals refresh instantly.
+app.put('/api/rooms/:roomNumber/device-names', authenticate, requireRole('owner', 'admin'), (req, res) => {
+  const hotelId    = req.user.hotelId;
+  const roomNumber = req.params.roomNumber;
+  const { lampNames, dimmerNames } = req.body;
+  if (!Array.isArray(lampNames) && !Array.isArray(dimmerNames)) {
+    return res.status(400).json({ error: 'lampNames or dimmerNames required' });
+  }
+
+  const row = db.prepare('SELECT device_names FROM hotel_rooms WHERE hotel_id=? AND room_number=?').get(hotelId, roomNumber);
+  if (!row) return res.status(404).json({ error: 'Room not found' });
+
+  const current = row.device_names ? JSON.parse(row.device_names) : {};
+  if (Array.isArray(lampNames))   current.lampNames   = lampNames.map(n => String(n || '').trim());
+  if (Array.isArray(dimmerNames)) current.dimmerNames = dimmerNames.map(n => String(n || '').trim());
+
+  db.prepare('UPDATE hotel_rooms SET device_names=? WHERE hotel_id=? AND room_number=?')
+    .run(JSON.stringify(current), hotelId, roomNumber);
+
+  // Push updated names via SSE so the UI reflects them without a page reload
+  const lastOverview = getLastOverviewRooms(hotelId);
+  if (lastOverview[roomNumber]) lastOverview[roomNumber].deviceNames = current;
+  const deviceId = lastOverview[roomNumber]?.deviceId;
+  sseBatchTelemetry(hotelId, roomNumber, deviceId || roomNumber, { deviceNames: current });
+
+  res.json({ deviceNames: current });
 });
 
 // Hotel overview — always responds instantly with cached snapshot.
@@ -346,13 +385,14 @@ app.get('/api/hotel/meter-stats', authenticate, requireRole('owner', 'admin'), (
 app.get('/api/hotel/overview', authenticate, async (req, res) => {
   const hotelId      = req.user.hotelId;
   const lastOverview = getLastOverviewRooms(hotelId);
-  const isStale      = state.isOverviewStale(hotelId);
 
-  // Respond immediately — never block the HTTP connection waiting for IoT platform
+  // Respond immediately with cached snapshot — never block on IoT platform
   res.json({ rooms: lastOverview, deviceCount: Object.keys(lastOverview).length, cached: true });
 
-  // Kick off background refresh if stale and not already in progress
-  if (!isStale || state.isFetchingOverview(hotelId)) return;
+  // Trigger a background refresh only when cache is stale OR empty (first load).
+  // The subscribe poll keeps lastOverview current between refreshes — don't race with it.
+  const hasRooms = Object.keys(lastOverview).length > 0;
+  if ((hasRooms && !state.isOverviewStale(hotelId)) || state.isFetchingOverview(hotelId)) return;
   state.setFetchingOverview(hotelId);
   fetchAndBroadcast(hotelId)
     .catch(e => console.error(`[${hotelId}] Overview fetch error:`, e.message))
@@ -1351,6 +1391,7 @@ app.get('/api/guest/room/data', authenticate, async (req, res) => {
   }
   const roomNum      = r.room;
   const lastOverview = getLastOverviewRooms(hotelId);
+
   if (lastOverview[roomNum]) return res.json(lastOverview[roomNum]);
 
   try {
@@ -1440,9 +1481,11 @@ app.post('/api/guest/rpc', authenticate, async (req, res) => {
     if (snap) {
       // Returning guest: restore saved room state (lights, AC, curtains)
       try {
-        await sendControl(hotelId, devId, 'setLines',
-          { line1: snap.line1, line2: snap.line2, line3: snap.line3,
-            dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
+        const lineParams = {};
+        for (const k of Object.keys(snap)) {
+          if (/^line\d+$/.test(k) || /^dimmer\d+$/.test(k)) lineParams[k] = snap[k];
+        }
+        await sendControl(hotelId, devId, 'setLines', lineParams, 'auto');
         await sendControl(hotelId, devId, 'setAC',
           { acMode: snap.acMode, acTemperatureSet: snap.acTemperatureSet,
             fanSpeed: snap.fanSpeed }, 'auto');
@@ -1455,9 +1498,11 @@ app.post('/api/guest/rpc', authenticate, async (req, res) => {
       checkEventScenes(hotelId, r.room, { roomStatus: 1 }, { roomStatus: 4 });
     }
   }
+  // Respond immediately — optimistic update already applied in sendControl via SSE.
+  // Hardware command runs in background; UI is already updated.
+  res.json({ ok: true });
   sendControl(hotelId, devId, method, params || {}, req.user.username)
-    .then(d => res.json(d))
-    .catch(e => res.status(400).json({ error: e.message }));
+    .catch(e => console.error(`[guest rpc] ${method} failed:`, e.message));
 });
 
 // ═══ SLEEP TIMER ═══
@@ -2840,6 +2885,28 @@ app.get('/api/upsell/stats/:offerId/rooms', authenticate, requireRole('owner', '
     ORDER BY total_requests DESC
   `).all(hotelId, offer.id);
   res.json(rows);
+});
+
+// ─── Platform scenes (Greentech cj devices / other platform presets) ──────────
+// Returns the list of scene presets available in the hotel's IoT platform.
+// Used by ScenesPanel to offer "Import Platform Scenes".
+app.get('/api/platform-scenes', authenticate, requireRole('owner', 'admin'), async (req, res) => {
+  const hotelId = req.user.hotelId;
+  try {
+    const adapter = getHotelAdapter(hotelId);
+    if (typeof adapter.listPlatformScenes !== 'function') {
+      return res.json({ scenes: [], supported: false });
+    }
+    // Use the first registered device as the source for scene discovery
+    const deviceRoomMap = getDeviceRoomMap(hotelId);
+    const deviceIds = Object.values(deviceRoomMap);
+    if (!deviceIds.length) return res.json({ scenes: [], supported: true });
+    const scenes = await adapter.listPlatformScenes(deviceIds[0]);
+    res.json({ scenes, supported: true });
+  } catch (e) {
+    console.error('[platform-scenes]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ═══ SCENES CRUD ═══

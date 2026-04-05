@@ -40,11 +40,11 @@ function getAdapter(hotelId) {
 function controlToTelemetry(method, params) {
   const data = {};
   if (method === 'setLines') {
-    if ('line1' in params) data.line1 = !!params.line1;
-    if ('line2' in params) data.line2 = !!params.line2;
-    if ('line3' in params) data.line3 = !!params.line3;
-    if ('dimmer1' in params) data.dimmer1 = Math.max(0, Math.min(100, parseFloat(params.dimmer1)));
-    if ('dimmer2' in params) data.dimmer2 = Math.max(0, Math.min(100, parseFloat(params.dimmer2)));
+    // Dynamic: handle any lineN (N ≥ 1) and dimmerN (N ≥ 1) key
+    for (const [k, v] of Object.entries(params)) {
+      if (/^line\d+$/.test(k))   data[k] = !!v;
+      else if (/^dimmer\d+$/.test(k)) data[k] = Math.max(0, Math.min(100, parseFloat(v) || 0));
+    }
   } else if (method === 'setAC') {
     if ('acMode' in params) data.acMode = parseInt(params.acMode);
     if ('acTemperatureSet' in params) data.acTemperatureSet = parseFloat(params.acTemperatureSet);
@@ -65,8 +65,9 @@ function controlToTelemetry(method, params) {
   } else if (method === 'resetServices') {
     (params.services || []).forEach(s => { data[s] = false; });
   } else if (method === 'setPowerDown') {
-    data.line1 = false; data.line2 = false; data.line3 = false;
-    data.dimmer1 = 0; data.dimmer2 = 0; data.acMode = 0; data.fanSpeed = 0;
+    // Turn off all possible lamps/dimmers (up to 8 of each)
+    for (let i = 1; i <= 8; i++) { data[`line${i}`] = false; data[`dimmer${i}`] = 0; }
+    data.acMode = 0; data.fanSpeed = 0;
     data.curtainsPosition = 0; data.blindsPosition = 0;
     data.dndService = false; data.murService = false; data.sosService = false;
   } else if (method === 'setRoomStatus') {
@@ -77,8 +78,8 @@ function controlToTelemetry(method, params) {
   } else if (method === 'setPDMode') {
     data.pdMode = !!params.pdMode;
     if (data.pdMode) {
-      data.line1 = false; data.line2 = false; data.line3 = false;
-      data.dimmer1 = 0; data.dimmer2 = 0; data.acMode = 0; data.fanSpeed = 0;
+      for (let i = 1; i <= 8; i++) { data[`line${i}`] = false; data[`dimmer${i}`] = 0; }
+      data.acMode = 0; data.fanSpeed = 0;
       data.curtainsPosition = 0; data.blindsPosition = 0;
     }
   }
@@ -112,7 +113,7 @@ function controlToRelayAttributes(telemetry) {
 function impliesActivity(method, params) {
   if (method === 'setDoorUnlock') return true;
   if (method === 'setService')    return true;
-  if (method === 'setLines')      return !!(params.line1 || params.line2 || params.line3 || (params.dimmer1 || 0) > 0 || (params.dimmer2 || 0) > 0);
+  if (method === 'setLines')      return Object.entries(params).some(([k, v]) => (/^line\d+$/.test(k) && !!v) || (/^dimmer\d+$/.test(k) && (v || 0) > 0));
   if (method === 'setAC')         return (params.acMode || 0) > 0;
   if (method === 'setCurtainsBlinds') return (params.curtainsPosition || 0) > 0 || (params.blindsPosition || 0) > 0;
   return false;
@@ -135,18 +136,18 @@ function startNotOccupiedTimer(hotelId, roomNum) {
     if (!devId) return;
     try {
       const snapshots = state.getRoomStateSnapshots(hotelId);
-      snapshots[roomNum] = {
-        line1:            t.line1            ?? false,
-        line2:            t.line2            ?? false,
-        line3:            t.line3            ?? false,
-        dimmer1:          t.dimmer1          ?? 0,
-        dimmer2:          t.dimmer2          ?? 0,
+      const snap = {
         acMode:           t.acMode           ?? 0,
         acTemperatureSet: t.acTemperatureSet ?? 22,
         fanSpeed:         t.fanSpeed         ?? 0,
         curtainsPosition: t.curtainsPosition ?? 0,
         blindsPosition:   t.blindsPosition   ?? 0,
       };
+      for (const k of Object.keys(t)) {
+        if (/^line\d+$/.test(k)) snap[k] = t[k] ?? false;
+        if (/^dimmer\d+$/.test(k)) snap[k] = t[k] ?? 0;
+      }
+      snapshots[roomNum] = snap;
       await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 4 }, 'auto');
       sseBroadcastRoles(hotelId, 'checkout_alert', { type: 'NOT_OCCUPIED', room: roomNum, ts: Date.now() }, ['owner', 'admin', 'frontdesk']);
     } catch (e) { console.error('NOT_OCCUPIED set failed:', e.message); }
@@ -172,9 +173,13 @@ async function restoreOccupied(hotelId, roomNum) {
     await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: 1 }, 'auto');
 
     if (snap) {
-      await sendControl(hotelId, devId, 'setLines',
-        { line1: snap.line1, line2: snap.line2, line3: snap.line3,
-          dimmer1: snap.dimmer1, dimmer2: snap.dimmer2 }, 'auto');
+      const lineParams = {};
+      for (const k of Object.keys(snap)) {
+        if (/^line\d+$/.test(k) || /^dimmer\d+$/.test(k)) lineParams[k] = snap[k];
+      }
+      // Try RCU check-in scene first; only restore individual state if scene unavailable
+      const sceneOk = await _triggerRcuScene(hotelId, devId, 'check in');
+      if (!sceneOk) await sendControl(hotelId, devId, 'setLines', lineParams, 'auto');
       await sendControl(hotelId, devId, 'setAC',
         { acMode: snap.acMode, acTemperatureSet: snap.acTemperatureSet,
           fanSpeed: snap.fanSpeed }, 'auto');
@@ -187,11 +192,39 @@ async function restoreOccupied(hotelId, roomNum) {
   } catch (e) { console.error(`restoreOccupied ${roomNum} failed:`, e.message); }
 }
 
+async function _triggerRcuScene(hotelId, devId, sceneName) {
+  try {
+    const adapter = getAdapter(hotelId);
+    if (adapter?.activatePlatformScene) {
+      await adapter.activatePlatformScene(devId, sceneName);
+      console.log(`[RCU scene] "${sceneName}" triggered for device ${devId}`);
+      return true;
+    }
+  } catch (e) {
+    console.warn(`[RCU scene] "${sceneName}" failed (${e.message}) — falling back to individual commands`);
+  }
+  return false;
+}
+
 async function vacateRoom(hotelId, devId, roomNum, targetStatus, username) {
-  await sendControl(hotelId, devId, 'setLines',          { line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0 }, username);
-  await sendControl(hotelId, devId, 'setAC',             { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, username);
-  await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, username);
-  await sendControl(hotelId, devId, 'setRoomStatus',     { roomStatus: targetStatus }, username);
+  // Try hardware "check out" scene first — atomic and reliable
+  const sceneOk = await _triggerRcuScene(hotelId, devId, 'check out');
+
+  if (!sceneOk) {
+    // Fallback: send individual commands
+    const t = state.getLastKnownTelemetry(hotelId)[roomNum] || {};
+    const allOff = {};
+    for (const k of Object.keys(t)) {
+      if (/^line\d+$/.test(k)) allOff[k] = false;
+      if (/^dimmer\d+$/.test(k)) allOff[k] = 0;
+    }
+    if (!Object.keys(allOff).length) { allOff.line1 = false; allOff.line2 = false; allOff.line3 = false; allOff.dimmer1 = 0; allOff.dimmer2 = 0; }
+    await sendControl(hotelId, devId, 'setLines', allOff, username);
+    await sendControl(hotelId, devId, 'setAC',             { acMode: 1, acTemperatureSet: 26, fanSpeed: 0 }, username);
+    await sendControl(hotelId, devId, 'setCurtainsBlinds', { curtainsPosition: 0, blindsPosition: 0 }, username);
+  }
+
+  await sendControl(hotelId, devId, 'setRoomStatus', { roomStatus: targetStatus }, username);
 }
 
 // ── Core sendControl ──────────────────────────────────────────────────────────
@@ -202,8 +235,12 @@ async function sendControl(hotelId, deviceId, method, params, username = 'system
 
   const relayAttrs  = controlToRelayAttributes(telemetry);
   const sharedAttrs = { ...relayAttrs };
-  const FORWARD = ['line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','roomStatus','doorUnlock'];
-  for (const k of FORWARD) { if (k in telemetry) sharedAttrs[k] = telemetry[k]; }
+  const STATIC_FORWARD = ['acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','roomStatus','doorUnlock'];
+  for (const k of STATIC_FORWARD) { if (k in telemetry) sharedAttrs[k] = telemetry[k]; }
+  // Forward all lineN and dimmerN keys dynamically (covers Greentech rooms with 4+ lights)
+  for (const k of Object.keys(telemetry)) {
+    if (/^(line|dimmer)\d+$/.test(k)) sharedAttrs[k] = telemetry[k];
+  }
 
   const deviceRoomMap = state.getDeviceRoomMap(hotelId);
   const lastTelemetry = state.getLastKnownTelemetry(hotelId);

@@ -317,7 +317,12 @@ const useHotelStore = create((set, get) => ({
     await api(`/api/rooms/${room}/reset`, { method: 'POST' });
     const rooms = { ...get().rooms };
     if (rooms[room]) {
-      rooms[room] = { ...rooms[room], roomStatus: 0, line1: false, line2: false, line3: false, dimmer1: 0, dimmer2: 0, acMode: 0, fanSpeed: 0, curtainsPosition: 0, blindsPosition: 0, dndService: false, murService: false, sosService: false, pdMode: false };
+      const resetLamps = {};
+      for (const k of Object.keys(rooms[room])) {
+        if (/^line\d+$/.test(k)) resetLamps[k] = false;
+        if (/^dimmer\d+$/.test(k)) resetLamps[k] = 0;
+      }
+      rooms[room] = { ...rooms[room], ...resetLamps, roomStatus: 0, acMode: 0, fanSpeed: 0, curtainsPosition: 0, blindsPosition: 0, dndService: false, murService: false, sosService: false, pdMode: false };
       set({ rooms });
     }
   },
@@ -547,11 +552,9 @@ const useHotelStore = create((set, get) => ({
 // Local state application for optimistic updates
 function applyLocal(r, m, p) {
   if (m === 'setLines') {
-    if ('line1' in p) r.line1 = p.line1;
-    if ('line2' in p) r.line2 = p.line2;
-    if ('line3' in p) r.line3 = p.line3;
-    if ('dimmer1' in p) r.dimmer1 = p.dimmer1;
-    if ('dimmer2' in p) r.dimmer2 = p.dimmer2;
+    for (const [k, v] of Object.entries(p)) {
+      if (/^line\d+$/.test(k) || /^dimmer\d+$/.test(k)) r[k] = v;
+    }
   }
   if (m === 'setAC') {
     if ('acMode' in p) r.acMode = p.acMode;
@@ -575,9 +578,11 @@ function applyLocal(r, m, p) {
   if (m === 'setPDMode') {
     r.pdMode = !!p.pdMode;
     if (r.pdMode) {
-      // Cut all power optimistically
-      r.line1 = false; r.line2 = false; r.line3 = false;
-      r.dimmer1 = 0; r.dimmer2 = 0; r.acMode = 0; r.fanSpeed = 0;
+      for (const k of Object.keys(r)) {
+        if (/^line\d+$/.test(k)) r[k] = false;
+        if (/^dimmer\d+$/.test(k)) r[k] = 0;
+      }
+      r.acMode = 0; r.fanSpeed = 0;
       r.curtainsPosition = 0; r.blindsPosition = 0;
     }
   }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole, CalendarPlus, CheckCircle, BedDouble } from 'lucide-react';
+import { X, Zap, Play, BookOpen, Monitor, Moon, DoorOpen, LockKeyhole, CalendarPlus, CheckCircle, BedDouble, Pencil, Save } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
 import useAuthStore from '../store/authStore';
 import { api } from '../utils/api';
@@ -71,7 +71,7 @@ function SmartBulb({ on, dimmer, label, onClick, onDimmerChange }) {
 
 // Methods that should be debounced (continuous controls like sliders, temp buttons)
 const DEBOUNCED_METHODS = new Set(['setLines', 'setAC', 'setCurtainsBlinds', 'setService']);
-const DEBOUNCE_MS = 500;
+const DEBOUNCE_MS = 150;
 
 const DEFAULT_DEVICE_CFG = { lamps: 3, dimmers: 2, ac: 1, curtains: 1, blinds: 1 };
 
@@ -82,7 +82,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
   const rooms = useHotelStore(s => s.rooms);
   // Prop takes priority (guest portal passes it); fall back to auth store (staff dashboard)
   const authDeviceCfg = useAuthStore(s => s.user?.deviceConfig);
-  const cfg = deviceConfigProp || authDeviceCfg || DEFAULT_DEVICE_CFG;
+  const baseCfg = deviceConfigProp || authDeviceCfg || DEFAULT_DEVICE_CFG;
   const rpc = useHotelStore(s => s.rpc);
   const checkout = useHotelStore(s => s.checkout);
   const [checkingOut, setCheckingOut]         = useState(false);
@@ -122,6 +122,9 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
 
   const r = rooms[roomId];
   if (!r) return null;
+
+  // Per-room topology overrides hotel-wide defaults (rooms can differ in lamp/dimmer count)
+  const cfg = r.deviceNames ? { ...baseCfg, ...r.deviceNames } : baseCfg;
 
   const can = role === 'owner' || role === 'admin';
   const isStaff = can || role === 'frontdesk';
@@ -445,17 +448,96 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
     </Section>
   );
 
+  // Per-room names take priority over hotel-wide cfg names
+  const perRoomNames = r?.deviceNames || null;
   const lampLabel = (i) => {
+    if (perRoomNames?.lampNames?.[i]) return perRoomNames.lampNames[i];
     if (cfg.lampNames?.[i]) return cfg.lampNames[i];
     const staticLabels = [T('rm_line1'), T('rm_line2'), T('rm_line3')];
     return i < staticLabels.length ? staticLabels[i] : (lang === 'ar' ? `إضاءة ${i + 1}` : `Light ${i + 1}`);
   };
-  const dimmerLabel = (i) => cfg.dimmerNames?.[i] || (lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`);
+  const dimmerLabel = (i) => perRoomNames?.dimmerNames?.[i] || cfg.dimmerNames?.[i] || (lang === 'ar' ? `معدِّل ${i + 1}` : `Dimmer ${i + 1}`);
   const lampKeys   = Array.from({ length: cfg.lamps },   (_, i) => `line${i + 1}`);
   const dimmerKeys = Array.from({ length: cfg.dimmers },  (_, i) => `dimmer${i + 1}`);
 
+  // ── Inline device rename (admin/owner only) ────────────────────────────────
+  const [showRename, setShowRename] = useState(false);
+  const [renameNames, setRenameNames] = useState({ lampNames: [], dimmerNames: [] });
+  const [renameSaving, setRenameSaving] = useState(false);
+
+  const openRename = () => {
+    setRenameNames({
+      lampNames:   Array.from({ length: cfg.lamps },   (_, i) => perRoomNames?.lampNames?.[i]   || cfg.lampNames?.[i]   || ''),
+      dimmerNames: Array.from({ length: cfg.dimmers }, (_, i) => perRoomNames?.dimmerNames?.[i] || cfg.dimmerNames?.[i] || ''),
+    });
+    setShowRename(true);
+  };
+
+  const saveRename = async () => {
+    setRenameSaving(true);
+    try {
+      await api(`/api/rooms/${roomId}/device-names`, {
+        method: 'PUT',
+        body: JSON.stringify(renameNames),
+      });
+      setShowRename(false);
+    } catch (e) {
+      console.error('Failed to save device names:', e.message);
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
   const lightsSection = (can || isGuest) && !r.pdMode && (cfg.lamps > 0 || cfg.dimmers > 0) && (
-    <Section title={T('rm_lights')}>
+    <div className="card p-3">
+      {/* Section header with optional rename trigger */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">{T('rm_lights')}</span>
+        {can && !showRename && (
+          <button onClick={openRename} title="Rename devices"
+            className="p-0.5 text-gray-300 hover:text-brand-500 transition rounded">
+            <Pencil size={11} />
+          </button>
+        )}
+      </div>
+
+      {/* Inline rename form */}
+      {can && showRename && (
+        <div className="mb-3 p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            {lang === 'ar' ? 'تعديل الأسماء' : 'Rename devices'}
+          </div>
+          {renameNames.lampNames.map((name, i) => (
+            <div key={`l${i}`} className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 w-14 shrink-0">{lang === 'ar' ? `ضوء ${i+1}` : `Light ${i+1}`}</span>
+              <input value={name} onChange={e => {
+                const next = [...renameNames.lampNames]; next[i] = e.target.value;
+                setRenameNames(r => ({ ...r, lampNames: next }));
+              }} placeholder={`Light ${i+1}`} className="flex-1 input text-xs py-1" />
+            </div>
+          ))}
+          {renameNames.dimmerNames.map((name, i) => (
+            <div key={`d${i}`} className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 w-14 shrink-0">{lang === 'ar' ? `معدِّل ${i+1}` : `Dimmer ${i+1}`}</span>
+              <input value={name} onChange={e => {
+                const next = [...renameNames.dimmerNames]; next[i] = e.target.value;
+                setRenameNames(r => ({ ...r, dimmerNames: next }));
+              }} placeholder={`Dimmer ${i+1}`} className="flex-1 input text-xs py-1" />
+            </div>
+          ))}
+          <div className="flex gap-2 pt-1">
+            <button onClick={saveRename} disabled={renameSaving}
+              className="btn btn-primary text-[10px] py-1 px-2 flex items-center gap-1 disabled:opacity-50">
+              <Save size={10} /> {renameSaving ? (lang === 'ar' ? 'جاري…' : 'Saving…') : (lang === 'ar' ? 'حفظ' : 'Save')}
+            </button>
+            <button onClick={() => setShowRename(false)}
+              className="btn btn-ghost text-[10px] py-1 px-2">
+              {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {isGuest ? (
         // ── Guest: Smart bulb cards ───────────────────────────────────────
         <div className="space-y-3">
@@ -518,7 +600,7 @@ export default function RoomModal({ roomId, onClose, role, onLockout, logoUrl, o
           ))}
         </>
       )}
-    </Section>
+    </div>
   );
 
   const acSection = (can || isGuest) && !r.pdMode && cfg.ac > 0 && (

@@ -25,7 +25,19 @@
  */
 
 const axios = require('axios');
+const https  = require('https');
 const { PlatformAdapter } = require('./platform-adapter');
+
+// Disable keep-alive to prevent "bad_record_mac" / EPROTO on reused TLS connections
+// Greentech server (lvhuarcu.com:4430) has a broken TLS 1.3 implementation.
+// Force TLS 1.2, disable session caching and keep-alive to prevent bad_record_mac errors.
+const _httpsAgent = new https.Agent({
+  keepAlive:          false,
+  maxCachedSessions:  0,
+  maxVersion:         'TLSv1.2',
+  rejectUnauthorized: false,   // server uses self-signed / non-standard cert
+});
+const ax = axios.create({ httpsAgent: _httpsAgent });
 
 // ── Mapping tables (verified against live API) ────────────────────────────────
 
@@ -75,9 +87,9 @@ class GreentechAdapter extends PlatformAdapter {
 
   async authenticate() {
     if (this.token && Date.now() < this.tokenExp) return;
-    const r = await axios.post(`${this.host}/loginByRemote`,
+    const r = await ax.post(`${this.host}/loginByRemote`,
       { username: this.username, password: this.password },
-      { timeout: 10000 });
+      { timeout: 30000 });
     if (!r.data?.token) throw new Error('Greentech auth: no token in response');
     this.token    = r.data.token;
     this.tokenExp = Date.now() + 3500000; // ~58 min
@@ -97,8 +109,8 @@ class GreentechAdapter extends PlatformAdapter {
 
   async _ensureHotelId() {
     if (this._greentechHotelId) return this._greentechHotelId;
-    const r = await axios.get(`${this.host}/system/dept/open/list`,
-      { headers: this._headers(), timeout: 15000 });
+    const r = await ax.get(`${this.host}/system/dept/open/list`,
+      { headers: this._headers(), timeout: 30000 });
     const depts = Array.isArray(r.data) ? r.data : (r.data?.data || []);
     const dept  = depts[0] || {};
     // hotelId comes back as a number (e.g. 340)
@@ -117,9 +129,8 @@ class GreentechAdapter extends PlatformAdapter {
     const hotelId = await this._ensureHotelId();
     if (!hotelId) throw new Error('Greentech: could not resolve hotel ID from dept list');
 
-    // IMPORTANT: GET request with JSON body (not query params)
-    const r = await axios.get(`${this.host}/mqtt/room/list2`,
-      { headers: this._headers(), data: { hotelId }, timeout: 15000 });
+    const r = await ax.get(`${this.host}/mqtt/room/list2`,
+      { headers: this._headers(), data: { hotelId }, timeout: 30000 });
 
     const rows = r.data?.data || r.data?.rows || [];
     console.log(`[Greentech] room list: ${rows.length} rooms`);
@@ -154,9 +165,8 @@ class GreentechAdapter extends PlatformAdapter {
     if (this._deviceCache.has(hostId)) return this._deviceCache.get(hostId);
     await this.authenticate();
 
-    // IMPORTANT: GET request with JSON body
-    const r = await axios.get(`${this.host}/mqtt/room/device/list2`,
-      { headers: this._headers(), data: { roomId: hostId }, timeout: 10000 });
+    const r = await ax.get(`${this.host}/mqtt/room/device/list2`,
+      { headers: this._headers(), data: { roomId: hostId }, timeout: 20000 });
 
     const groups = r.data?.data || { d: [], tgd: [], wk: [], cl: [], cj: [], fw: [] };
     this._deviceCache.set(hostId, groups);
@@ -214,37 +224,18 @@ class GreentechAdapter extends PlatformAdapter {
     if (!commands.length) return;
 
     await Promise.all(commands.map(cmd =>
-      axios.put(`${this.host}/mqtt/room/device`, cmd,
-        { headers: this._headers(), timeout: 5000 })
+      ax.put(`${this.host}/mqtt/room/device`, cmd,
+        { headers: this._headers(), timeout: 15000 })
         .catch(e => {
           if (e.response?.status === 404) this._deviceCache.delete(hostId);
           console.error(`[Greentech] Control failed (room ${hostId}):`, e.message);
         })
     ));
-
-    // Re-fetch confirmed state 2 s after command and push via SSE
-    this._schedulePostCommandPoll(hostId);
-  }
-
-  _schedulePostCommandPoll(hostId, delayMs = 2000) {
-    setTimeout(async () => {
-      if (!this._onUpdate) return;
-      try {
-        this._deviceCache.delete(hostId);          // force fresh fetch
-        await this._fetchRoomList(true);
-        const roomRow = this._findRoomRow(hostId) || {};
-        const groups  = await this._getDeviceGroups(hostId);
-        const flat    = this._flattenTBFormat(this._buildTBFormat(roomRow, groups));
-        const roomNum = this._deviceIdToRoom?.[hostId];
-        if (roomNum) {
-          // Update poll baseline so next poll doesn't re-broadcast the same data
-          this._lastPollState.set(hostId, { ...(this._lastPollState.get(hostId) || {}), ...flat });
-          this._onUpdate(roomNum, hostId, flat);
-        }
-      } catch (e) {
-        console.error(`[Greentech] Post-command re-poll failed (room ${hostId}):`, e.message);
-      }
-    }, delayMs);
+    // Post-command re-poll intentionally removed:
+    // The optimistic update in control.service is already applied immediately via SSE.
+    // A 2s re-poll fetches stale state (hardware hasn't responded yet) and overwrites
+    // the optimistic update, causing visible UI flicker / wrong state. The regular
+    // 5s poll cycle will confirm the real hardware state once the device responds.
   }
 
   _translateToGreentechCommands(telemetry, groups) {
@@ -285,11 +276,14 @@ class GreentechAdapter extends PlatformAdapter {
         }
       }
       if ('acTemperatureSet' in telemetry) {
-        // Send as plain number string (no °C — verified from live API)
         cmd.temperature = String(telemetry.acTemperatureSet);
       }
       if ('fanSpeed' in telemetry) {
         cmd.fatSpeed = FAN_SPEED_TO_GT[Number(telemetry.fanSpeed)] || '自动';
+      }
+      // If only temp/fanSpeed changed without acMode, keep unit running — don't accidentally turn off
+      if (!('acMode' in telemetry)) {
+        cmd.turn = 'ON';
       }
       cmds.push(cmd);
     }
@@ -326,7 +320,7 @@ class GreentechAdapter extends PlatformAdapter {
     this._deviceIdToRoom = deviceIdToRoom;
 
     let _active = true;
-    const POLL_INTERVAL = 10000; // 10 s — fast enough to feel responsive on a polling-only platform
+    const POLL_INTERVAL = 5000; // 5 s — balance between responsiveness and API load
 
     const poll = async () => {
       if (!_active) return;
@@ -343,8 +337,17 @@ class GreentechAdapter extends PlatformAdapter {
           const roomNum = deviceIdToRoom[hostId];
           if (!roomNum) continue;
 
-          const flat    = this._flattenTBFormat(tbFmt);
-          const prev    = this._lastPollState.get(hostId) || {};
+          const flat = this._flattenTBFormat(tbFmt);
+          const prev = this._lastPollState.get(hostId);
+
+          // First poll after subscribe: broadcast full state so all connected clients
+          // (including guests who just opened the page) get current hardware state.
+          if (!prev) {
+            this._lastPollState.set(hostId, { ...flat });
+            if (Object.keys(flat).length) onUpdate(roomNum, hostId, flat);
+            continue;
+          }
+
           const changed = {};
           for (const [k, v] of Object.entries(flat)) {
             if (prev[k] !== v) changed[k] = v;
@@ -360,7 +363,10 @@ class GreentechAdapter extends PlatformAdapter {
       if (_active) setTimeout(poll, POLL_INTERVAL);
     };
 
-    setTimeout(poll, POLL_INTERVAL);
+    // First poll fires immediately — broadcasts full state to all clients.
+    // fetchAndBroadcast is skipped when subscription is active, so this is the
+    // authoritative initial state source.
+    poll();
 
     return {
       _polling: true,
@@ -395,6 +401,8 @@ class GreentechAdapter extends PlatformAdapter {
   async getDeviceConfig(firstRoomId) {
     try {
       await this.authenticate();
+      // Always bypass cache during discover so newly added devices are picked up
+      this._deviceCache.delete(firstRoomId);
       const groups = await this._getDeviceGroups(firstRoomId);
       return {
         lamps:      (groups.d   || []).length,
@@ -410,6 +418,48 @@ class GreentechAdapter extends PlatformAdapter {
     }
   }
 
+  // ── Platform scenes (cj devices = 场景) ─────────────────────────────────────
+  // Each room's device list includes a "cj" array of scene/scenario devices.
+  // These are pre-configured room presets (Welcome, Sleep, Meeting, etc.) set up
+  // inside the Greentech GRMS. We expose them so iHotel can import and trigger them.
+
+  /**
+   * Return available scenes for the given room (reads from its cj device group).
+   * @param {string} hostId  room hostId (as stored in hotel_rooms.device_id)
+   * @returns {Array<{id: string, name: string}>}
+   */
+  async listPlatformScenes(hostId) {
+    await this.authenticate();
+    const groups = await this._getDeviceGroups(hostId);
+    return (groups.cj || []).map(dev => ({
+      id:   String(dev.id),
+      name: dev.deviceName || `Scene ${dev.id}`,
+    }));
+  }
+
+  /**
+   * Activate a Greentech room scene by name (matched against cj[].deviceName).
+   * Falls back to matching by id if no name match is found.
+   * @param {string} hostId     room hostId
+   * @param {string} sceneName  scene name OR id (stored in the action params)
+   */
+  async activatePlatformScene(hostId, sceneName) {
+    await this.authenticate();
+    // Use fresh device groups so we get current device IDs
+    this._deviceCache.delete(hostId);
+    const groups = await this._getDeviceGroups(hostId);
+    const target  = String(sceneName).toLowerCase();
+    const cjDev  = (groups.cj || []).find(d =>
+      (d.deviceName || '').toLowerCase() === target ||
+      String(d.id) === target
+    );
+    if (!cjDev) throw new Error(`Platform scene "${sceneName}" not found in room ${hostId}`);
+    await ax.put(`${this.host}/mqtt/room/device`,
+      { id: cjDev.id, turn: 'ON' },
+      { headers: this._headers(), timeout: 15000 });
+    console.log(`[Greentech] Scene "${cjDev.deviceName}" activated in room ${hostId}`);
+  }
+
   // ── Debug (used by /discover/debug endpoint) ─────────────────────────────────
 
   async debugDiscovery() {
@@ -417,8 +467,8 @@ class GreentechAdapter extends PlatformAdapter {
     const results = {};
 
     try {
-      const r = await axios.get(`${this.host}/system/dept/open/list`,
-        { headers: this._headers(), timeout: 15000 });
+      const r = await ax.get(`${this.host}/system/dept/open/list`,
+        { headers: this._headers(), timeout: 30000 });
       results.deptList = r.data;
     } catch (e) { results.deptListError = e.message; }
 
@@ -426,8 +476,8 @@ class GreentechAdapter extends PlatformAdapter {
     results.resolvedHotelId = hotelId;
 
     try {
-      const r = await axios.get(`${this.host}/mqtt/room/list2`,
-        { headers: this._headers(), data: { hotelId }, timeout: 15000 });
+      const r = await ax.get(`${this.host}/mqtt/room/list2`,
+        { headers: this._headers(), data: { hotelId }, timeout: 30000 });
       results.roomList = r.data;
     } catch (e) { results.roomListError = e.message; }
 
@@ -436,13 +486,48 @@ class GreentechAdapter extends PlatformAdapter {
     if (rows[0]) {
       const firstHostId = String(rows[0].hostId ?? rows[0].id);
       try {
-        const r = await axios.get(`${this.host}/mqtt/room/device/list2`,
-          { headers: this._headers(), data: { roomId: firstHostId }, timeout: 10000 });
+        const r = await ax.get(`${this.host}/mqtt/room/device/list2`,
+          { headers: this._headers(), data: { roomId: firstHostId }, timeout: 20000 });
         results.deviceListSample = { roomId: firstHostId, roomNum: rows[0].roomNum, data: r.data };
       } catch (e) { results.deviceListError = e.message; }
     }
 
     return results;
+  }
+
+  // ── Auto power-down on room vacancy ─────────────────────────────────────────
+
+  /**
+   * Send real hardware OFF commands when a room transitions occupied → non-occupied.
+   * Turns off all lamps (d[]) and dimmers (tgd[]), sets AC to 26°C and turns it off.
+   */
+  async _autoPowerDown(hostId) {
+    const groups = this._deviceCache.get(hostId);  // already fetched this poll cycle
+    if (!groups) return;
+
+    const cmds = [];
+
+    (groups.d || []).forEach(dev => {
+      cmds.push({ id: dev.id, turn: 'OFF' });
+    });
+
+    (groups.tgd || []).forEach(dev => {
+      cmds.push({ id: dev.id, turn: 'OFF', brightness: 0 });
+    });
+
+    const ac = (groups.wk || [])[0];
+    if (ac) {
+      cmds.push({ id: ac.id, turn: 'OFF', temperature: '26' });
+    }
+
+    if (!cmds.length) return;
+
+    await Promise.all(cmds.map(cmd =>
+      ax.put(`${this.host}/mqtt/room/device`, cmd,
+        { headers: this._headers(), timeout: 15000 })
+        .catch(e => console.error(`[Greentech] Power-down cmd failed (${cmd.id}):`, e.message))
+    ));
+    console.log(`[Greentech][room ${hostId}] Hardware power-down complete — ${cmds.length} commands sent.`);
   }
 
   // ── Private translation helpers ──────────────────────────────────────────────
@@ -455,11 +540,26 @@ class GreentechAdapter extends PlatformAdapter {
     const tb   = {};
     const wrap = v => [{ value: v }];
 
+    // ── Debug: raw RCU values per room ────────────────────────────────────
+    console.log(`[Greentech][room ${roomRow.roomNum ?? roomRow.hostId ?? '?'}] RAW:`, {
+      checkStatus: roomRow.checkStatus,
+      lockStatus:  roomRow.lockStatus,
+      outStatus:   roomRow.outStatus,
+      powerStatus: roomRow.powerStatus,
+      airStatus:   roomRow.airStatus,
+      hoststatus:  roomRow.hoststatus,
+      lamps:       (groups.d   || []).map(d => ({ name: d.deviceName, turn: d.turn })),
+      dimmers:     (groups.tgd || []).map(d => ({ name: d.deviceName, turn: d.turn, brightness: d.brightness })),
+      ac:          (groups.wk  || []).map(d => ({ name: d.deviceName, turn: d.turn, mode: d.modern, temp: d.temperature, curTemp: d.curTemp, fan: d.fatSpeed })),
+      fw:          (groups.fw  || []).map(d => ({ name: d.deviceName, id: d.id, turn: d.turn })),
+    });
+
     // ── Room-level status fields (Chinese values from live API) ────────────
-    if (roomRow.checkStatus !== undefined) {
-      // "入住" = checked-in (occupied), anything else = vacant
-      tb.roomStatus = wrap(roomRow.checkStatus === '入住' ? 1 : 0);
-    }
+    // rcuOccupied intentionally disabled — Greentech checkStatus is unreliable.
+    // Will be re-enabled once the RCU side is stabilised.
+    // if (roomRow.checkStatus !== undefined) {
+    //   tb.rcuOccupied = wrap(roomRow.checkStatus === '入住');
+    // }
     if (roomRow.lockStatus !== undefined) {
       // "开" = unlocked/open, "关" = locked/closed
       tb.doorUnlock = wrap(roomRow.lockStatus === '开');
@@ -472,8 +572,11 @@ class GreentechAdapter extends PlatformAdapter {
       tb.deviceStatus = wrap(String(roomRow.hoststatus) === '1' ? 1 : 0);
     }
     if (roomRow.powerStatus !== undefined) {
-      // "开" = main power/card power on
-      tb.pdMode = wrap(roomRow.powerStatus !== '开'); // powerdown when card removed
+      // pdMode = true only when an OCCUPIED room loses card power (guest removed card).
+      // Vacant/reserved rooms naturally have powerStatus='关' (no card inserted) — that
+      // is NOT a hard power-down event and must not lock the room in pdMode.
+      const isOccupied = roomRow.checkStatus === '入住';
+      tb.pdMode = wrap(isOccupied && roomRow.powerStatus !== '开');
     }
     if (roomRow.airStatus !== undefined) {
       // "开" = AC unit is running (actual running state, separate from setpoint)
@@ -494,7 +597,16 @@ class GreentechAdapter extends PlatformAdapter {
     const ac = (groups.wk || [])[0];
     if (ac) {
       const isOn = ac.turn === 'ON';
-      tb.acMode  = wrap(isOn ? (AC_MODE_FROM_GT[ac.modern] ?? 1) : 0);
+      // Only emit acMode when we have a definitive value:
+      // - OFF → 0
+      // - ON + known mode → mapped value
+      // - ON + no/unknown mode → don't emit (preserve last known iHotel acMode)
+      if (!isOn) {
+        tb.acMode = wrap(0);
+      } else if (ac.modern && AC_MODE_FROM_GT[ac.modern] !== undefined) {
+        tb.acMode = wrap(AC_MODE_FROM_GT[ac.modern]);
+      }
+      // else: ON but mode unknown — skip acMode so UI keeps its current value
 
       // temperature is a plain number string in real responses (e.g. "25")
       if (ac.temperature != null && ac.temperature !== '') {

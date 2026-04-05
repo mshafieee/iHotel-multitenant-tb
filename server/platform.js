@@ -343,14 +343,37 @@ router.post('/hotels/:id/discover', authenticatePlatformAdmin, async (req, res) 
 
     for (const roomNumber of newRooms) seedRoomDefaultScenes(_db, hotel.id, roomNumber);
 
-    // Auto-detect device configuration from the first room and persist it
+    // Fetch device config (topology + names) for each discovered room and persist per-room.
+    // The first room's config is also saved as the hotel-wide fallback in hotels.device_config.
     if (devices.length && adapter.getDeviceConfig) {
-      try {
-        const cfg = await adapter.getDeviceConfig(devices[0].id);
+      let firstCfg = null;
+      const upd = _db.prepare('UPDATE hotel_rooms SET device_names = ? WHERE hotel_id = ? AND room_number = ?');
+      for (const dev of devices) {
+        if (!dev.roomNumber) continue;
+        try {
+          const cfg = await adapter.getDeviceConfig(dev.id);
+          // Store the full per-room topology: counts + names.
+          // RoomModal will use these per-room values instead of the hotel-wide fallback,
+          // so rooms with different device counts (e.g. 2 vs 4 lights) render correctly.
+          const roomCfg = {
+            lamps:       cfg.lamps,
+            dimmers:     cfg.dimmers,
+            ac:          cfg.ac,
+            curtains:    cfg.curtains,
+            blinds:      cfg.blinds,
+            lampNames:   cfg.lampNames   || [],
+            dimmerNames: cfg.dimmerNames || [],
+          };
+          upd.run(JSON.stringify(roomCfg), hotel.id, dev.roomNumber);
+          if (!firstCfg) firstCfg = cfg;
+        } catch (e) {
+          console.warn(`[discover] Could not fetch device config for room ${dev.roomNumber}:`, e.message);
+        }
+      }
+      // Hotel-wide fallback from first room (used for topology: lamps/dimmers/ac counts)
+      if (firstCfg) {
         _db.prepare('UPDATE hotels SET device_config = ? WHERE id = ?')
-          .run(JSON.stringify(cfg), hotel.id);
-      } catch (e) {
-        console.warn('[discover] Could not fetch device config:', e.message);
+          .run(JSON.stringify(firstCfg), hotel.id);
       }
     }
 

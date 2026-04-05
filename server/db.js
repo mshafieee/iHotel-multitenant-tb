@@ -834,6 +834,17 @@ function initDB() {
     console.log(`✓ Platform admin password updated from env: ${adminUser}`);
   }
 
+  // ── Migration 036: per-room device names ─────────────────────────────────
+  if (!hasMigration('036_room_device_names')) {
+    const cols = db.pragma('table_info(hotel_rooms)').map(c => c.name);
+    if (!cols.includes('device_id'))
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN device_id TEXT');
+    if (!cols.includes('device_names'))
+      db.exec('ALTER TABLE hotel_rooms ADD COLUMN device_names TEXT DEFAULT NULL');
+    console.log('✓ Migration 036: added device_id and device_names columns to hotel_rooms');
+    markMigration('036_room_device_names');
+  }
+
   return db;
 }
 

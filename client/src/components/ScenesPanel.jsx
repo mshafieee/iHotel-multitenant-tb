@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Zap, Plus, Play, Edit2, Trash2, Clock, Radio, X, Upload, Globe } from 'lucide-react';
+import { Zap, Plus, Play, Edit2, Trash2, Clock, Radio, X, Upload, Globe, Download } from 'lucide-react';
 import useHotelStore from '../store/hotelStore';
+import { api } from '../utils/api';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const DAYS       = ['mon','tue','wed','thu','fri','sat','sun'];
@@ -593,8 +594,10 @@ export default function ScenesPanel() {
   const [deletingId, setDeletingId] = useState(null);
   const [pushingId, setPushingId]   = useState(null);
   const [pushResult, setPushResult] = useState({});
-  const [selected, setSelected]     = useState(new Set());
+  const [selected, setSelected]       = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [importing, setImporting]       = useState(false);
+  const [importMsg, setImportMsg]       = useState('');
 
   useEffect(() => { fetchScenes(); }, []);
 
@@ -664,6 +667,47 @@ export default function ScenesPanel() {
   const openEdit  = (s) => { setEditingScene(s);   setShowBuilder(true); };
   const closeBuilder = () => { setShowBuilder(false); setEditingScene(null); fetchScenes(); };
 
+  const handleImportPlatformScenes = async () => {
+    setImporting(true);
+    setImportMsg('');
+    try {
+      const result = await api('/api/platform-scenes');
+      if (!result.supported) {
+        setImportMsg('Your IoT platform does not support scene listing.');
+        return;
+      }
+      if (!result.scenes?.length) {
+        setImportMsg('No scenes found on the IoT platform.');
+        return;
+      }
+      // Only import scenes that don't already exist (match by name prefix)
+      const existing = new Set(scenes.map(s => s.name));
+      const toImport = result.scenes.filter(s => !existing.has(`GT: ${s.name}`));
+      if (!toImport.length) {
+        setImportMsg('All platform scenes are already imported.');
+        return;
+      }
+      for (const s of toImport) {
+        await createScene({
+          name:          `GT: ${s.name}`,
+          roomNumber:    null,
+          triggerType:   'time',
+          triggerConfig: { time: '08:00', days: DAYS },
+          actions:       [{ type: 'activatePlatformScene', params: { platformSceneId: s.name }, delay: 0 }],
+          enabled:       false,
+          isShared:      true,
+        });
+      }
+      fetchScenes();
+      setImportMsg(`Imported ${toImport.length} scene(s). Edit triggers to activate them.`);
+    } catch (e) {
+      setImportMsg(`Import failed: ${e.message}`);
+    } finally {
+      setImporting(false);
+      setTimeout(() => setImportMsg(''), 6000);
+    }
+  };
+
   const allSelected = filtered.length > 0 && filtered.every(s => selected.has(s.id));
 
   return (
@@ -690,11 +734,21 @@ export default function ScenesPanel() {
               {roomNumbers.map(r => <option key={r} value={r}>Room {r}</option>)}
             </select>
           )}
+          <button onClick={handleImportPlatformScenes} disabled={importing}
+            title="Import preset scenes from the IoT platform (e.g. Greentech GRMS)"
+            className="btn btn-ghost text-xs flex items-center gap-1.5 disabled:opacity-50">
+            <Download size={13} /> {importing ? 'Importing…' : 'Import'}
+          </button>
           <button onClick={openNew} className="btn btn-primary text-xs flex items-center gap-1.5">
             <Plus size={14} /> New Scene
           </button>
         </div>
       </div>
+      {importMsg && (
+        <p className={`text-xs px-3 py-2 rounded-lg ${importMsg.includes('failed') || importMsg.includes('not') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+          {importMsg}
+        </p>
+      )}
 
       {/* ── Shared Scenes ── */}
       {sharedScenes.length > 0 && (

@@ -196,6 +196,137 @@ This ensures the Room Device Names editor in Hotel Info is available immediately
 
 ---
 
+## Session: 2026-04-05 — Greentech Integration Stability, Per-Room Topology, Real-Time Guest Portal
+
+### Summary
+
+Major reliability overhaul of the Greentech GRMS adapter. Resolved TLS connection errors, wrong light counts, stale UI states, and room status conflicts. Upgraded the guest portal to SSE real-time (replacing 5s polling). Added hardware-level RCU scene triggers for check-in/check-out. Improved control latency across admin and guest dashboards.
+
+---
+
+### 1. TLS Stability Fix
+
+**Root cause**: axios reused TLS sessions that the Greentech server (lvhuarcu.com:4430) could not handle — either session resumption failure (`bad_record_mac`) or negotiating TLS 1.3 which the server's stack rejects.
+
+**Fix** (`server/adapters/greentech-adapter.js`):
+- Created a shared `ax` axios instance with a custom `https.Agent`: `keepAlive: false`, `maxCachedSessions: 0`, `maxVersion: 'TLSv1.2'`, `rejectUnauthorized: false`
+- Replaced all `axios.get/post/put` calls with `ax.*` — including one missed `axios.put` in `_sendControl` that was the primary source of recurring errors
+
+---
+
+### 2. Per-Room Device Topology (Correct Light Count & Names)
+
+**Problem**: All rooms showed the same number of lamp buttons (hotel-wide default from first discovered room). Rooms like 102A (2 lights) and 102B (4 lights) both showed 5 buttons.
+
+**Fix**:
+- `server/platform.js` — discover now calls `adapter.getDeviceConfig(dev.id)` for **every** room (not just the first), stores `{ lamps, dimmers, ac, curtains, blinds, lampNames, dimmerNames }` into `hotel_rooms.device_names` per room
+- `server/db.js` — migration 036: `ALTER TABLE hotel_rooms ADD COLUMN device_names TEXT DEFAULT NULL`
+- `client/src/components/RoomModal.jsx` — `baseCfg` (hotel-wide) merged with `r.deviceNames` (per-room) to produce effective `cfg`: `const cfg = r.deviceNames ? { ...baseCfg, ...r.deviceNames } : baseCfg`
+- `getDeviceConfig()` now clears cache before fetching, so newly-added devices (e.g. a thermostat added after initial discover) are picked up on next Discover run
+
+---
+
+### 3. Per-Room Device Renaming
+
+- `server/index.js` — `PUT /api/rooms/:roomNumber/device-names` endpoint: writes to `hotel_rooms.device_names`, broadcasts updated names via SSE
+- `client/src/components/RoomModal.jsx` — inline pencil/save rename UI in the lights section (owner/admin only); `lampLabel(i)` and `dimmerLabel(i)` check per-room names first, then hotel-wide, then static fallback
+
+---
+
+### 4. Room Status Isolation (RCU vs iHotel)
+
+**Problem**: Greentech's `checkStatus` field was mapped to `roomStatus`, overwriting the front desk's booking status on every poll cycle. A reserved room would revert from "occupied" to "reserved/vacant" after each 5s poll.
+
+**Fix**:
+- `_buildTBFormat()` no longer emits `roomStatus` from Greentech data
+- `checkStatus` mapped to `rcuOccupied` (boolean, separate field) — informational only, never drives iHotel room lifecycle
+- `rcuOccupied` disabled for now (Greentech `checkStatus` is unreliable) — re-enable once their side is stable
+- `fetchAndBroadcast` now preserves existing `roomStatus` from `lastOverview` when adapter provides none: `lastOverview[rn]?.roomStatus ?? 0`
+- `pdMode` only set when room is **occupied AND card removed** — vacant/reserved rooms naturally have `powerStatus='关'` and must not trigger hard power-down
+
+---
+
+### 5. Dynamic Lights Beyond line3 (All Platforms)
+
+**Problem**: `controlToTelemetry`, `sendControl` FORWARD list, `applyLocal` (client), `vacateRoom`, `startNotOccupiedTimer` snapshot, `restoreOccupied`, and `resetRoom` all hardcoded `line1/line2/line3` and `dimmer1/dimmer2`.
+
+**Fixes**:
+- `server/services/control.service.js` — all lamp/dimmer operations use regex loops: `/^line\d+$/`, `/^dimmer\d+$/`
+- `client/src/store/hotelStore.js` — `applyLocal` for `setLines` and `setPDMode` loops over all `lineN`/`dimmerN` keys; `resetRoom` does the same
+- `client/src/components/RoomModal.jsx` — `DEBOUNCE_MS` reduced from 500ms → 150ms for faster response
+
+---
+
+### 6. RCU Hardware Scene Triggers (Greentech)
+
+Greentech RCUs have pre-programmed scenes: `check in`, `check out`, `door contact`, `sensor 1/2`, `night up`, `power mode`. These are now used for room lifecycle events.
+
+**`server/services/control.service.js`**:
+- `_triggerRcuScene(hotelId, devId, sceneName)` — calls `adapter.activatePlatformScene()` if available; returns `true` on success, `false` to fall back to individual commands
+- `vacateRoom()` — tries `check out` RCU scene first; falls back to individual OFF commands + AC set if scene fails
+- `restoreOccupied()` — tries `check in` RCU scene first; falls back to restoring saved state snapshot
+- ThingsBoard adapters: `activatePlatformScene` is undefined → always uses fallback (no change in behavior)
+
+---
+
+### 7. Real-Time Guest Portal (SSE replaces polling)
+
+**Problem**: Guest portal polled `/api/guest/room/data` every 5s. Status updates lagged up to 5s behind hardware. The server `sseBroadcast` already filtered events per guest room but the guest client never connected to SSE.
+
+**Fix** (`client/src/pages/GuestPortal.jsx`):
+- Replaced 5s `setInterval` poll with `createSSE()` connection after room loads
+- Listens to `telemetry`, `batch-telemetry`, and `snapshot` events — applies to store immediately
+- Server already handles guest SSE filtering in `sse.service.js` (`meta.role === 'guest'` → only their room)
+
+---
+
+### 8. fetchAndBroadcast / Poll Race Elimination
+
+**Problem**: On page load, `fetchAndBroadcast` fetched from Greentech and sent a `snapshot` SSE event. The subscribe poll simultaneously updated `lastOverview`. They raced — snapshot could overwrite correct poll state with slightly stale Greentech data, causing brief "ON then OFF" flicker.
+
+**Fixes**:
+- `fetchAndBroadcast` skips Greentech fetch when poll subscription is active (`sub._polling === true`) — just rebroadcasts existing `lastOverview` as snapshot
+- First poll cycle broadcasts **full state** (not just changes) so guests/admins loading the page get current hardware state immediately
+- First poll fires immediately (removed 2s initial delay) since `fetchAndBroadcast` is no longer the initial data source
+- Overview endpoint only triggers `fetchAndBroadcast` when cache is stale (>30s) OR empty — not on every request
+
+---
+
+### 9. Control Latency Reduction
+
+- `server/index.js` — both `/api/devices/:id/rpc` (admin) and `/api/guest/rpc` (guest) now respond `{ok:true}` immediately; `sendControl` runs in background. Hardware latency no longer blocks HTTP response.
+- `sendControl` already applied optimistic update + SSE broadcast synchronously before the adapter call — so UI was always instant; now the HTTP round-trip is also instant.
+
+---
+
+### 10. AC Mapping Fix (Greentech Thermostat)
+
+**Problem**: When Greentech returned `turn: ON` but `modern` was null/empty, `AC_MODE_FROM_GT[null] ?? 1` defaulted to Heat — wrong mode shown. When only fan speed or temperature was adjusted, the command included no `turn` field — some Greentech firmware interpreted this as OFF.
+
+**Fixes** (`server/adapters/greentech-adapter.js`):
+- Reading: `turn: OFF` → `acMode: 0`; `turn: ON` + known mode → mapped; `turn: ON` + unknown mode → skip `acMode` (preserve UI value)
+- Writing: temperature/fan-only commands now include `turn: ON` to prevent accidental power-off
+- AC (`wk[]`) added to debug RAW log alongside lamps and dimmers
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/adapters/greentech-adapter.js` | TLS fix, POST→GET revert, per-room cache clear on getDeviceConfig, full-state first poll, immediate poll start, AC mapping fix, debug log AC added |
+| `server/services/room.service.js` | Preserve roomStatus from lastOverview; skip fetchAndBroadcast when poll active; rcuOccupied in TELEMETRY_KEYS/WATCHABLE_KEYS |
+| `server/services/control.service.js` | Dynamic lineN/dimmerN throughout; RCU scene triggers (_triggerRcuScene, vacateRoom, restoreOccupied); respond-first pattern |
+| `server/services/sse.service.js` | No changes (already supported guest SSE filtering) |
+| `server/index.js` | Admin+guest RPC respond immediately; guest RPC snapshot restore dynamic; overview stale guard restored |
+| `server/platform.js` | Per-room getDeviceConfig for all rooms; stores device_names per room |
+| `server/db.js` | Migration 036: hotel_rooms.device_names column |
+| `client/src/components/RoomModal.jsx` | baseCfg + per-room merge; inline rename UI; DEBOUNCE_MS 500→150 |
+| `client/src/pages/GuestPortal.jsx` | SSE connection replaces 5s polling |
+| `client/src/store/hotelStore.js` | Dynamic lineN/dimmerN in applyLocal, setPDMode, resetRoom |
+
+---
+
 ## Session: 2026-03-29 — Upsell Engine + Channel Manager
 
 ### Summary

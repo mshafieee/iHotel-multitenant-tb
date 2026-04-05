@@ -25,14 +25,28 @@ const FLOOR_TYPE    = { 1:1, 2:0, 3:0, 4:1, 5:2, 6:0, 7:1, 8:0, 9:2, 10:0, 11:1,
 const TELEMETRY_KEYS = [
   'roomStatus','pirMotionStatus','doorStatus','doorLockBattery','doorContactsBattery',
   'co2','temperature','humidity','airQualityBattery','elecConsumption','waterConsumption',
-  'waterMeterBattery','line1','line2','line3','dimmer1','dimmer2','acTemperatureSet',
-  'acMode','fanSpeed','curtainsPosition','blindsPosition','dndService','murService',
-  'sosService','lastCleanedTime','lastTelemetryTime','firmwareVersion','gatewayVersion','deviceStatus',
-  'pdMode','doorUnlock'
+  'waterMeterBattery',
+  'line1','line2','line3','line4','line5','line6','line7','line8',
+  'dimmer1','dimmer2','dimmer3','dimmer4',
+  'acTemperatureSet','acMode','fanSpeed','curtainsPosition','blindsPosition',
+  'dndService','murService','sosService','lastCleanedTime','lastTelemetryTime',
+  'firmwareVersion','gatewayVersion','deviceStatus','pdMode','doorUnlock',
+  'rcuOccupied'
 ];
 const RELAY_KEYS = ['relay1','relay2','relay3','relay4','relay5','relay6','relay7','relay8','doorUnlock','defaultUnlockDuration'];
-const SHARED_CONTROL_KEYS = ['line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','roomStatus','dndService','murService','sosService','pdMode'];
-const WATCHABLE_KEYS = ['roomStatus','pirMotionStatus','doorStatus','line1','line2','line3','dimmer1','dimmer2','acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition','dndService','murService','sosService','deviceStatus','pdMode'];
+const SHARED_CONTROL_KEYS = [
+  'line1','line2','line3','line4','line5','line6','line7','line8',
+  'dimmer1','dimmer2','dimmer3','dimmer4',
+  'acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition',
+  'roomStatus','dndService','murService','sosService','pdMode'
+];
+const WATCHABLE_KEYS = [
+  'roomStatus','pirMotionStatus','doorStatus',
+  'line1','line2','line3','line4','line5','line6','line7','line8',
+  'dimmer1','dimmer2','dimmer3','dimmer4',
+  'acMode','acTemperatureSet','fanSpeed','curtainsPosition','blindsPosition',
+  'dndService','murService','sosService','deviceStatus','pdMode','rcuOccupied'
+];
 
 function init(db, adapterPool, controlService) {
   _db = db;
@@ -241,6 +255,18 @@ async function fetchAndBroadcast(hotelId) {
 
   state.setOverviewFetchTs(hotelId);
 
+  // If the poll subscription is active, it already keeps lastOverview current
+  // and broadcasts changes via SSE. Running fetchAndBroadcast on top races against
+  // the poll and can overwrite correct poll-driven state with a stale Greentech snapshot.
+  const activeSub = state.getPlatformSub(hotelId);
+  if (activeSub && activeSub._polling) {
+    // Poll is active and already keeps lastOverview current — just rebroadcast existing state.
+    if (Object.keys(lastOverview).length) {
+      sseBroadcast(hotelId, 'snapshot', { rooms: lastOverview, deviceCount: Object.keys(lastOverview).length, timestamp: Date.now() });
+    }
+    return;
+  }
+
   const adapter = getAdapter(hotelId);
   const devices = await adapter.listDevices();
   if (!devices.length) return;
@@ -265,7 +291,7 @@ async function fetchAndBroadcast(hotelId) {
   const reservationMap = {};
   activeResRows.forEach(ar => { reservationMap[ar.room] = ar; });
 
-  const hotelRoomRows = _db.prepare('SELECT room_number, room_type, elec_meter_baseline, water_meter_baseline FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
+  const hotelRoomRows = _db.prepare('SELECT room_number, room_type, elec_meter_baseline, water_meter_baseline, device_names FROM hotel_rooms WHERE hotel_id=?').all(hotelId);
   const hotelRoomMap  = {};
   hotelRoomRows.forEach(r => { hotelRoomMap[r.room_number] = r; });
 
@@ -299,7 +325,7 @@ async function fetchAndBroadcast(hotelId) {
       acTemperatureSet: t.acTemperatureSet ?? relays.acTemperatureSet ?? 22, acMode: t.acMode ?? relays.acMode ?? 0, fanSpeed: t.fanSpeed ?? relays.fanSpeed ?? 3,
       curtainsPosition: t.curtainsPosition ?? relays.curtainsPosition ?? 0, blindsPosition: t.blindsPosition ?? relays.blindsPosition ?? 0,
       dndService: t.dndService ?? relays.dndService ?? false, murService: t.murService ?? relays.murService ?? false, sosService: t.sosService ?? relays.sosService ?? false,
-      roomStatus: state.getRoomStateSnapshots(hotelId)[rn] ? 4 : (t.roomStatus ?? relays.roomStatus ?? 0),
+      roomStatus: state.getRoomStateSnapshots(hotelId)[rn] ? 4 : (t.roomStatus ?? relays.roomStatus ?? lastOverview[rn]?.roomStatus ?? 0),
       lastCleanedTime: t.lastCleanedTime ?? null, firmwareVersion: t.firmwareVersion ?? null,
       gatewayVersion: t.gatewayVersion ?? null, deviceStatus: t.deviceStatus ?? 0,
       pdMode: t.pdMode ?? relays.pdMode ?? false,
@@ -308,8 +334,17 @@ async function fetchAndBroadcast(hotelId) {
       relay5: relays.relay5 ?? false, relay6: relays.relay6 ?? false,
       relay7: relays.relay7 ?? false, relay8: relays.relay8 ?? false,
       doorUnlock: t.doorUnlock ?? relays.doorUnlock ?? false,
-      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null
+      reservation: ar ? { id: ar.id, guestName: ar.guest_name, checkIn: ar.check_in, checkOut: ar.check_out, paymentMethod: ar.payment_method } : null,
+      deviceNames: hotelRoom?.device_names ? JSON.parse(hotelRoom.device_names) : null,
     };
+    // Dynamically include extra lamps (line4+) and dimmers (dimmer3+) from the adapter.
+    // Greentech rooms may have more than 3 lines / 2 dimmers; other platforms won't have these keys at all.
+    for (const [k, v] of Object.entries(t)) {
+      const lampN   = k.match(/^line(\d+)$/);
+      const dimmerN = k.match(/^dimmer(\d+)$/);
+      if (lampN   && parseInt(lampN[1])   > 3) rooms[rn][k] = v ?? false;
+      if (dimmerN && parseInt(dimmerN[1]) > 2) rooms[rn][k] = v ?? 0;
+    }
   });
 
   Object.assign(lastOverview, rooms);
